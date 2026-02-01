@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0a0a14" />
+    
+    <!-- Primary Meta Tags -->
+    <title>Launchr - Launch into Orbit</title>
+    <meta name="title" content="Launchr - Launch into Orbit" />
+    <meta name="description" content="Fair token launches with bonding curves that graduate into Orbit Finance DLMM liquidity. No rugs. No dev dumps. Just pure, transparent launches on Solana." />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://launchr.cipherlabs.xyz/" />
+    <meta property="og:title" content="Launchr - Launch into Orbit" />
+    <meta property="og:description" content="Fair token launches with bonding curves that graduate into Orbit Finance DLMM liquidity. No rugs. No dev dumps. Just pure, transparent launches on Solana." />
+    <meta property="og:image" content="%PUBLIC_URL%/og-image.png" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://launchr.cipherlabs.xyz/" />
+    <meta property="twitter:title" content="Launchr - Launch into Orbit" />
+    <meta property="twitter:description" content="Fair token launches with bonding curves that graduate into Orbit Finance DLMM liquidity. No rugs. No dev dumps. Just pure, transparent launches on Solana." />
+    <meta property="twitter:image" content="%PUBLIC_URL%/og-image.png" />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    
+    <!-- PWA -->
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <style>
+      /* Loading screen - Ultra minimal, matches app aesthetic */
+      .loading-screen {
+        position: fixed;
+        inset: 0;
+        background: #050508;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .loading-screen.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .loading-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 32px;
+      }
+
+      .loading-logo {
+        opacity: 0.9;
+      }
+
+      .loading-bar {
+        width: 120px;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 1px;
+        overflow: hidden;
+      }
+
+      .loading-bar-fill {
+        width: 40%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 1px;
+        animation: loading-slide 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+
+      @keyframes loading-slide {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(350%); }
+      }
+
+      /* Light mode loading screen */
+      .loading-screen.light-mode {
+        background: #fafafa;
+      }
+
+      .loading-screen.light-mode .loading-logo {
+        stroke: #1a1a2e;
+      }
+
+      .loading-screen.light-mode .loading-logo circle {
+        fill: #1a1a2e;
+      }
+
+      .loading-screen.light-mode .loading-bar {
+        background: rgba(0, 0, 0, 0.08);
+      }
+
+      .loading-screen.light-mode .loading-bar-fill {
+        background: rgba(0, 0, 0, 0.25);
+      }
+    </style>
+
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run Launchr.</noscript>
+    
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loading-screen">
+      <div class="loading-wrapper">
+        <svg class="loading-logo" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M 4 4 L 4 20 L 20 20" />
+          <circle cx="20" cy="4" r="2.8" fill="white" stroke="none" />
+        </svg>
+        <div class="loading-bar">
+          <div class="loading-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Apply light mode to loading screen immediately if needed
+      (function() {
+        try {
+          var saved = localStorage.getItem('launchr_settings');
+          if (saved) {
+            var settings = JSON.parse(saved);
+            if (settings.theme === 'light') {
+              document.getElementById('loading-screen').classList.add('light-mode');
+            }
+          }
+        } catch(e) {}
+      })();
+    </script>
+
+    <div id="root"></div>
+
+    <script>
+      // Hide loading screen when React mounts
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          document.getElementById('loading-screen').classList.add('hidden');
+        }, 500);
+      });
+    </script>
+  </body>
+</html>

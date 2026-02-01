@@ -1,0 +1,185 @@
+/**
+ * Mock Hooks for Local Development
+ * 
+ * These hooks provide fake data so you can test the full UI
+ * without deploying the Solana program or running a backend.
+ * 
+ * Enable: REACT_APP_USE_MOCKS=true in .env
+ */
+
+import { useState, useCallback, useMemo } from 'react';
+import { Transaction } from '@solana/web3.js';
+import { LaunchData, TradeData, UserPositionData } from '../components/molecules';
+import {
+  MOCK_LAUNCHES,
+  MOCK_GLOBAL_STATS,
+  generateMockTrades,
+  generateMockHolders,
+  generateMockPriceHistory,
+  generateMockUserPosition,
+} from './data';
+import type { UseWalletResult, UseLaunchesResult, UseTradeResult, GlobalStats } from '../hooks';
+
+// =============================================================================
+// MOCK WALLET
+// =============================================================================
+
+export function useMockWallet(): UseWalletResult {
+  const [connected, setConnected] = useState(false);
+  const [address, setAddress] = useState<string | null>(null);
+
+  const connect = useCallback(async () => {
+    // Simulate connection delay
+    await new Promise(r => setTimeout(r, 500));
+    setAddress('7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsu');
+    setConnected(true);
+  }, []);
+
+  const disconnect = useCallback(async () => {
+    setAddress(null);
+    setConnected(false);
+  }, []);
+
+  return {
+    address,
+    balance: connected ? 12.42069 : 0,
+    connected,
+    connecting: false,
+    connect,
+    disconnect,
+    signTransaction: async (tx: Transaction) => tx,
+    refreshBalance: async () => {},
+  };
+}
+
+// =============================================================================
+// MOCK LAUNCHES
+// =============================================================================
+
+export function useMockLaunches(): UseLaunchesResult {
+  const [launches] = useState<LaunchData[]>(MOCK_LAUNCHES);
+
+  const trendingLaunches = useMemo(() => {
+    return [...launches]
+      .filter(l => l.status === 'Active' || l.status === 'PendingGraduation')
+      .sort((a, b) => b.realSolReserve - a.realSolReserve)
+      .slice(0, 10);
+  }, [launches]);
+
+  const getLaunch = useCallback((publicKey: string) => {
+    return launches.find(l => l.publicKey === publicKey);
+  }, [launches]);
+
+  return {
+    launches,
+    trendingLaunches,
+    loading: false,
+    error: null,
+    refetch: async () => {},
+    getLaunch,
+  };
+}
+
+// =============================================================================
+// MOCK SINGLE LAUNCH
+// =============================================================================
+
+export function useMockLaunch(publicKey: string | undefined) {
+  const launch = useMemo(() => {
+    if (!publicKey) return null;
+    return MOCK_LAUNCHES.find(l => l.publicKey === publicKey) || MOCK_LAUNCHES[0];
+  }, [publicKey]);
+
+  const trades = useMemo(() => {
+    if (!publicKey) return [];
+    return generateMockTrades(publicKey, 25);
+  }, [publicKey]);
+
+  const holders = useMemo(() => generateMockHolders(12), []);
+  const priceHistory = useMemo(() => generateMockPriceHistory(72), []);
+
+  return {
+    launch,
+    trades,
+    holders,
+    priceHistory,
+    loading: false,
+    error: null,
+    refetch: async () => {},
+  };
+}
+
+// =============================================================================
+// MOCK USER POSITION
+// =============================================================================
+
+export function useMockUserPosition(launchPk: string | undefined, userAddress: string | undefined) {
+  const position = useMemo(() => {
+    if (!launchPk || !userAddress) return null;
+    // 70% chance user has a position
+    return Math.random() > 0.3 ? generateMockUserPosition() : null;
+  }, [launchPk, userAddress]);
+
+  return {
+    position,
+    loading: false,
+    refetch: async () => {},
+  };
+}
+
+// =============================================================================
+// MOCK TRADE
+// =============================================================================
+
+export function useMockTrade(): UseTradeResult {
+  const [loading, setLoading] = useState(false);
+
+  const buy = useCallback(async (launchPk: string, solAmount: number, slippage: number): Promise<string> => {
+    setLoading(true);
+    // Simulate transaction delay
+    await new Promise(r => setTimeout(r, 1500));
+    setLoading(false);
+    console.log(`[MOCK] Buy: ${solAmount} SOL on ${launchPk.slice(0, 8)}... (slippage: ${slippage}%)`);
+    return 'mock_signature_' + Date.now();
+  }, []);
+
+  const sell = useCallback(async (launchPk: string, tokenAmount: number, slippage: number): Promise<string> => {
+    setLoading(true);
+    await new Promise(r => setTimeout(r, 1500));
+    setLoading(false);
+    console.log(`[MOCK] Sell: ${tokenAmount} tokens on ${launchPk.slice(0, 8)}... (slippage: ${slippage}%)`);
+    return 'mock_signature_' + Date.now();
+  }, []);
+
+  return { buy, sell, loading, error: null };
+}
+
+// =============================================================================
+// MOCK CREATE LAUNCH
+// =============================================================================
+
+export function useMockCreateLaunch() {
+  const [loading, setLoading] = useState(false);
+
+  const createLaunch = useCallback(async (params: any): Promise<string> => {
+    setLoading(true);
+    await new Promise(r => setTimeout(r, 2000));
+    setLoading(false);
+    console.log('[MOCK] Created launch:', params);
+    return 'mock_signature_' + Date.now();
+  }, []);
+
+  return { createLaunch, loading, error: null };
+}
+
+// =============================================================================
+// MOCK GLOBAL STATS
+// =============================================================================
+
+export function useMockGlobalStats() {
+  return {
+    stats: MOCK_GLOBAL_STATS as GlobalStats,
+    loading: false,
+    refetch: async () => {},
+  };
+}
