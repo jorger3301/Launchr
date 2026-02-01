@@ -76,21 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
           className="flex items-center gap-2.5 cursor-pointer"
           onClick={() => window.location.href = '/'}
         >
-          <div
-            className="w-8 h-8 rounded-[10px] flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg, #34d399, #059669)',
-              boxShadow: '0 4px 20px rgba(52, 211, 153, 0.3)',
-            }}
-          >
-            <LaunchrLogo size="sm" showText={false} />
-          </div>
-          <span
-            className="text-[17px] font-semibold tracking-tight"
-            style={{ color: 'var(--t1)', letterSpacing: '-0.3px' }}
-          >
-            Launchr
-          </span>
+          <LaunchrLogo size="sm" showText />
         </div>
 
         {/* Right Side Actions */}
@@ -173,7 +159,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 
   return (
     <nav className={`
-      bg-[#0a0a14]/50 backdrop-blur-sm
+      bg-[#111827]/50 backdrop-blur-sm
       border-b border-white/5
       ${className}
     `}>
@@ -238,8 +224,8 @@ const Orbs: React.FC<OrbsProps> = ({ isDark = true }) => {
           height: 500,
           borderRadius: '50%',
           background: isDark
-            ? 'radial-gradient(circle, rgba(52, 211, 153, 0.08) 0%, transparent 70%)'
-            : 'radial-gradient(circle, rgba(52, 211, 153, 0.15) 0%, transparent 70%)',
+            ? 'radial-gradient(circle, rgba(34, 197, 94, 0.08) 0%, transparent 70%)'
+            : 'radial-gradient(circle, rgba(34, 197, 94, 0.15) 0%, transparent 70%)',
           filter: 'blur(60px)',
         }}
       />
@@ -538,14 +524,14 @@ export const LoadingLayout: React.FC<LoadingLayoutProps> = ({
 }) => {
   return (
     <div className={`
-      min-h-screen bg-[#0a0a14]
+      min-h-screen bg-[#111827]
       flex flex-col items-center justify-center
       ${className}
     `}>
       {/* Background Effects */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 
-                        w-[50%] h-[50%] bg-[#5eead4]/10 rounded-full blur-[150px] animate-pulse" />
+                        w-[50%] h-[50%] bg-[#22C55E]/10 rounded-full blur-[150px] animate-pulse" />
       </div>
 
       <div className="relative z-10 flex flex-col items-center gap-6">
@@ -580,7 +566,7 @@ export const ErrorLayout: React.FC<ErrorLayoutProps> = ({
 }) => {
   return (
     <div className={`
-      min-h-screen bg-[#0a0a14]
+      min-h-screen bg-[#111827]
       flex flex-col items-center justify-center p-4
       ${className}
     `}>
@@ -656,7 +642,7 @@ export const ModalLayout: React.FC<ModalLayoutProps> = ({
       {/* Modal */}
       <div className={`
         relative z-10 w-full ${sizeClasses[size]}
-        bg-[#12121f] border border-white/10 rounded-2xl
+        bg-[#1F2937] border border-white/10 rounded-2xl
         shadow-2xl shadow-black/50
         ${className}
       `}>

@@ -1,7 +1,7 @@
 {
   "name": "launchr-app",
   "version": "1.0.0",
-  "description": "Launchr - Launch into Orbit. Bonding curve token launches that graduate into Orbit Finance DLMM liquidity.",
+  "description": "Launchr - The fair-launch token protocol built on Solana. No insiders, no presale — just community-first token launches.",
   "private": true,
   "scripts": {
     "start": "react-scripts start",
@@ -23,6 +23,7 @@
     "typescript": "^5.0.0"
   },
   "devDependencies": {
+    "@types/bn.js": "^5.2.0",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",

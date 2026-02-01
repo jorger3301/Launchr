@@ -61,7 +61,7 @@ pub mod instructions;
 
 use instructions::*;
 
-declare_id!("LNCHRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+declare_id!("8QbLSptEeyGS6xxp6jsTstoZh7uuR1NqMxs1r4qmQ5aS");
 
 /// Launchr Program - Launch into Orbit
 #[program]

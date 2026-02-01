@@ -19,7 +19,13 @@ import {
   useTrade as useRealTrade,
   useCreateLaunch as useRealCreateLaunch,
   useGlobalStats as useRealGlobalStats,
+  useSolPrice,
+  useAvailableWallets,
+  useMultipleTokenMetadata,
+  WalletType,
 } from './hooks';
+
+import { WalletSelector } from './components/molecules';
 
 import {
   useMockWallet,
@@ -43,8 +49,8 @@ const USE_MOCKS = process.env.REACT_APP_USE_MOCKS === 'true';
 
 const GRADS = [
   ["#f97316","#ea580c"],["#8b5cf6","#7c3aed"],["#06b6d4","#0891b2"],
-  ["#ec4899","#db2777"],["#10b981","#059669"],["#f59e0b","#d97706"],
-  ["#6366f1","#4f46e5"],["#ef4444","#dc2626"],["#14b8a6","#0d9488"],["#a855f7","#9333ea"],
+  ["#ec4899","#db2777"],["#22C55E","#16A34A"],["#f59e0b","#d97706"],
+  ["#6366f1","#4f46e5"],["#ef4444","#dc2626"],["#34D399","#16A34A"],["#a855f7","#9333ea"],
 ];
 
 // SVG icon patterns for avatars (replacing emojis)
@@ -129,21 +135,69 @@ const ani = (type: string, delay?: number): React.CSSProperties => {
 interface AvatarProps {
   gi: number;
   size?: number;
+  imageUrl?: string;
+  symbol?: string;
 }
 
-const Avatar: React.FC<AvatarProps> = ({ gi, size = 36 }) => {
+const Avatar: React.FC<AvatarProps> = ({ gi, size = 36, imageUrl, symbol }) => {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const g = GRADS[gi % GRADS.length];
   const iconFn = AVATAR_ICONS[gi % AVATAR_ICONS.length];
   const iconSize = Math.round(size * 0.5);
+  const borderRadius = size * 0.35;
+
+  // Show gradient fallback if no image or image failed to load
+  const showFallback = !imageUrl || imageError || !imageLoaded;
+
   return (
     <div style={{
-      width: size, height: size, borderRadius: size * 0.35,
-      background: `linear-gradient(135deg, ${g[0]}, ${g[1]})`,
-      display: "flex", alignItems: "center", justifyContent: "center",
+      width: size,
+      height: size,
+      borderRadius,
+      position: "relative",
       flexShrink: 0,
-      boxShadow: `0 4px 18px ${g[0]}40`
+      overflow: "hidden",
     }}>
-      {iconFn(iconSize)}
+      {/* Gradient fallback (always rendered for smooth transition) */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius,
+          background: `linear-gradient(135deg, ${g[0]}, ${g[1]})`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: `0 4px 18px ${g[0]}40`,
+          opacity: showFallback ? 1 : 0,
+          transition: "opacity 0.3s ease",
+        }}
+      >
+        {iconFn(iconSize)}
+      </div>
+
+      {/* Metaplex image (with reveal animation) */}
+      {imageUrl && !imageError && (
+        <img
+          src={imageUrl}
+          alt={symbol || "Token"}
+          onLoad={() => setImageLoaded(true)}
+          onError={() => setImageError(true)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            borderRadius,
+            opacity: imageLoaded ? 1 : 0,
+            transform: imageLoaded ? "scale(1)" : "scale(0.95)",
+            transition: "opacity 0.3s ease, transform 0.3s ease",
+            boxShadow: `0 4px 18px ${g[0]}30`,
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -346,14 +400,35 @@ const SvgPlus: React.FC = () => (
 
 interface SvgLogoProps {
   size?: number;
+  variant?: 'mark' | 'badge';
 }
 
-const SvgLogo: React.FC<SvgLogoProps> = ({ size = 14 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M 4 4 L 4 20 L 20 20" />
-    <circle cx={20} cy={4} r={2.8} fill="white" stroke="none" />
-  </svg>
-);
+// Launchr Brand Logo - L-bracket with launch dot
+const SvgLogo: React.FC<SvgLogoProps> = ({ size = 14, variant = 'mark' }) => {
+  if (variant === 'badge') {
+    // Full badge variant with gradient background
+    return (
+      <svg width={size} height={size} viewBox="0 0 120 120" fill="none">
+        <defs>
+          <linearGradient id="launchr-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#34D399"/>
+            <stop offset="100%" stopColor="#16A34A"/>
+          </linearGradient>
+        </defs>
+        <rect width="120" height="120" rx="26" fill="url(#launchr-grad)"/>
+        <path d="M32 34 L32 88 L86 88" stroke="white" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+        <circle cx="82" cy="38" r="8" fill="white"/>
+      </svg>
+    );
+  }
+  // Simple mark variant (white on transparent)
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" fill="none">
+      <path d="M32 34 L32 88 L86 88" stroke="currentColor" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <circle cx="82" cy="38" r="8" fill="currentColor"/>
+    </svg>
+  );
+};
 
 const SvgSwap: React.FC = () => (
   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -686,7 +761,7 @@ const GradientProgress: React.FC<GradientProgressProps> = ({
           borderRadius: height / 2,
           background: isNearComplete
             ? 'linear-gradient(90deg, #fbbf24, #f59e0b)'
-            : 'linear-gradient(90deg, #34d399, #10b981, #059669)',
+            : 'linear-gradient(90deg, #34d399, #22C55E, #16A34A)',
           position: 'relative',
           transition: 'width 0.6s var(--ease-out-expo)',
         }}
@@ -716,7 +791,7 @@ const GradientProgress: React.FC<GradientProgressProps> = ({
           borderRadius: height,
           background: isNearComplete
             ? 'rgba(251, 191, 36, 0.3)'
-            : 'rgba(52, 211, 153, 0.3)',
+            : 'rgba(34, 197, 94, 0.3)',
           filter: 'blur(4px)',
           pointerEvents: 'none',
         }} />
@@ -790,13 +865,14 @@ const HoverCard: React.FC<HoverCardProps> = ({
       style={{
         ...style,
         cursor: onClick ? 'pointer' : 'default',
-        transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
-        transition: 'all 0.25s var(--ease-out-quart)',
+        transform: isHovered ? 'translateY(-3px) scale(1.005)' : 'translateY(0) scale(1)',
+        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
         boxShadow: isHovered && glowColor
-          ? `0 8px 32px ${glowColor}`
+          ? `0 12px 40px ${glowColor}, 0 0 0 1px rgba(34, 197, 94, 0.1)`
           : isHovered
-            ? '0 8px 32px rgba(0,0,0,0.12)'
+            ? '0 12px 40px rgba(0,0,0,0.15)'
             : undefined,
+        borderColor: isHovered ? 'rgba(34, 197, 94, 0.15)' : undefined,
       }}
     >
       {children}
@@ -1263,8 +1339,8 @@ const UpdatePulse: React.FC<{ show: boolean }> = ({ show }) => {
         gap: 6,
         padding: '4px 10px',
         borderRadius: 100,
-        background: 'rgba(52, 211, 153, 0.1)',
-        border: '1px solid rgba(52, 211, 153, 0.2)',
+        background: 'rgba(34, 197, 94, 0.1)',
+        border: '1px solid rgba(34, 197, 94, 0.2)',
         fontSize: 11,
         fontWeight: 500,
         color: 'var(--grn)',
@@ -1535,7 +1611,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               background: type === 'danger'
                 ? 'linear-gradient(135deg, #fca5a5, #ef4444)'
                 : type === 'success'
-                  ? 'linear-gradient(135deg, #34d399, #059669)'
+                  ? 'linear-gradient(135deg, #34d399, #16A34A)'
                   : 'var(--pb)',
               color: type === 'info' ? 'var(--pt)' : '#fff',
               border: 'none',
@@ -1686,12 +1762,14 @@ const inpS: React.CSSProperties = {
 };
 
 const bpS: React.CSSProperties = {
-  background: "var(--pb)",
-  color: "var(--pt)",
+  background: "linear-gradient(135deg, #34D399, #16A34A)",
+  color: "white",
   border: "none",
   cursor: "pointer",
   borderRadius: 100,
-  fontWeight: 500
+  fontWeight: 600,
+  transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+  boxShadow: "0 4px 16px rgba(34, 197, 94, 0.25)"
 };
 
 const bsS: React.CSSProperties = {
@@ -1699,7 +1777,8 @@ const bsS: React.CSSProperties = {
   color: "var(--st)",
   border: "1px solid var(--sbd)",
   cursor: "pointer",
-  borderRadius: 100
+  borderRadius: 100,
+  transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
 };
 
 // ---------------------------------------------------------------------------
@@ -1713,7 +1792,7 @@ interface BadgeProps {
 
 const Badge: React.FC<BadgeProps> = ({ status, isDark }) => {
   const cfg = status === "Graduated"
-    ? { bg: "var(--gb)", bd: isDark ? "rgba(110,231,183,0.2)" : "rgba(5,150,105,0.15)", tx: "var(--grn)" }
+    ? { bg: "var(--gb)", bd: isDark ? "rgba(34,197,94,0.2)" : "rgba(22,163,74,0.15)", tx: "var(--grn)" }
     : status === "PendingGraduation"
     ? { bg: isDark ? "rgba(252,211,77,0.1)" : "rgba(217,119,6,0.06)", bd: isDark ? "rgba(252,211,77,0.2)" : "rgba(217,119,6,0.15)", tx: "var(--amb)" }
     : { bg: "var(--glass2)", bd: "var(--glass-border)", tx: "var(--t2)" };
@@ -1779,8 +1858,8 @@ const Orbs: React.FC<OrbsProps> = ({ isDark }) => (
       height: 500,
       borderRadius: "50%",
       background: isDark
-        ? "radial-gradient(circle,rgba(52,211,153,0.08) 0%,transparent 70%)"
-        : "radial-gradient(circle,rgba(52,211,153,0.15) 0%,transparent 70%)",
+        ? "radial-gradient(circle,rgba(34,197,94,0.08) 0%,transparent 70%)"
+        : "radial-gradient(circle,rgba(34,197,94,0.15) 0%,transparent 70%)",
       animation: "orb1 25s ease-in-out infinite",
       filter: "blur(60px)"
     }} />
@@ -1984,6 +2063,13 @@ const App: React.FC = () => {
   const createData = USE_MOCKS ? useMockCreateLaunch() : useRealCreateLaunch(wallet as any);
   const { createLaunch } = createData;
 
+  // SOL Price from Pyth Oracle
+  const { solPrice } = useSolPrice(15000); // Refresh every 15 seconds
+
+  // Available wallets for selector
+  const availableWallets = useAvailableWallets();
+  const [showWalletSelector, setShowWalletSelector] = useState(false);
+
   const currentLaunchPk = route.type === 'detail' ? route.launch.publicKey : undefined;
   const launchDetail = USE_MOCKS ? useMockLaunch(currentLaunchPk) : useRealLaunch(currentLaunchPk);
   const { trades: rawTrades } = launchDetail;
@@ -2014,6 +2100,17 @@ const App: React.FC = () => {
       };
     });
   }, [rawLaunches]);
+
+  // Fetch token metadata for Metaplex images (skip in mock mode)
+  const launchMintAddresses = useMemo(() => {
+    return USE_MOCKS ? [] : launches.map(l => l.publicKey);
+  }, [launches]);
+  const { metadataMap: tokenMetadataMap } = useMultipleTokenMetadata(launchMintAddresses);
+
+  // Helper function to get token image URL
+  const getTokenImageUrl = useCallback((publicKey: string): string | undefined => {
+    return tokenMetadataMap.get(publicKey)?.image;
+  }, [tokenMetadataMap]);
 
   // Restore detail page when launches load (for route persistence)
   useEffect(() => {
@@ -2363,7 +2460,7 @@ const App: React.FC = () => {
       zIndex: 50,
       backdropFilter: "blur(40px) saturate(1.8)",
       WebkitBackdropFilter: "blur(40px) saturate(1.8)",
-      background: isDark ? "rgba(5,5,8,0.6)" : "rgba(238,240,244,0.6)",
+      background: isDark ? "rgba(17,24,39,0.85)" : "rgba(238,240,244,0.6)",
       borderBottom: "1px solid var(--glass-border)"
     }}>
       <div style={{
@@ -2382,20 +2479,88 @@ const App: React.FC = () => {
           <div style={{
             width: 32,
             height: 32,
-            borderRadius: 10,
-            background: "linear-gradient(135deg,#34d399,#059669)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 4px 20px rgba(52,211,153,0.3)"
+            filter: "drop-shadow(0 4px 12px rgba(34,197,94,0.35))"
           }}>
-            <SvgLogo size={16} />
+            <SvgLogo size={32} variant="badge" />
           </div>
-          <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: -0.3, color: "var(--t1)" }}>
+          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.5, color: "var(--t1)" }}>
             Launchr
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          {/* SOL/USD Price Display - Pyth Oracle */}
+          <Tooltip content="Live SOL/USD price from Pyth Oracle" position="bottom">
+            <div
+              className="glass-pill sol-price-nav"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 12px",
+                borderRadius: 100,
+                background: "var(--glass2)",
+                border: "1px solid var(--glass-border)",
+                cursor: "default",
+                transition: "all 0.2s ease"
+              }}
+            >
+              {/* Solana Logo */}
+              <svg width={16} height={16} viewBox="0 0 128 128" fill="none" style={{ flexShrink: 0 }}>
+                <defs>
+                  <linearGradient id="sol-nav-gradient" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#00FFA3" />
+                    <stop offset="100%" stopColor="#DC1FFF" />
+                  </linearGradient>
+                </defs>
+                <circle cx="64" cy="64" r="60" fill="url(#sol-nav-gradient)" />
+                <path d="M40 80l14-14h34l-14 14H40z" fill="white" />
+                <path d="M40 62l14 14h34l-14-14H40z" fill="white" />
+                <path d="M40 44l14 14h34l-14-14H40z" fill="white" />
+              </svg>
+              <span
+                className={solPrice.change24h > 0 ? 'price-up-animate' : solPrice.change24h < 0 ? 'price-down-animate' : ''}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--t1)",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  letterSpacing: "-0.02em"
+                }}
+              >
+                ${solPrice.price > 0 ? solPrice.price.toFixed(2) : '--'}
+              </span>
+              {solPrice.change24h !== 0 && (
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: solPrice.change24h >= 0 ? "var(--grn)" : "var(--red)",
+                    padding: "2px 6px",
+                    borderRadius: 6,
+                    background: solPrice.change24h >= 0 ? "var(--gb)" : "var(--rb)"
+                  }}
+                >
+                  {solPrice.change24h >= 0 ? <SvgUp /> : <SvgDn />}
+                  {Math.abs(solPrice.change24h).toFixed(1)}%
+                </span>
+              )}
+              {/* Live indicator dot */}
+              <span
+                className="live-indicator"
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "var(--grn)",
+                  marginLeft: 2
+                }}
+              />
+            </div>
+          </Tooltip>
+          <div style={{ width: 1, height: 20, background: 'var(--glass-border)', margin: '0 6px' }} />
           <ConnectionStatus status={wallet.connected ? 'connected' : 'disconnected'} network="Devnet" />
           <div style={{ width: 1, height: 20, background: 'var(--glass-border)', margin: '0 6px' }} />
           <Tooltip content="Leaderboard" position="bottom">
@@ -2461,7 +2626,8 @@ const App: React.FC = () => {
             </button>
           )}
           <button
-            onClick={() => wallet.connected ? go('profile') : wallet.connect()}
+            onClick={() => wallet.connected ? go('profile') : setShowWalletSelector(true)}
+            className={wallet.connected ? "" : "btn-premium-glow"}
             style={s(bpS, { height: 34, padding: "0 18px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 })}
           >
             {wallet.connected ? (
@@ -2469,7 +2635,11 @@ const App: React.FC = () => {
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--grn)" }} />
                 {wallet.address?.slice(0, 4) + "..." + wallet.address?.slice(-4)}
               </>
-            ) : "Connect"}
+            ) : (
+              <>
+                <SvgWallet /> Connect
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -2500,16 +2670,12 @@ const App: React.FC = () => {
           <div style={{
             width: 20,
             height: 20,
-            borderRadius: 6,
-            background: "linear-gradient(135deg, #34d399, #059669)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
+            filter: "drop-shadow(0 2px 6px rgba(34,197,94,0.25))"
           }}>
-            <SvgLogo size={10} />
+            <SvgLogo size={20} variant="badge" />
           </div>
-          <span style={{ fontSize: 12, color: "var(--t3)", fontWeight: 500 }}>Launchr.app</span>
-          <span style={{ fontSize: 10, color: "var(--t3)", opacity: 0.5 }}>© 2026</span>
+          <span style={{ fontSize: 12, color: "var(--t3)", fontWeight: 600, letterSpacing: -0.3 }}>Launchr</span>
+          <span style={{ fontSize: 10, color: "var(--t3)", opacity: 0.4 }}>© 2026</span>
         </div>
         <div style={{ display: "flex", gap: 20, fontSize: 12 }}>
           <a
@@ -2577,15 +2743,13 @@ const App: React.FC = () => {
               <span style={{
                 width: 44,
                 height: 44,
-                borderRadius: 13,
-                background: "linear-gradient(135deg,#34d399,#059669)",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 6px 24px rgba(52,211,153,0.35)",
+                filter: "drop-shadow(0 6px 20px rgba(34,197,94,0.4))",
                 flexShrink: 0
               }}>
-                <SvgLogo size={23} />
+                <SvgLogo size={44} variant="badge" />
               </span>
               Orbit
             </span>
@@ -2638,7 +2802,7 @@ const App: React.FC = () => {
                   <SvgUp /> +12 this week
                 </div>
               </HoverCard>
-              <HoverCard className="glass-card-inner" style={{ padding: 18 }} glowColor="rgba(52, 211, 153, 0.15)">
+              <HoverCard className="glass-card-inner" style={{ padding: 18 }} glowColor="rgba(34, 197, 94, 0.15)">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 600, letterSpacing: 0.5 }}>GRADUATED</span>
                   <SvgTrophy />
@@ -3063,14 +3227,14 @@ const App: React.FC = () => {
                     </td>
                     <td style={{ padding: "13px 0" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <Avatar gi={l.gi} size={34} />
+                        <Avatar gi={l.gi} size={34} imageUrl={getTokenImageUrl(l.publicKey)} symbol={l.symbol} />
                         <div>
                           <div style={{ fontWeight: 500, fontSize: 13, color: "var(--t1)" }}>{l.name}</div>
                           <div style={{ fontSize: 11, color: "var(--t3)" }}>{l.symbol}</div>
                         </div>
                       </div>
                     </td>
-                    <td style={{ textAlign: "right", fontSize: 13, color: "var(--t1)", fontWeight: 500, fontFamily: "'DM Sans',monospace" }}>
+                    <td style={{ textAlign: "right", fontSize: 13, color: "var(--t1)", fontWeight: 500, fontFamily: "'JetBrains Mono',monospace" }}>
                       {fP(l.price)}
                     </td>
                     <td style={{ textAlign: "center", padding: "0 8px" }}>
@@ -3093,7 +3257,7 @@ const App: React.FC = () => {
                             }}
                           />
                         </div>
-                        <span style={{ fontSize: 11, fontFamily: "'DM Sans',monospace", color: "var(--t3)", minWidth: 26, textAlign: "right" }}>
+                        <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "var(--t3)", minWidth: 26, textAlign: "right" }}>
                           {l.progress}%
                         </span>
                       </div>
@@ -3116,7 +3280,7 @@ const App: React.FC = () => {
                 width: 56,
                 height: 56,
                 borderRadius: 16,
-                background: 'linear-gradient(135deg, #34d399, #059669)',
+                background: 'linear-gradient(135deg, #34d399, #16A34A)',
                 border: 'none',
                 cursor: 'pointer',
                 display: 'flex',
@@ -3124,7 +3288,7 @@ const App: React.FC = () => {
                 justifyContent: 'center',
                 color: '#fff',
                 zIndex: 40,
-                boxShadow: '0 8px 32px rgba(52, 211, 153, 0.4)',
+                boxShadow: '0 8px 32px rgba(34, 197, 94, 0.4)',
               }}
             >
               <SvgPlus />
@@ -3216,7 +3380,7 @@ const App: React.FC = () => {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ animation: "pg 3s ease-in-out infinite", borderRadius: "35%" }}>
-                    <Avatar gi={l.gi} size={48} />
+                    <Avatar gi={l.gi} size={48} imageUrl={getTokenImageUrl(l.publicKey)} symbol={l.symbol} />
                   </div>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -3292,7 +3456,7 @@ const App: React.FC = () => {
                     </Tooltip>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'DM Sans',monospace", color: "var(--t1)" }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>
                       {fP(l.price)}
                     </div>
                     <Chg v={l.priceChange24h} />
@@ -3306,7 +3470,7 @@ const App: React.FC = () => {
                   { l: "Holders", v: l.holders.toLocaleString(), icon: <SvgUser /> },
                   { l: "Trades", v: l.trades.toLocaleString(), icon: <SvgZap /> }
                 ].map((x) => (
-                  <HoverCard key={x.l} className="glass-card-inner" style={{ padding: 12 }} glowColor="rgba(52, 211, 153, 0.1)">
+                  <HoverCard key={x.l} className="glass-card-inner" style={{ padding: 12 }} glowColor="rgba(34, 197, 94, 0.1)">
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 500 }}>{x.l}</span>
                       <span style={{ color: "var(--t3)", opacity: 0.6 }}>{x.icon}</span>
@@ -3321,7 +3485,7 @@ const App: React.FC = () => {
                     <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Graduation Progress</span>
                     {l.progress >= 90 && <PulseDot color="var(--amb)" size={6} />}
                   </div>
-                  <span style={{ fontSize: 12, fontFamily: "'DM Sans',monospace", color: "var(--t1)" }}>{l.progress}% / 85 SOL</span>
+                  <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>{l.progress}% / 85 SOL</span>
                 </div>
                 <GradientProgress value={l.progress} height={8} showGlow={true} />
                 {l.progress >= 90 && (
@@ -3445,9 +3609,9 @@ const App: React.FC = () => {
                               {r.type.toUpperCase()}
                             </span>
                           </td>
-                          <td style={{ fontFamily: "'DM Sans',monospace", fontSize: 12, color: "var(--t2)" }}>{r.trader}</td>
-                          <td style={{ textAlign: "right", fontFamily: "'DM Sans',monospace", fontSize: 13, color: "var(--t1)" }}>{r.sol}</td>
-                          <td style={{ textAlign: "right", fontFamily: "'DM Sans',monospace", fontSize: 13, color: "var(--t2)" }}>{r.tokens}</td>
+                          <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--t2)" }}>{r.trader}</td>
+                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "var(--t1)" }}>{r.sol}</td>
+                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "var(--t2)" }}>{r.tokens}</td>
                           <td style={{ textAlign: "right", fontSize: 12, color: "var(--t3)" }}>{r.time}</td>
                         </tr>
                       ))}
@@ -3498,7 +3662,7 @@ const App: React.FC = () => {
                       fontSize: 11,
                       color: "var(--t2)",
                       padding: "3px 10px",
-                      fontFamily: "'DM Sans',monospace",
+                      fontFamily: "'JetBrains Mono',monospace",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
@@ -3543,7 +3707,7 @@ const App: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <div style={s(inpS, { display: "flex", alignItems: "center", gap: 8, height: 48, padding: "0 16px", borderRadius: 16 })}>
+                <div className="amount-input-wrapper input-focus-glow" style={s(inpS, { display: "flex", alignItems: "center", gap: 8, height: 48, padding: "0 16px", borderRadius: 16, transition: "all 0.2s ease" })}>
                   <input
                     type="number"
                     value={tradeAmount}
@@ -3556,7 +3720,7 @@ const App: React.FC = () => {
                       padding: 0,
                       height: "100%",
                       fontSize: 18,
-                      fontFamily: "'DM Sans',monospace",
+                      fontFamily: "'JetBrains Mono',monospace",
                       color: "var(--t1)",
                       outline: "none"
                     }}
@@ -3569,11 +3733,12 @@ const App: React.FC = () => {
               <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
                 {[10, 25, 50, 75, 100].map((pct) => {
                   const maxBalance = tradeType === "buy" ? (wallet.balance || 0) : 297; // 297M tokens for sell
+                  const isActive = tradeAmount && Math.abs(parseFloat(tradeAmount) - (maxBalance * pct) / 100) < 0.01;
                   return (
                     <button
                       key={pct}
                       onClick={() => setTradeAmount(((maxBalance * pct) / 100).toFixed(2))}
-                      className="glass-pill"
+                      className={`glass-pill btn-magnetic quick-action-btn ${isActive ? 'pct-btn-active' : ''}`}
                       style={s(bsS, { flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 500 })}
                     >
                       {pct}%
@@ -3582,7 +3747,7 @@ const App: React.FC = () => {
                 })}
               </div>
               <div style={{ display: "flex", justifyContent: "center", margin: "16px 0" }}>
-                <div className="glass-pill" style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--t3)" }}>
+                <div className="glass-pill quick-action-btn" style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--t3)", cursor: "pointer" }}>
                   <SvgSwap />
                 </div>
               </div>
@@ -3592,7 +3757,7 @@ const App: React.FC = () => {
                   <span style={{ color: "var(--t3)", fontSize: 11 }}>~{settings.defaultSlippage}% slippage</span>
                 </div>
                 <div style={s(inpS, { display: "flex", alignItems: "center", gap: 8, height: 48, padding: "0 16px", borderRadius: 16 })}>
-                  <span style={{ flex: 1, fontSize: 18, fontFamily: "'DM Sans',monospace", color: tradeAmount ? "var(--t1)" : "var(--t3)" }}>
+                  <span style={{ flex: 1, fontSize: 18, fontFamily: "'JetBrains Mono',monospace", color: tradeAmount ? "var(--t1)" : "var(--t3)" }}>
                     {tradeAmount && l.price > 0
                       ? tradeType === "buy"
                         ? ((parseFloat(tradeAmount) / l.price) * (1 - settings.defaultSlippage / 100)).toFixed(0) + "M"
@@ -3620,11 +3785,11 @@ const App: React.FC = () => {
                   transition: "all .2s var(--ease-out-quart)",
                   fontFamily: "inherit",
                   background: wallet.connected
-                    ? (tradeType === "buy" ? "linear-gradient(135deg,#34d399,#059669)" : "linear-gradient(135deg,#fca5a5,#ef4444)")
+                    ? (tradeType === "buy" ? "linear-gradient(135deg,#34d399,#16A34A)" : "linear-gradient(135deg,#fca5a5,#ef4444)")
                     : "var(--pb)",
                   color: wallet.connected ? "#fff" : "var(--pt)",
                   boxShadow: wallet.connected
-                    ? (tradeType === "buy" ? "0 6px 24px rgba(52,211,153,0.3)" : "0 6px 24px rgba(239,68,68,0.25)")
+                    ? (tradeType === "buy" ? "0 6px 24px rgba(34,197,94,0.3)" : "0 6px 24px rgba(239,68,68,0.25)")
                     : "none",
                   position: "relative",
                   opacity: tradeLoading ? 0.8 : 1
@@ -3692,7 +3857,7 @@ const App: React.FC = () => {
             <span style={{
               fontSize: 10,
               color: val.length >= max ? "var(--amb)" : "var(--t3)",
-              fontFamily: "'DM Sans', monospace"
+              fontFamily: "'JetBrains Mono', monospace"
             }}>
               {val.length}/{max}
             </span>
@@ -3844,7 +4009,7 @@ const App: React.FC = () => {
               ].map((pair) => (
                 <div key={pair[0]} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
                   <span style={{ fontSize: 12, color: "var(--t3)" }}>{pair[0]}</span>
-                  <span style={{ fontSize: 12, fontFamily: "'DM Sans',monospace", color: "var(--t1)" }}>{pair[1]}</span>
+                  <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>{pair[1]}</span>
                 </div>
               ))}
             </div>
@@ -3857,7 +4022,7 @@ const App: React.FC = () => {
                 height: 48,
                 fontSize: 14,
                 fontWeight: 600,
-                boxShadow: "0 6px 24px rgba(52,211,153,0.2)",
+                boxShadow: "0 6px 24px rgba(34,197,94,0.2)",
                 position: "relative",
                 cursor: isCreating ? "wait" : "pointer",
                 opacity: isCreating ? 0.8 : 1,
@@ -4050,7 +4215,7 @@ const App: React.FC = () => {
           {/* Header gradient banner */}
           <div style={{
             height: 80,
-            background: "linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1), rgba(52, 211, 153, 0.08))",
+            background: "linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1), rgba(34, 197, 94, 0.08))",
             position: "relative"
           }}>
             <div style={{
@@ -4081,7 +4246,7 @@ const App: React.FC = () => {
                     borderRadius: "50%",
                     background: "var(--grn)",
                     border: "3px solid var(--bg-card)",
-                    boxShadow: "0 2px 10px rgba(52, 211, 153, 0.5)"
+                    boxShadow: "0 2px 10px rgba(34, 197, 94, 0.5)"
                   }} />
                 </div>
 
@@ -4092,7 +4257,7 @@ const App: React.FC = () => {
                       fontSize: 24,
                       fontWeight: 700,
                       color: "var(--t1)",
-                      fontFamily: "'DM Sans', monospace",
+                      fontFamily: "'JetBrains Mono', monospace",
                       letterSpacing: -0.5
                     }}>
                       {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
@@ -4144,7 +4309,7 @@ const App: React.FC = () => {
                       display: "flex",
                       alignItems: "center",
                       gap: 5,
-                      fontFamily: "'DM Sans', monospace",
+                      fontFamily: "'JetBrains Mono', monospace",
                       fontWeight: 600,
                       color: "var(--t1)"
                     }}>
@@ -4214,7 +4379,7 @@ const App: React.FC = () => {
                   position: "relative",
                   overflow: "hidden",
                   borderRadius: 14,
-                  border: stat.highlight ? "1px solid rgba(52, 211, 153, 0.2)" : undefined,
+                  border: stat.highlight ? "1px solid rgba(34, 197, 94, 0.2)" : undefined,
                   background: stat.highlight ? "linear-gradient(135deg, var(--glass2), var(--glass3))" : undefined
                 }}
               >
@@ -4236,7 +4401,7 @@ const App: React.FC = () => {
                   fontSize: 22,
                   fontWeight: 700,
                   color: stat.isProfit !== undefined ? (stat.isProfit ? "var(--grn)" : "var(--red)") : "var(--t1)",
-                  fontFamily: "'DM Sans', monospace",
+                  fontFamily: "'JetBrains Mono', monospace",
                   lineHeight: 1.2
                 }}>
                   {stat.v}
@@ -4262,7 +4427,7 @@ const App: React.FC = () => {
                   width: 60,
                   height: 60,
                   background: stat.isProfit !== undefined
-                    ? `radial-gradient(circle at top right, ${stat.isProfit ? "rgba(52,211,153,0.08)" : "rgba(252,165,165,0.08)"}, transparent 70%)`
+                    ? `radial-gradient(circle at top right, ${stat.isProfit ? "rgba(34,197,94,0.08)" : "rgba(252,165,165,0.08)"}, transparent 70%)`
                     : "radial-gradient(circle at top right, rgba(255,255,255,0.03), transparent 70%)",
                   pointerEvents: "none"
                 }} />
@@ -4388,19 +4553,19 @@ const App: React.FC = () => {
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                          <Avatar gi={pos.launch.gi} size={44} />
+                          <Avatar gi={pos.launch.gi} size={44} imageUrl={getTokenImageUrl(pos.launch.publicKey)} symbol={pos.launch.symbol} />
                           <div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span style={{ fontWeight: 600, fontSize: 15, color: "var(--t1)" }}>{pos.launch.name}</span>
                               <Badge status={pos.launch.status} isDark={isDark} />
                             </div>
-                            <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 3, fontFamily: "'DM Sans', monospace" }}>
+                            <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
                               {fN(pos.tokenBalance / 1e6, 1)}M {pos.launch.symbol}
                             </div>
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', monospace", color: "var(--t1)" }}>
+                          <div style={{ fontSize: 15, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--t1)" }}>
                             {fSOL(pos.currentValue)}
                           </div>
                           <div style={{
@@ -4491,7 +4656,7 @@ const App: React.FC = () => {
                           <div style={{
                             fontSize: 14,
                             fontWeight: 600,
-                            fontFamily: "'DM Sans', monospace",
+                            fontFamily: "'JetBrains Mono', monospace",
                             color: tx.type === 'buy' ? "var(--red)" : tx.type === 'sell' ? "var(--grn)" : "var(--t1)"
                           }}>
                             {tx.type === 'buy' ? '-' : tx.type === 'sell' ? '+' : ''}{tx.sol.toFixed(2)} SOL
@@ -4518,7 +4683,7 @@ const App: React.FC = () => {
                           }}
                           title="View on Solscan"
                         >
-                          <span style={{ fontFamily: "'DM Sans', monospace" }}>
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>
                             {tx.txSignature.slice(0, 4)}...{tx.txSignature.slice(-4)}
                           </span>
                           <SvgExternal />
@@ -4564,7 +4729,7 @@ const App: React.FC = () => {
                         <Avatar gi={launch.gi} size={40} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600, fontSize: 14, color: "var(--t1)" }}>{launch.name}</div>
-                          <div style={{ fontSize: 11, color: "var(--t3)", fontFamily: "'DM Sans', monospace" }}>{launch.symbol}</div>
+                          <div style={{ fontSize: 11, color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace" }}>{launch.symbol}</div>
                         </div>
                         <Badge status={launch.status} isDark={isDark} />
                       </div>
@@ -4743,7 +4908,7 @@ const App: React.FC = () => {
                       fontSize: 24,
                       fontWeight: 700,
                       color: "var(--t1)",
-                      fontFamily: "'DM Sans', monospace",
+                      fontFamily: "'JetBrains Mono', monospace",
                       letterSpacing: -0.5
                     }}>
                       {address.slice(0, 6)}...{address.slice(-4)}
@@ -5035,7 +5200,7 @@ const App: React.FC = () => {
             height: 28,
             borderRadius: 14,
             background: checked
-              ? "linear-gradient(135deg, #34d399, #10b981)"
+              ? "linear-gradient(135deg, #34d399, #22C55E)"
               : "var(--glass2)",
             border: "1px solid",
             borderColor: checked ? "transparent" : "var(--glass-border)",
@@ -5043,7 +5208,7 @@ const App: React.FC = () => {
             position: "relative",
             transition: "all .25s var(--ease-out-quart)",
             flexShrink: 0,
-            boxShadow: checked ? "0 4px 12px rgba(52, 211, 153, 0.3)" : "none"
+            boxShadow: checked ? "0 4px 12px rgba(34, 197, 94, 0.3)" : "none"
           }}
         >
           <div style={{
@@ -5384,7 +5549,7 @@ const App: React.FC = () => {
                         transition: "all .15s"
                       }}
                     >
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)", fontFamily: "'DM Sans', monospace" }}>{amt}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>{amt}</div>
                       <div style={{ fontSize: 10, color: "var(--t3)", marginTop: 2 }}>SOL</div>
                     </div>
                   ))}
@@ -5475,7 +5640,7 @@ const App: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--t3)", fontFamily: "'DM Sans', monospace", marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
                           {rpc.endpoint.slice(0, 35)}...
                         </div>
                       </div>
@@ -5538,7 +5703,7 @@ const App: React.FC = () => {
               <SettingSection title="About">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <span style={{ fontSize: 12, color: "var(--t2)" }}>Version</span>
-                  <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'DM Sans', monospace" }}>1.0.0-beta</span>
+                  <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>1.0.0-beta</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <span style={{ fontSize: 12, color: "var(--t2)" }}>Network</span>
@@ -5546,7 +5711,7 @@ const App: React.FC = () => {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 12, color: "var(--t2)" }}>Build</span>
-                  <span style={{ fontSize: 12, color: "var(--t3)", fontFamily: "'DM Sans', monospace" }}>{new Date().toISOString().split('T')[0]}</span>
+                  <span style={{ fontSize: 12, color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace" }}>{new Date().toISOString().split('T')[0]}</span>
                 </div>
                 <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--glass-border)" }}>
                   <div style={{ display: "flex", gap: 10 }}>
@@ -5710,7 +5875,7 @@ const App: React.FC = () => {
         const colors = {
           gold: { main: '#fbbf24', light: '#fde68a', dark: '#d97706', ribbon: '#dc2626' },
           silver: { main: '#9ca3af', light: '#d1d5db', dark: '#6b7280', ribbon: '#3b82f6' },
-          bronze: { main: '#f97316', light: '#fdba74', dark: '#c2410c', ribbon: '#059669' }
+          bronze: { main: '#f97316', light: '#fdba74', dark: '#c2410c', ribbon: '#16A34A' }
         };
         const c = colors[type];
         return (
@@ -5843,7 +6008,7 @@ const App: React.FC = () => {
                   fontSize: isWinner ? 15 : 13,
                   fontWeight: 700,
                   color: "var(--t1)",
-                  fontFamily: "'DM Sans', monospace",
+                  fontFamily: "'JetBrains Mono', monospace",
                   marginBottom: 6,
                   textAlign: "center",
                   maxWidth: isWinner ? 120 : 100,
@@ -5861,7 +6026,7 @@ const App: React.FC = () => {
                   color: isTrader
                     ? ((item as typeof leaderboardData[0]).totalPnl >= 0 ? "var(--grn)" : "var(--red)")
                     : "var(--t1)",
-                  fontFamily: "'DM Sans', monospace",
+                  fontFamily: "'JetBrains Mono', monospace",
                   marginBottom: 12,
                   padding: "4px 10px",
                   borderRadius: 8,
@@ -6084,7 +6249,7 @@ const App: React.FC = () => {
                     fontSize: 20,
                     fontWeight: 700,
                     color: stat.isProfit ? "var(--grn)" : "var(--t1)",
-                    fontFamily: "'DM Sans', monospace"
+                    fontFamily: "'JetBrains Mono', monospace"
                   }}>
                     {stat.value}
                   </span>
@@ -6183,7 +6348,7 @@ const App: React.FC = () => {
 
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <Avatar gi={trader.avatar} size={38} />
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", fontFamily: "'DM Sans', monospace" }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                         {trader.address}
                       </div>
                     </div>
@@ -6210,7 +6375,7 @@ const App: React.FC = () => {
                         fontSize: 15,
                         fontWeight: 700,
                         color: trader.totalPnl >= 0 ? "var(--grn)" : "var(--red)",
-                        fontFamily: "'DM Sans', monospace"
+                        fontFamily: "'JetBrains Mono', monospace"
                       }}>
                         {trader.totalPnl >= 0 ? '+' : ''}{trader.totalPnl.toFixed(2)} SOL
                       </div>
@@ -6271,13 +6436,13 @@ const App: React.FC = () => {
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <Avatar gi={launch.gi} size={38} />
+                      <Avatar gi={launch.gi} size={38} imageUrl={getTokenImageUrl(launch.publicKey)} symbol={launch.symbol} />
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>{launch.name}</span>
                           <Badge status={launch.status} isDark={isDark} />
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2, fontFamily: "'DM Sans', monospace" }}>
+                        <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
                           {launch.symbol}
                         </div>
                       </div>
@@ -6287,11 +6452,11 @@ const App: React.FC = () => {
                       {launch.holders}
                     </div>
 
-                    <div style={{ textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--t1)", fontFamily: "'DM Sans', monospace" }}>
+                    <div style={{ textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                       {fm(launch.volume24h)}
                     </div>
 
-                    <div style={{ textAlign: "right", fontSize: 14, fontWeight: 700, color: "var(--grn)", fontFamily: "'DM Sans', monospace" }}>
+                    <div style={{ textAlign: "right", fontSize: 14, fontWeight: 700, color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
                       {fm(launch.marketCap)}
                     </div>
                   </div>
@@ -6375,7 +6540,7 @@ const App: React.FC = () => {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-              <Avatar gi={l.gi} size={48} />
+              <Avatar gi={l.gi} size={48} imageUrl={getTokenImageUrl(l.publicKey)} symbol={l.symbol} />
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{l.name}</div>
                 <div style={{ fontSize: 13, color: "var(--t2)" }}>${l.symbol}</div>
@@ -6384,13 +6549,13 @@ const App: React.FC = () => {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div className="glass-card-inner" style={{ padding: 12 }}>
                 <div style={{ fontSize: 10, color: "var(--t3)", marginBottom: 4 }}>PRICE</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", fontFamily: "'DM Sans', monospace" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                   {fP(l.price)}
                 </div>
               </div>
               <div className="glass-card-inner" style={{ padding: 12 }}>
                 <div style={{ fontSize: 10, color: "var(--t3)", marginBottom: 4 }}>MCAP</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", fontFamily: "'DM Sans', monospace" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                   {fm(l.marketCap)}
                 </div>
               </div>
@@ -6538,7 +6703,7 @@ const App: React.FC = () => {
               >
                 <Avatar gi={l.gi} size={20} />
                 <span style={{ fontSize: 12, fontWeight: 500, color: "var(--t1)" }}>{l.symbol}</span>
-                <span style={{ fontSize: 12, fontFamily: "'DM Sans', monospace", color: "var(--t2)" }}>
+                <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--t2)" }}>
                   {fP(l.price)}
                 </span>
                 <span style={{
@@ -6581,6 +6746,29 @@ const App: React.FC = () => {
       <Foot />
       <ShareModal />
 
+      {/* Wallet Selector Modal */}
+      <WalletSelector
+        isOpen={showWalletSelector}
+        onClose={() => setShowWalletSelector(false)}
+        onSelect={async (walletType: string) => {
+          try {
+            // Store selected wallet type
+            localStorage.setItem('launchr_wallet_type', walletType);
+            // Trigger wallet connection
+            await wallet.connect();
+            showToast(`Connected with ${walletType.charAt(0).toUpperCase() + walletType.slice(1)}`, 'success');
+          } catch (err) {
+            showToast('Failed to connect wallet', 'error');
+          }
+        }}
+        wallets={availableWallets.map(w => ({
+          type: w.type || '',
+          name: w.name,
+          icon: w.icon,
+          detected: w.detected,
+        }))}
+      />
+
       {/* Trade Confirmation Dialog */}
       <ConfirmDialog
         open={tradeConfirm.open}
@@ -6615,7 +6803,7 @@ const App: React.FC = () => {
               padding: 0,
               borderRadius: 14,
               background: toast.type === 'success'
-                ? "linear-gradient(135deg, rgba(52,211,153,0.98), rgba(5,150,105,0.98))"
+                ? "linear-gradient(135deg, rgba(34,197,94,0.98), rgba(22,163,74,0.98))"
                 : toast.type === 'error'
                   ? "linear-gradient(135deg, rgba(239,68,68,0.98), rgba(220,38,38,0.98))"
                   : "linear-gradient(135deg, rgba(99,102,241,0.98), rgba(79,70,229,0.98))",

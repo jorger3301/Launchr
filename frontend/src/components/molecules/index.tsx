@@ -84,6 +84,8 @@ export interface LaunchData {
   totalSupply: number;
   tokensSold: number;
   realSolReserve: number;
+  virtualSolReserve: number;
+  virtualTokenReserve: number;
   graduationThreshold: number;
   currentPrice: number;
   marketCap: number;
@@ -95,6 +97,7 @@ export interface LaunchData {
   telegram?: string;
   website?: string;
   orbitPool?: string;
+  creatorFeeBps?: number;
 }
 
 export interface TradeData {
@@ -184,7 +187,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
     },
     Graduated: {
       bg: 'var(--gb)',
-      border: 'rgba(110, 231, 183, 0.2)',
+      border: 'rgba(34, 197, 94, 0.2)',
       text: 'var(--grn)',
       label: 'Graduated',
     },
@@ -329,7 +332,7 @@ export const WalletDisplay: React.FC<WalletDisplayProps> = ({
           {shortAddress}
         </Text>
         {copied ? (
-          <IconCheck className="w-4 h-4 text-teal-400" />
+          <IconCheck className="w-4 h-4 text-green-400" />
         ) : (
           <IconCopy className="w-4 h-4 text-white/50" />
         )}
@@ -337,6 +340,254 @@ export const WalletDisplay: React.FC<WalletDisplayProps> = ({
       <Button variant="ghost" size="sm" onClick={onDisconnect}>
         Disconnect
       </Button>
+    </div>
+  );
+};
+
+// =============================================================================
+// WALLET SELECTOR
+// =============================================================================
+
+interface WalletOption {
+  type: string;
+  name: string;
+  icon: string;
+  detected: boolean;
+}
+
+interface WalletSelectorProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (walletType: string) => void;
+  wallets?: WalletOption[];
+  className?: string;
+}
+
+// Default wallet configurations
+const DEFAULT_WALLETS: WalletOption[] = [
+  {
+    type: 'phantom',
+    name: 'Phantom',
+    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgZmlsbD0iIzRCM0M4QyIgcng9IjY0Ii8+PHBhdGggZmlsbD0iI0ZGRiIgZD0iTTExMC40IDY0LjFjMC0xLjQtLjEtMi44LS4zLTQuMmwtLjItMS4yYy0yLjktMjAtMjAuNi0zNS40LTQxLjgtMzUuNC0yMy4yIDAtNDIgMTguOC00MiA0MnYuM2MwIC40IDAgLjggMCAxLjJsLjEgMS4yYy4yIDEuNy40IDMuNCAxIDUgMi40IDcuNiA3LjYgMTQuMSAxNC42IDE3LjkgNS43IDMuMSAxMi4xIDQuNyAxOC41IDQuN2g2LjljMi40IDAgNC40LTIgNC40LTQuNHYtLjNjMC0yLjQtMi00LjQtNC40LTQuNGgtNi45Yy00LjQgMC04LjgtMS4xLTEyLjctMy4yLTQuOC0yLjYtOC40LTctMTAuMS0xMi40LS40LTEuMS0uNi0yLjItLjctMy40bC0uMS0xLjFjMC0uMyAwLS43IDAtMXYtLjNjMC0xNy4xIDEzLjktMzEgMzEtMzEgMTUuNSAwIDI4LjUgMTEuNCAxMC44IDI1LjhsLS4xIDFjLjEgMS4xLjIgMi4zLjIgMy40djMuMWMwIDIuNSAyIDQuNSA0LjUgNC41aDI0LjFjMi41IDAgNC41LTIgNC41LTQuNXYtMy4xeiIvPjwvc3ZnPg==',
+    detected: typeof window !== 'undefined' && !!(window as any).solana?.isPhantom,
+  },
+  {
+    type: 'solflare',
+    name: 'Solflare',
+    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgZmlsbD0iI0ZDNTMxRCIgcng9IjY0Ii8+PHBhdGggZmlsbD0iI0ZGRiIgZD0iTTY0IDI0TDQwIDY0bDI0IDQwIDI0LTQwLTI0LTQwWm0wIDE2bDE2IDI0LTE2IDI0LTE2LTI0IDE2LTI0WiIvPjwvc3ZnPg==',
+    detected: typeof window !== 'undefined' && !!(window as any).solflare?.isSolflare,
+  },
+  {
+    type: 'backpack',
+    name: 'Backpack',
+    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgZmlsbD0iI0U4M0UzRSIgcng9IjY0Ii8+PHBhdGggZmlsbD0iI0ZGRiIgZD0iTTg4IDQ4SDQwdjQ4aDQ4VjQ4Wm0tOCA0MEg0OFY1Nmg0MHY0MFoiLz48cGF0aCBmaWxsPSIjRkZGIiBkPSJNNTIgMzJoMjR2MTZINTJWMzJaIi8+PC9zdmc+',
+    detected: typeof window !== 'undefined' && !!(window as any).backpack?.isBackpack,
+  },
+  {
+    type: 'jupiter',
+    name: 'Jupiter',
+    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgZmlsbD0iIzFGQTI3RiIgcng9IjY0Ii8+PGNpcmNsZSBjeD0iNjQiIGN5PSI2NCIgcj0iMzIiIGZpbGw9IiNGRkYiLz48Y2lyY2xlIGN4PSI2NCIgY3k9IjY0IiByPSIxNiIgZmlsbD0iIzFGQTI3RiIvPjwvc3ZnPg==',
+    detected: typeof window !== 'undefined' && !!(window as any).jupiter,
+  },
+];
+
+export const WalletSelector: React.FC<WalletSelectorProps> = ({
+  isOpen,
+  onClose,
+  onSelect,
+  wallets = DEFAULT_WALLETS,
+  className = '',
+}) => {
+  const [detectedWallets, setDetectedWallets] = useState<WalletOption[]>([]);
+  const [connecting, setConnecting] = useState<string | null>(null);
+
+  // Re-detect wallets on mount
+  useEffect(() => {
+    const updated = wallets.map(w => ({
+      ...w,
+      detected: (() => {
+        switch (w.type) {
+          case 'phantom':
+            return typeof window !== 'undefined' && !!(window as any).solana?.isPhantom;
+          case 'solflare':
+            return typeof window !== 'undefined' && !!(window as any).solflare?.isSolflare;
+          case 'backpack':
+            return typeof window !== 'undefined' && !!(window as any).backpack?.isBackpack;
+          case 'jupiter':
+            return typeof window !== 'undefined' && !!(window as any).jupiter;
+          default:
+            return false;
+        }
+      })(),
+    }));
+    setDetectedWallets(updated);
+  }, [wallets, isOpen]);
+
+  const handleSelect = useCallback((walletType: string) => {
+    setConnecting(walletType);
+    // Small delay to show connecting state
+    setTimeout(() => {
+      onSelect(walletType);
+      setConnecting(null);
+      onClose();
+    }, 300);
+  }, [onSelect, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop with premium blur animation */}
+      <div
+        className="absolute inset-0 modal-backdrop-premium"
+        style={{ background: 'rgba(0,0,0,0.6)' }}
+        onClick={onClose}
+      />
+
+      {/* Modal with premium entrance animation */}
+      <div
+        className={`relative z-10 w-full max-w-sm p-6 rounded-2xl wallet-modal-premium ${className}`}
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--glass-border2)',
+          backdropFilter: 'blur(24px)',
+          boxShadow: '0 24px 48px rgba(0,0,0,0.4)',
+        }}
+      >
+        {/* Header with icon */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div
+              className="p-2 rounded-xl"
+              style={{ background: 'var(--glass2)' }}
+            >
+              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+                <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+                <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+              </svg>
+            </div>
+            <Text variant="h4" className="font-semibold">Connect Wallet</Text>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-white/10 rounded-lg transition-all hover:rotate-90"
+            style={{ transition: 'all 0.2s ease' }}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Wallet options with staggered animation */}
+        <div className="space-y-3">
+          {detectedWallets.map((wallet, index) => (
+            <button
+              key={wallet.type}
+              onClick={() => handleSelect(wallet.type)}
+              disabled={connecting !== null}
+              className="wallet-option-item w-full flex items-center gap-4 p-4 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+              style={{
+                background: wallet.detected ? 'var(--glass2)' : 'var(--glass)',
+                border: wallet.detected ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid var(--glass-border)',
+                animationDelay: `${(index + 1) * 60}ms`,
+                opacity: connecting && connecting !== wallet.type ? 0.5 : 1,
+              }}
+            >
+              <div className="relative">
+                <img
+                  src={wallet.icon}
+                  alt={wallet.name}
+                  className="w-10 h-10 rounded-xl"
+                  style={{
+                    animation: connecting === wallet.type ? 'pulse-scale 1s ease-in-out infinite' : undefined,
+                  }}
+                />
+                {wallet.detected && (
+                  <div
+                    className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center"
+                    style={{ background: 'var(--grn)' }}
+                  >
+                    <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3}>
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 text-left">
+                <Text variant="body" className="font-semibold">
+                  {wallet.name}
+                </Text>
+                <Text variant="caption" color="muted">
+                  {connecting === wallet.type
+                    ? 'Connecting...'
+                    : wallet.detected
+                      ? 'Detected'
+                      : 'Click to install'}
+                </Text>
+              </div>
+              {connecting === wallet.type ? (
+                <div className="spinner-premium" />
+              ) : wallet.detected ? (
+                <div
+                  className="wallet-detected-badge px-2 py-1 rounded-md text-xs font-medium"
+                  style={{ background: 'var(--gb)', color: 'var(--grn)' }}
+                >
+                  Ready
+                </div>
+              ) : (
+                <IconExternalLink className="w-4 h-4 text-white/40" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Security notice */}
+        <div
+          className="mt-6 p-3 rounded-xl"
+          style={{ background: 'var(--glass)' }}
+        >
+          <div className="flex items-start gap-3">
+            <svg
+              width={16}
+              height={16}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              className="flex-shrink-0 mt-0.5"
+              style={{ color: 'var(--grn)' }}
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <polyline points="9 12 12 15 16 10" />
+            </svg>
+            <div>
+              <Text variant="caption" color="secondary" className="block">
+                Secure Connection
+              </Text>
+              <Text variant="caption" color="muted" className="block mt-0.5">
+                Only connect to apps you trust. Launchr never asks for your seed phrase.
+              </Text>
+            </div>
+          </div>
+        </div>
+
+        {/* Help link */}
+        <div className="mt-4 text-center">
+          <Text variant="caption" color="muted">
+            New to Solana?{' '}
+            <a
+              href="https://phantom.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-green-400 hover:text-green-300 font-medium"
+            >
+              Get started with Phantom
+            </a>
+          </Text>
+        </div>
+      </div>
     </div>
   );
 };
@@ -438,7 +689,7 @@ export const PriceDisplay: React.FC<PriceDisplayProps> = ({
       </Text>
       {showChange && change24h !== undefined && (
         <div className={`flex items-center gap-1 ${
-          isPositive ? 'text-emerald-400' : 'text-rose-400'
+          isPositive ? 'text-green-400' : 'text-rose-400'
         }`}>
           {isPositive ? (
             <IconArrowUp className="w-3 h-3" />
@@ -489,7 +740,7 @@ export const StatCard: React.FC<StatCardProps> = ({
   return (
     <Card className={`p-4 ${className}`}>
       <div className="flex items-center gap-2 mb-2">
-        {icon && <span className="text-teal-400">{icon}</span>}
+        {icon && <span className="text-green-400">{icon}</span>}
         <Text variant="caption" color="muted">
           {label}
         </Text>
@@ -500,7 +751,7 @@ export const StatCard: React.FC<StatCardProps> = ({
         </Text>
         {change !== undefined && (
           <span className={`flex items-center text-sm ${
-            isPositive ? 'text-emerald-400' : 'text-rose-400'
+            isPositive ? 'text-green-400' : 'text-rose-400'
           }`}>
             {isPositive ? '+' : ''}{change.toFixed(1)}%
           </span>
@@ -560,7 +811,7 @@ export const GraduationProgress: React.FC<GraduationProgressProps> = ({
     <Card className={`p-4 ${className}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <IconOrbit className="w-5 h-5 text-teal-400" />
+          <IconOrbit className="w-5 h-5 text-green-400" />
           <Text variant="body" className="font-medium">
             Graduation Progress
           </Text>
@@ -581,7 +832,7 @@ export const GraduationProgress: React.FC<GraduationProgressProps> = ({
 
       {status === 'Graduated' && (
         <div className="mt-3 pt-3 border-t border-white/10">
-          <div className="flex items-center gap-2 text-emerald-400">
+          <div className="flex items-center gap-2 text-green-400">
             <IconGraduate className="w-4 h-4" />
             <Text variant="caption">
               Trading on Orbit Finance DLMM
@@ -655,7 +906,7 @@ export const TradeInput: React.FC<TradeInputProps> = ({
           {onMaxClick && (
             <button
               onClick={onMaxClick}
-              className="text-xs text-teal-400 hover:text-teal-300 font-medium"
+              className="text-xs text-green-400 hover:text-green-300 font-medium"
               disabled={disabled}
             >
               MAX
@@ -702,7 +953,7 @@ export const TradeToggle: React.FC<TradeToggleProps> = ({
         onClick={() => onChange('buy')}
         className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
           value === 'buy'
-            ? 'bg-emerald-500 text-white'
+            ? 'bg-green-500 text-white'
             : 'text-white/60 hover:text-white'
         }`}
       >
@@ -755,10 +1006,10 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
     <div className={`flex items-center justify-between py-3 border-b border-white/5 ${className}`}>
       <div className="flex items-center gap-3">
         <div className={`p-1.5 rounded-md ${
-          isBuy ? 'bg-emerald-500/20' : 'bg-rose-500/20'
+          isBuy ? 'bg-green-500/20' : 'bg-rose-500/20'
         }`}>
           {isBuy ? (
-            <IconArrowUp className="w-4 h-4 text-emerald-400" />
+            <IconArrowUp className="w-4 h-4 text-green-400" />
           ) : (
             <IconArrowDown className="w-4 h-4 text-rose-400" />
           )}
@@ -780,7 +1031,7 @@ export const TransactionRow: React.FC<TransactionRowProps> = ({
           href={`https://solscan.io/tx/${trade.txSignature}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-teal-400 hover:text-teal-300 flex items-center gap-1 justify-end"
+          className="text-xs text-green-400 hover:text-green-300 flex items-center gap-1 justify-end"
         >
           View <IconExternalLink className="w-3 h-3" />
         </a>
@@ -848,7 +1099,7 @@ export const PositionSummary: React.FC<PositionSummaryProps> = ({
           <div className="flex justify-between items-center">
             <Text variant="body" className="font-medium">Total P&L</Text>
             <div className={`flex items-center gap-2 ${
-              isProfit ? 'text-emerald-400' : 'text-rose-400'
+              isProfit ? 'text-green-400' : 'text-rose-400'
             }`}>
               {isProfit ? (
                 <IconArrowUp className="w-4 h-4" />
@@ -977,6 +1228,309 @@ export const LaunchCardCompact: React.FC<LaunchCardCompactProps> = ({
 };
 
 // =============================================================================
+// JUPITER SWAP WIDGET
+// =============================================================================
+
+interface JupiterQuote {
+  inputMint: string;
+  outputMint: string;
+  inAmount: string;
+  outAmount: string;
+  priceImpactPct: string;
+  slippageBps: number;
+}
+
+interface JupiterSwapWidgetProps {
+  inputMint?: string;
+  outputMint?: string;
+  inputSymbol?: string;
+  outputSymbol?: string;
+  inputDecimals?: number;
+  outputDecimals?: number;
+  walletBalance?: number;
+  onSwap?: (quote: JupiterQuote, inputAmount: string) => Promise<void>;
+  disabled?: boolean;
+  className?: string;
+}
+
+export const JupiterSwapWidget: React.FC<JupiterSwapWidgetProps> = ({
+  inputMint = 'So11111111111111111111111111111111111111112', // SOL
+  outputMint,
+  inputSymbol = 'SOL',
+  outputSymbol = 'TOKEN',
+  inputDecimals = 9,
+  outputDecimals = 6,
+  walletBalance,
+  onSwap,
+  disabled = false,
+  className = '',
+}) => {
+  const [inputAmount, setInputAmount] = useState('');
+  const [outputAmount, setOutputAmount] = useState('');
+  const [slippage, setSlippage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [quote, setQuote] = useState<JupiterQuote | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [swapDirection, setSwapDirection] = useState<'buy' | 'sell'>('buy');
+
+  // Debounced quote fetching
+  useEffect(() => {
+    if (!inputAmount || !outputMint) {
+      setQuote(null);
+      setOutputAmount('');
+      return;
+    }
+
+    const fetchQuote = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const amountInSmallest = Math.floor(
+          parseFloat(inputAmount) * Math.pow(10, swapDirection === 'buy' ? 9 : outputDecimals)
+        );
+
+        if (amountInSmallest <= 0 || isNaN(amountInSmallest)) {
+          setQuote(null);
+          setOutputAmount('');
+          return;
+        }
+
+        const fromMint = swapDirection === 'buy' ? inputMint : outputMint;
+        const toMint = swapDirection === 'buy' ? outputMint : inputMint;
+
+        const response = await fetch(
+          `https://quote-api.jup.ag/v6/quote?inputMint=${fromMint}&outputMint=${toMint}&amount=${amountInSmallest}&slippageBps=${slippage * 100}`
+        );
+
+        if (!response.ok) throw new Error('Failed to fetch quote');
+
+        const data = await response.json();
+        setQuote(data);
+
+        // Calculate output amount
+        const outDecimals = swapDirection === 'buy' ? outputDecimals : 9;
+        const outAmount = parseInt(data.outAmount) / Math.pow(10, outDecimals);
+        setOutputAmount(outAmount.toFixed(outDecimals > 6 ? 6 : outDecimals));
+      } catch (err) {
+        setError('Unable to fetch quote');
+        setQuote(null);
+        setOutputAmount('');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const debounce = setTimeout(fetchQuote, 500);
+    return () => clearTimeout(debounce);
+  }, [inputAmount, inputMint, outputMint, slippage, swapDirection, outputDecimals]);
+
+  const handleSwap = async () => {
+    if (!quote || !onSwap) return;
+
+    setLoading(true);
+    try {
+      await onSwap(quote, inputAmount);
+      setInputAmount('');
+      setOutputAmount('');
+      setQuote(null);
+    } catch (err) {
+      setError('Swap failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFlipTokens = () => {
+    setSwapDirection(prev => prev === 'buy' ? 'sell' : 'buy');
+    setInputAmount('');
+    setOutputAmount('');
+    setQuote(null);
+  };
+
+  const handleMaxClick = () => {
+    if (walletBalance !== undefined) {
+      // Leave some SOL for gas if selling SOL
+      const maxAmount = swapDirection === 'buy'
+        ? Math.max(0, walletBalance - 0.01)
+        : walletBalance;
+      setInputAmount(maxAmount.toString());
+    }
+  };
+
+  const priceImpact = quote ? parseFloat(quote.priceImpactPct) : 0;
+  const highPriceImpact = priceImpact > 3;
+
+  return (
+    <Card className={`p-5 ${className}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <IconSwap className="w-5 h-5 text-green-400" />
+          <Text variant="h4" className="font-semibold">
+            Jupiter Swap
+          </Text>
+        </div>
+        <Badge variant="success">DEX</Badge>
+      </div>
+
+      {/* Swap Direction Toggle */}
+      <TradeToggle
+        value={swapDirection}
+        onChange={(v) => {
+          setSwapDirection(v);
+          setInputAmount('');
+          setOutputAmount('');
+          setQuote(null);
+        }}
+        className="mb-4"
+      />
+
+      {/* Input Token */}
+      <div className="p-4 rounded-xl mb-2" style={{ background: 'var(--glass2)' }}>
+        <div className="flex justify-between items-center mb-2">
+          <Text variant="caption" color="muted">You pay</Text>
+          {walletBalance !== undefined && (
+            <Text variant="caption" color="muted">
+              Balance: {walletBalance.toFixed(4)} {swapDirection === 'buy' ? 'SOL' : outputSymbol}
+            </Text>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="number"
+            value={inputAmount}
+            onChange={(e) => setInputAmount(e.target.value)}
+            placeholder="0.00"
+            disabled={disabled || !outputMint}
+            className="flex-1 bg-transparent text-2xl font-mono font-semibold text-white
+              placeholder-white/30 focus:outline-none"
+          />
+          <div className="flex items-center gap-2">
+            {walletBalance !== undefined && (
+              <button
+                onClick={handleMaxClick}
+                className="px-2 py-1 text-xs font-medium text-green-400 hover:text-green-300
+                  bg-green-400/10 rounded-md transition-colors"
+              >
+                MAX
+              </button>
+            )}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--glass3)' }}>
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-green-400" />
+              <Text variant="body" className="font-semibold">
+                {swapDirection === 'buy' ? inputSymbol : outputSymbol}
+              </Text>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Swap Arrow */}
+      <div className="flex justify-center -my-1 relative z-10">
+        <button
+          onClick={handleFlipTokens}
+          className="p-2 rounded-xl border-4 transition-all hover:scale-110 active:scale-95"
+          style={{
+            background: 'var(--bg2)',
+            borderColor: 'var(--bg1)'
+          }}
+        >
+          <IconSwap className="w-4 h-4 text-white/60" />
+        </button>
+      </div>
+
+      {/* Output Token */}
+      <div className="p-4 rounded-xl mt-2" style={{ background: 'var(--glass2)' }}>
+        <div className="flex justify-between items-center mb-2">
+          <Text variant="caption" color="muted">You receive</Text>
+          {loading && <Spinner size="sm" />}
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            value={loading ? '' : outputAmount}
+            readOnly
+            placeholder={loading ? 'Loading...' : '0.00'}
+            className="flex-1 bg-transparent text-2xl font-mono font-semibold text-white
+              placeholder-white/30 focus:outline-none"
+          />
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--glass3)' }}>
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-green-400 to-blue-500" />
+            <Text variant="body" className="font-semibold">
+              {swapDirection === 'buy' ? outputSymbol : inputSymbol}
+            </Text>
+          </div>
+        </div>
+      </div>
+
+      {/* Quote Details */}
+      {quote && (
+        <div className="mt-4 p-3 rounded-lg space-y-2" style={{ background: 'var(--glass2)' }}>
+          <div className="flex justify-between items-center">
+            <Text variant="caption" color="muted">Price Impact</Text>
+            <Text
+              variant="caption"
+              className={`font-mono ${highPriceImpact ? 'text-amber-400' : ''}`}
+            >
+              {priceImpact.toFixed(2)}%
+              {highPriceImpact && ' ⚠️'}
+            </Text>
+          </div>
+          <div className="flex justify-between items-center">
+            <Text variant="caption" color="muted">Slippage</Text>
+            <Text variant="caption" className="font-mono">{slippage}%</Text>
+          </div>
+          <div className="flex justify-between items-center">
+            <Text variant="caption" color="muted">Minimum Received</Text>
+            <Text variant="caption" className="font-mono">
+              {(parseFloat(outputAmount) * (1 - slippage / 100)).toFixed(6)} {swapDirection === 'buy' ? outputSymbol : inputSymbol}
+            </Text>
+          </div>
+        </div>
+      )}
+
+      {/* Slippage Settings */}
+      <div className="mt-4">
+        <SlippageSelector value={slippage} onChange={setSlippage} />
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+          <Text variant="caption" className="text-red-400">{error}</Text>
+        </div>
+      )}
+
+      {/* Swap Button */}
+      <Button
+        variant="primary"
+        size="lg"
+        onClick={handleSwap}
+        disabled={disabled || !quote || loading || !outputMint}
+        loading={loading}
+        className="w-full mt-4"
+      >
+        {!outputMint
+          ? 'Select Token'
+          : loading
+            ? 'Fetching Quote...'
+            : !quote
+              ? 'Enter Amount'
+              : `Swap ${swapDirection === 'buy' ? inputSymbol : outputSymbol} for ${swapDirection === 'buy' ? outputSymbol : inputSymbol}`
+        }
+      </Button>
+
+      {/* Powered by Jupiter */}
+      <div className="mt-3 flex items-center justify-center gap-2">
+        <Text variant="caption" color="muted">Powered by</Text>
+        <Text variant="caption" className="text-green-400 font-semibold">Jupiter</Text>
+      </div>
+    </Card>
+  );
+};
+
+// =============================================================================
 // SLIPPAGE SELECTOR
 // =============================================================================
 
@@ -1017,7 +1571,7 @@ export const SlippageSelector: React.FC<SlippageSelectorProps> = ({
             }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
               value === preset && !customValue
-                ? 'bg-teal-500 text-white'
+                ? 'bg-green-500 text-white'
                 : 'bg-white/5 text-white/60 hover:bg-white/10'
             }`}
           >
@@ -1031,7 +1585,7 @@ export const SlippageSelector: React.FC<SlippageSelectorProps> = ({
             onChange={(e) => handleCustomChange(e.target.value)}
             placeholder="Custom"
             className="w-full px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg
-              text-sm text-white placeholder-white/40 focus:outline-none focus:border-teal-500"
+              text-sm text-white placeholder-white/40 focus:outline-none focus:border-green-500"
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-white/40">
             %
@@ -1082,7 +1636,7 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
           {tab.icon}
           {tab.label}
           {tab.badge !== undefined && (
-            <span className="px-1.5 py-0.5 bg-teal-500/20 text-teal-400 rounded text-xs">
+            <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
               {tab.badge}
             </span>
           )}
@@ -1195,6 +1749,308 @@ export const Header: React.FC<HeaderProps> = ({
 };
 
 // =============================================================================
+// TOKEN IMAGE WITH METAPLEX METADATA
+// =============================================================================
+
+interface TokenImageProps {
+  src?: string;
+  alt?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  fallbackSymbol?: string;
+  className?: string;
+  onLoad?: () => void;
+  onError?: () => void;
+}
+
+export const TokenImage: React.FC<TokenImageProps> = ({
+  src,
+  alt = 'Token',
+  size = 'md',
+  fallbackSymbol,
+  className = '',
+  onLoad,
+  onError,
+}) => {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  const sizeMap = {
+    sm: 32,
+    md: 40,
+    lg: 56,
+    xl: 80,
+  };
+
+  const pixelSize = sizeMap[size];
+
+  const handleLoad = () => {
+    setLoaded(true);
+    onLoad?.();
+  };
+
+  const handleError = () => {
+    setError(true);
+    onError?.();
+  };
+
+  // Get gradient based on fallback symbol
+  const getGradient = () => {
+    if (!fallbackSymbol) return 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+    const charCode = fallbackSymbol.charCodeAt(0);
+    const gradients = [
+      'linear-gradient(135deg, #f97316, #ea580c)',
+      'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+      'linear-gradient(135deg, #06b6d4, #0891b2)',
+      'linear-gradient(135deg, #ec4899, #db2777)',
+      'linear-gradient(135deg, #22C55E, #16A34A)',
+    ];
+    return gradients[charCode % gradients.length];
+  };
+
+  return (
+    <div
+      className={`token-image-container ${className}`}
+      style={{
+        width: pixelSize,
+        height: pixelSize,
+        borderRadius: pixelSize * 0.25,
+        flexShrink: 0,
+      }}
+    >
+      {/* Placeholder */}
+      {(!loaded || error || !src) && (
+        <div
+          className="token-image-placeholder"
+          style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: 'inherit',
+            background: getGradient(),
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {fallbackSymbol ? (
+            <span style={{
+              color: 'white',
+              fontSize: pixelSize * 0.4,
+              fontWeight: 700,
+              opacity: 0.9,
+            }}>
+              {fallbackSymbol.slice(0, 2).toUpperCase()}
+            </span>
+          ) : (
+            <svg
+              width={pixelSize * 0.5}
+              height={pixelSize * 0.5}
+              viewBox="0 0 24 24"
+              fill="white"
+              opacity={0.5}
+            >
+              <rect x={3} y={3} width={18} height={18} rx={2} ry={2} />
+              <circle cx={8.5} cy={8.5} r={1.5} />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          )}
+        </div>
+      )}
+
+      {/* Actual Image */}
+      {src && !error && (
+        <img
+          src={src}
+          alt={alt}
+          onLoad={handleLoad}
+          onError={handleError}
+          className={loaded ? 'token-image-reveal' : ''}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            borderRadius: 'inherit',
+            opacity: loaded ? 1 : 0,
+            position: loaded ? 'relative' : 'absolute',
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
+// SKELETON CARD
+// =============================================================================
+
+interface SkeletonCardProps {
+  variant?: 'launch' | 'trade' | 'stat';
+  className?: string;
+}
+
+export const SkeletonCard: React.FC<SkeletonCardProps> = ({
+  variant = 'launch',
+  className = '',
+}) => {
+  if (variant === 'launch') {
+    return (
+      <div
+        className={`p-4 rounded-2xl ${className}`}
+        style={{ background: 'var(--glass)', border: '1px solid var(--glass-border)' }}
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <div className="skeleton-avatar" style={{ width: 40, height: 40 }} />
+          <div className="flex-1">
+            <div className="skeleton-premium skeleton-text mb-2" style={{ width: '60%' }} />
+            <div className="skeleton-premium skeleton-text-sm" style={{ width: '40%' }} />
+          </div>
+          <div className="skeleton-premium" style={{ width: 50, height: 22, borderRadius: 11 }} />
+        </div>
+        <div className="skeleton-premium mb-3" style={{ width: '100%', height: 6, borderRadius: 3 }} />
+        <div className="flex justify-between">
+          <div className="skeleton-premium skeleton-text-sm" style={{ width: '30%' }} />
+          <div className="skeleton-premium skeleton-text-sm" style={{ width: '25%' }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === 'trade') {
+    return (
+      <div
+        className={`p-3 rounded-xl ${className}`}
+        style={{ background: 'var(--glass)', border: '1px solid var(--glass-border)' }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="skeleton-premium" style={{ width: 40, height: 40, borderRadius: 10 }} />
+          <div className="flex-1">
+            <div className="skeleton-premium skeleton-text mb-1" style={{ width: '50%' }} />
+            <div className="skeleton-premium skeleton-text-sm" style={{ width: '70%' }} />
+          </div>
+          <div className="skeleton-premium skeleton-text" style={{ width: 60 }} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`p-4 rounded-xl ${className}`}
+      style={{ background: 'var(--glass)', border: '1px solid var(--glass-border)' }}
+    >
+      <div className="skeleton-premium skeleton-text-sm mb-3" style={{ width: '40%' }} />
+      <div className="skeleton-premium skeleton-text-lg" style={{ width: '60%' }} />
+    </div>
+  );
+};
+
+// =============================================================================
+// SOL PRICE TICKER (for Nav)
+// =============================================================================
+
+interface SolPriceTickerProps {
+  price: number;
+  change24h?: number;
+  loading?: boolean;
+  className?: string;
+}
+
+export const SolPriceTicker: React.FC<SolPriceTickerProps> = ({
+  price,
+  change24h = 0,
+  loading = false,
+  className = '',
+}) => {
+  const [prevPrice, setPrevPrice] = useState(price);
+  const [flashClass, setFlashClass] = useState('');
+
+  useEffect(() => {
+    if (price !== prevPrice && prevPrice > 0) {
+      setFlashClass(price > prevPrice ? 'price-up-animate' : 'price-down-animate');
+      const timer = setTimeout(() => setFlashClass(''), 500);
+      setPrevPrice(price);
+      return () => clearTimeout(timer);
+    }
+    setPrevPrice(price);
+  }, [price, prevPrice]);
+
+  if (loading) {
+    return (
+      <div className={`sol-price-nav ${className}`}>
+        <div className="skeleton-premium" style={{ width: 60, height: 16 }} />
+      </div>
+    );
+  }
+
+  const isPositive = change24h >= 0;
+
+  return (
+    <div className={`sol-price-nav ${className}`}>
+      <svg width={16} height={16} viewBox="0 0 128 128" fill="none">
+        <defs>
+          <linearGradient id="sol-gradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#00FFA3" />
+            <stop offset="100%" stopColor="#DC1FFF" />
+          </linearGradient>
+        </defs>
+        <circle cx="64" cy="64" r="60" fill="url(#sol-gradient)" />
+        <path d="M40 80l14-14h34l-14 14H40z" fill="white" />
+        <path d="M40 62l14 14h34l-14-14H40z" fill="white" />
+        <path d="M40 44l14 14h34l-14-14H40z" fill="white" />
+      </svg>
+      <span className={`sol-price-value ${flashClass}`}>
+        ${price.toFixed(2)}
+      </span>
+      <span className={`sol-price-change ${isPositive ? 'up' : 'down'}`}>
+        {isPositive ? (
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        ) : (
+          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+            <path d="M12 5v14M19 12l-7 7-7-7" />
+          </svg>
+        )}
+        {Math.abs(change24h).toFixed(1)}%
+      </span>
+    </div>
+  );
+};
+
+// =============================================================================
+// LAUNCH CARD SKELETON
+// =============================================================================
+
+export const LaunchCardSkeletonGrid: React.FC<{ count?: number; className?: string }> = ({
+  count = 6,
+  className = '',
+}) => {
+  return (
+    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 ${className}`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} variant="launch" />
+      ))}
+    </div>
+  );
+};
+
+// =============================================================================
+// TRADE LIST SKELETON
+// =============================================================================
+
+export const TradeListSkeleton: React.FC<{ count?: number; className?: string }> = ({
+  count = 5,
+  className = '',
+}) => {
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} variant="trade" />
+      ))}
+    </div>
+  );
+};
+
+// =============================================================================
 // RE-EXPORT GRADIENT AVATAR
 // =============================================================================
 
@@ -1209,6 +2065,7 @@ export type {
   StatusBadgeProps,
   SearchBarProps,
   WalletDisplayProps,
+  WalletSelectorProps,
   TokenBadgeProps,
   PriceDisplayProps,
   StatCardProps,
@@ -1219,9 +2076,13 @@ export type {
   PositionSummaryProps,
   SocialLinksProps,
   LaunchCardCompactProps,
+  JupiterSwapWidgetProps,
   SlippageSelectorProps,
   TabItem,
   NavigationTabsProps,
   EmptyStateProps,
   HeaderProps,
+  TokenImageProps,
+  SkeletonCardProps,
+  SolPriceTickerProps,
 };

@@ -61,6 +61,44 @@ export interface StatsResponse {
   stats: GlobalStats;
 }
 
+// Pyth Oracle Price Types
+export interface PythPriceResponse {
+  price: number;
+  confidence: number;
+  symbol: string;
+  publishTime: number;
+  emaPrice: number;
+}
+
+export interface PythMultiPriceResponse {
+  prices: Record<string, PythPriceResponse>;
+}
+
+// Metaplex Token Metadata Types
+export interface TokenMetadataResponse {
+  mint: string;
+  name: string;
+  symbol: string;
+  uri: string;
+  image?: string;
+  description?: string;
+  attributes?: { trait_type: string; value: string | number }[];
+  collection?: {
+    verified: boolean;
+    key: string;
+    name?: string;
+  };
+  creators?: { address: string; share: number; verified: boolean }[];
+  royalty?: number;
+  isMutable: boolean;
+  primarySaleHappened: boolean;
+  tokenStandard?: string;
+}
+
+export interface MultiTokenMetadataResponse {
+  metadata: Record<string, TokenMetadataResponse>;
+}
+
 // =============================================================================
 // API CLIENT
 // =============================================================================
@@ -165,6 +203,34 @@ class ApiClient {
 
   async getGlobalStats(): Promise<ApiResponse<StatsResponse>> {
     return this.request<StatsResponse>('/api/stats');
+  }
+
+  // ---------------------------------------------------------------------------
+  // PYTH ORACLE PRICES
+  // ---------------------------------------------------------------------------
+
+  async getSolPrice(): Promise<ApiResponse<PythPriceResponse>> {
+    return this.request<PythPriceResponse>('/api/stats/sol-price');
+  }
+
+  async getTokenPrices(symbols: string[]): Promise<ApiResponse<PythMultiPriceResponse>> {
+    const symbolsParam = symbols.join(',');
+    return this.request<PythMultiPriceResponse>(`/api/stats/prices?symbols=${symbolsParam}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // METAPLEX TOKEN METADATA
+  // ---------------------------------------------------------------------------
+
+  async getTokenMetadata(mintAddress: string): Promise<ApiResponse<TokenMetadataResponse>> {
+    return this.request<TokenMetadataResponse>(`/api/launches/${mintAddress}/metadata`);
+  }
+
+  async getMultipleTokenMetadata(mintAddresses: string[]): Promise<ApiResponse<MultiTokenMetadataResponse>> {
+    return this.request<MultiTokenMetadataResponse>('/api/launches/metadata', {
+      method: 'POST',
+      body: JSON.stringify({ mints: mintAddresses }),
+    });
   }
 
   // ---------------------------------------------------------------------------

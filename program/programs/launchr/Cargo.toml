@@ -21,10 +21,6 @@ default = []
 [dependencies]
 anchor-lang = { version = "0.29.0", features = ["init-if-needed"] }
 anchor-spl = { version = "0.29.0", features = ["token"] }
-solana-program = "1.18"
-spl-token = { version = "4.0", features = ["no-entrypoint"] }
 
 [dev-dependencies]
-solana-program-test = "1.18"
-solana-sdk = "1.18"
 tokio = { version = "1.0", features = ["full"] }

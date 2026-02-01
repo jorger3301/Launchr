@@ -10,8 +10,11 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import BN from 'bn.js';
 import { LaunchData, TradeData, UserPositionData } from '../components/molecules';
 import { api, wsClient, NormalizedMessage } from '../services/api';
+import { LaunchrClient, initLaunchrClient, getLaunchrClient } from '../program/client';
+import { BuyParams, SellParams, CreateLaunchParams as ProgramCreateLaunchParams } from '../program/idl';
 
 // =============================================================================
 // TYPES
@@ -66,6 +69,74 @@ const PROGRAM_ID_STRING = process.env.REACT_APP_PROGRAM_ID || '11111111111111111
 const PROGRAM_ID = new PublicKey(PROGRAM_ID_STRING);
 
 // =============================================================================
+// WALLET TYPES & DETECTION
+// =============================================================================
+
+export type WalletType = 'phantom' | 'solflare' | 'backpack' | 'jupiter' | null;
+
+interface WalletInfo {
+  type: WalletType;
+  name: string;
+  icon: string;
+  url: string;
+  detected: boolean;
+}
+
+// Wallet provider detection
+function detectWallets(): WalletInfo[] {
+  const wallets: WalletInfo[] = [
+    {
+      type: 'phantom',
+      name: 'Phantom',
+      icon: 'https://phantom.app/img/phantom-logo.svg',
+      url: 'https://phantom.app/',
+      detected: typeof window !== 'undefined' && !!(window as any).solana?.isPhantom,
+    },
+    {
+      type: 'solflare',
+      name: 'Solflare',
+      icon: 'https://solflare.com/favicon.ico',
+      url: 'https://solflare.com/',
+      detected: typeof window !== 'undefined' && !!(window as any).solflare?.isSolflare,
+    },
+    {
+      type: 'backpack',
+      name: 'Backpack',
+      icon: 'https://backpack.app/favicon.ico',
+      url: 'https://backpack.app/',
+      detected: typeof window !== 'undefined' && !!(window as any).backpack?.isBackpack,
+    },
+    {
+      type: 'jupiter',
+      name: 'Jupiter',
+      icon: 'https://jup.ag/favicon.ico',
+      url: 'https://jup.ag/',
+      detected: typeof window !== 'undefined' && !!(window as any).jupiter,
+    },
+  ];
+
+  return wallets;
+}
+
+// Get wallet provider by type
+function getWalletProvider(type: WalletType): any {
+  if (typeof window === 'undefined') return null;
+
+  switch (type) {
+    case 'phantom':
+      return (window as any).solana?.isPhantom ? (window as any).solana : null;
+    case 'solflare':
+      return (window as any).solflare?.isSolflare ? (window as any).solflare : null;
+    case 'backpack':
+      return (window as any).backpack?.isBackpack ? (window as any).backpack : null;
+    case 'jupiter':
+      return (window as any).jupiter || null;
+    default:
+      return null;
+  }
+}
+
+// =============================================================================
 // CONNECTION HOOK
 // =============================================================================
 
@@ -80,26 +151,51 @@ export function useConnection(): Connection {
 }
 
 // =============================================================================
-// WALLET HOOK
+// AVAILABLE WALLETS HOOK
 // =============================================================================
+
+export function useAvailableWallets(): WalletInfo[] {
+  const [wallets, setWallets] = useState<WalletInfo[]>([]);
+
+  useEffect(() => {
+    // Initial detection
+    setWallets(detectWallets());
+
+    // Re-detect after a short delay (some wallets inject late)
+    const timer = setTimeout(() => {
+      setWallets(detectWallets());
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return wallets;
+}
+
+// =============================================================================
+// MULTI-WALLET HOOK
+// =============================================================================
+
+export interface UseMultiWalletResult extends UseWalletResult {
+  walletType: WalletType;
+  availableWallets: WalletInfo[];
+  connectWallet: (type: WalletType) => Promise<void>;
+  showWalletSelector: boolean;
+  setShowWalletSelector: (show: boolean) => void;
+}
 
 export function useWallet(): UseWalletResult {
   const [address, setAddress] = useState<string | null>(null);
   const [balance, setBalance] = useState(0);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [activeWallet, setActiveWallet] = useState<WalletType>(null);
   const connection = useConnection();
 
-  // Check for Phantom wallet
+  // Get active wallet provider
   const getProvider = useCallback(() => {
-    if (typeof window !== 'undefined' && 'solana' in window) {
-      const provider = (window as any).solana;
-      if (provider?.isPhantom) {
-        return provider;
-      }
-    }
-    return null;
-  }, []);
+    return getWalletProvider(activeWallet);
+  }, [activeWallet]);
 
   // Refresh balance
   const refreshBalance = useCallback(async () => {
@@ -113,40 +209,105 @@ export function useWallet(): UseWalletResult {
     }
   }, [address, connection]);
 
-  // Connect wallet
-  const connect = useCallback(async () => {
-    const provider = getProvider();
+  // Connect to specific wallet
+  const connectToWallet = useCallback(async (type: WalletType) => {
+    const provider = getWalletProvider(type);
+
     if (!provider) {
-      window.open('https://phantom.app/', '_blank');
+      // Open wallet's website if not installed
+      const wallets = detectWallets();
+      const wallet = wallets.find(w => w.type === type);
+      if (wallet) {
+        window.open(wallet.url, '_blank');
+      }
       return;
     }
 
     setConnecting(true);
+    setActiveWallet(type);
+
     try {
-      const response = await provider.connect();
+      let response;
+
+      // Different wallets have slightly different APIs
+      if (type === 'solflare') {
+        await provider.connect();
+        response = { publicKey: provider.publicKey };
+      } else if (type === 'backpack') {
+        response = await provider.connect();
+      } else if (type === 'jupiter') {
+        response = await provider.connect();
+      } else {
+        // Phantom and default
+        response = await provider.connect();
+      }
+
       const pubkey = response.publicKey.toString();
       setAddress(pubkey);
       setConnected(true);
-      
+
+      // Store wallet preference
+      localStorage.setItem('launchr_wallet', type || '');
+
       // Fetch balance
-      const lamports = await connection.getBalance(response.publicKey);
+      const lamports = await connection.getBalance(new PublicKey(pubkey));
       setBalance(lamports / LAMPORTS_PER_SOL);
     } catch (err) {
-      console.error('Failed to connect:', err);
+      console.error(`Failed to connect to ${type}:`, err);
+      setActiveWallet(null);
     } finally {
       setConnecting(false);
     }
-  }, [connection, getProvider]);
+  }, [connection]);
+
+  // Connect - tries last used wallet or shows selector
+  const connect = useCallback(async () => {
+    // Check for previously used wallet
+    const lastWallet = localStorage.getItem('launchr_wallet') as WalletType;
+    const availableWallets = detectWallets().filter(w => w.detected);
+
+    if (lastWallet && availableWallets.some(w => w.type === lastWallet)) {
+      await connectToWallet(lastWallet);
+      return;
+    }
+
+    // If only one wallet is available, connect to it
+    if (availableWallets.length === 1) {
+      await connectToWallet(availableWallets[0].type);
+      return;
+    }
+
+    // Try Phantom first (most common)
+    if (availableWallets.some(w => w.type === 'phantom')) {
+      await connectToWallet('phantom');
+      return;
+    }
+
+    // Connect to first available
+    if (availableWallets.length > 0) {
+      await connectToWallet(availableWallets[0].type);
+      return;
+    }
+
+    // No wallets available, open Phantom download page
+    window.open('https://phantom.app/', '_blank');
+  }, [connectToWallet]);
 
   // Disconnect wallet
   const disconnect = useCallback(async () => {
     const provider = getProvider();
     if (provider) {
-      await provider.disconnect();
+      try {
+        await provider.disconnect();
+      } catch (err) {
+        console.error('Error disconnecting:', err);
+      }
     }
     setAddress(null);
     setBalance(0);
     setConnected(false);
+    setActiveWallet(null);
+    localStorage.removeItem('launchr_wallet');
   }, [getProvider]);
 
   // Sign transaction
@@ -160,25 +321,40 @@ export function useWallet(): UseWalletResult {
 
   // Auto-connect on mount
   useEffect(() => {
-    const provider = getProvider();
-    if (provider?.isConnected) {
-      connect();
+    const lastWallet = localStorage.getItem('launchr_wallet') as WalletType;
+    if (lastWallet) {
+      const provider = getWalletProvider(lastWallet);
+      if (provider?.isConnected || provider?.connected) {
+        connectToWallet(lastWallet);
+      }
     }
+  }, [connectToWallet]);
 
-    // Listen for account changes
-    provider?.on('accountChanged', (publicKey: PublicKey | null) => {
+  // Listen for account changes
+  useEffect(() => {
+    const provider = getProvider();
+    if (!provider) return;
+
+    const handleAccountChange = (publicKey: PublicKey | null) => {
       if (publicKey) {
         setAddress(publicKey.toString());
         refreshBalance();
       } else {
         disconnect();
       }
-    });
+    };
+
+    // Different wallets use different event names
+    provider.on?.('accountChanged', handleAccountChange);
+    provider.on?.('disconnect', disconnect);
 
     return () => {
-      provider?.removeAllListeners('accountChanged');
+      provider.removeListener?.('accountChanged', handleAccountChange);
+      provider.removeListener?.('disconnect', disconnect);
+      provider.off?.('accountChanged', handleAccountChange);
+      provider.off?.('disconnect', disconnect);
     };
-  }, [connect, disconnect, getProvider, refreshBalance]);
+  }, [activeWallet, disconnect, getProvider, refreshBalance]);
 
   // Refresh balance periodically
   useEffect(() => {
@@ -463,50 +639,129 @@ export function useUserPosition(launchPk: string | undefined, userAddress: strin
 // TRADE HOOK
 // =============================================================================
 
-export function useTrade(wallet: UseWalletResult): UseTradeResult {
+export interface TradeContext {
+  mint: string;
+  creator: string;
+  virtualSolReserve?: number;
+  virtualTokenReserve?: number;
+  protocolFeeBps?: number;
+  creatorFeeBps?: number;
+}
+
+export function useTrade(wallet: UseWalletResult): UseTradeResult & {
+  buyWithContext: (launchPk: string, solAmount: number, slippage: number, context: TradeContext) => Promise<string>;
+  sellWithContext: (launchPk: string, tokenAmount: number, slippage: number, context: TradeContext) => Promise<string>;
+  estimateBuy: (solAmount: number, context: TradeContext) => { tokensOut: number; priceImpact: number };
+  estimateSell: (tokenAmount: number, context: TradeContext) => { solOut: number; priceImpact: number };
+} {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connection = useConnection();
+  const clientRef = useRef<LaunchrClient | null>(null);
 
-  // Execute buy
-  const buy = useCallback(async (
+  // Initialize client
+  useEffect(() => {
+    if (!clientRef.current) {
+      clientRef.current = getLaunchrClient() || initLaunchrClient(connection);
+    }
+  }, [connection]);
+
+  // Estimate buy output
+  const estimateBuy = useCallback((solAmount: number, context: TradeContext) => {
+    const client = clientRef.current;
+    if (!client) {
+      return { tokensOut: 0, priceImpact: 0 };
+    }
+
+    const solLamports = new BN(Math.floor(solAmount * LAMPORTS_PER_SOL));
+    const virtualSolReserve = new BN(context.virtualSolReserve || 30 * LAMPORTS_PER_SOL);
+    const virtualTokenReserve = new BN(context.virtualTokenReserve || 800_000_000 * 1e9);
+
+    const { tokensOut, priceImpact } = client.calculateBuyOutput(
+      solLamports,
+      virtualSolReserve,
+      virtualTokenReserve,
+      context.protocolFeeBps || 100,
+      context.creatorFeeBps || 0
+    );
+
+    return {
+      tokensOut: tokensOut.toNumber() / 1e9,
+      priceImpact,
+    };
+  }, []);
+
+  // Estimate sell output
+  const estimateSell = useCallback((tokenAmount: number, context: TradeContext) => {
+    const client = clientRef.current;
+    if (!client) {
+      return { solOut: 0, priceImpact: 0 };
+    }
+
+    const tokenLamports = new BN(Math.floor(tokenAmount * 1e9));
+    const virtualSolReserve = new BN(context.virtualSolReserve || 30 * LAMPORTS_PER_SOL);
+    const virtualTokenReserve = new BN(context.virtualTokenReserve || 800_000_000 * 1e9);
+
+    const { solOut, priceImpact } = client.calculateSellOutput(
+      tokenLamports,
+      virtualSolReserve,
+      virtualTokenReserve,
+      context.protocolFeeBps || 100,
+      context.creatorFeeBps || 0
+    );
+
+    return {
+      solOut: solOut.toNumber() / LAMPORTS_PER_SOL,
+      priceImpact,
+    };
+  }, []);
+
+  // Execute buy with full context
+  const buyWithContext = useCallback(async (
     launchPk: string,
     solAmount: number,
-    slippage: number
+    slippage: number,
+    context: TradeContext
   ): Promise<string> => {
     if (!wallet.connected || !wallet.address) {
       throw new Error('Wallet not connected');
+    }
+
+    const client = clientRef.current;
+    if (!client) {
+      throw new Error('Program client not initialized');
     }
 
     setLoading(true);
     setError(null);
 
     try {
-      const lamports = solAmount * LAMPORTS_PER_SOL;
-      
-      // Build buy instruction
-      // In production, this would use Anchor's instruction builder
-      const buyIx = {
-        programId: PROGRAM_ID,
-        keys: [
-          // ... account metas
-        ],
-        data: Buffer.from([/* buy instruction data */]),
+      const buyer = new PublicKey(wallet.address);
+      const launchPubkey = new PublicKey(launchPk);
+      const mint = new PublicKey(context.mint);
+      const creator = new PublicKey(context.creator);
+
+      // Calculate expected output and apply slippage
+      const estimate = estimateBuy(solAmount, context);
+      const minTokensOut = Math.floor(estimate.tokensOut * (1 - slippage / 100) * 1e9);
+
+      const params: BuyParams = {
+        solAmount: new BN(Math.floor(solAmount * LAMPORTS_PER_SOL)),
+        minTokensOut: new BN(minTokensOut),
       };
 
-      // Create transaction
-      const tx = new Transaction();
-      // tx.add(buyIx);
+      // Build transaction using LaunchrClient
+      const tx = await client.buildBuyTx(buyer, launchPubkey, mint, creator, params);
 
       // Get recent blockhash
       const { blockhash } = await connection.getLatestBlockhash();
       tx.recentBlockhash = blockhash;
-      tx.feePayer = new PublicKey(wallet.address);
+      tx.feePayer = buyer;
 
       // Sign and send
       const signedTx = await wallet.signTransaction(tx);
       const signature = await connection.sendRawTransaction(signedTx.serialize());
-      
+
       // Confirm
       await connection.confirmTransaction(signature, 'confirmed');
 
@@ -521,33 +776,58 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult {
     } finally {
       setLoading(false);
     }
-  }, [wallet, connection]);
+  }, [wallet, connection, estimateBuy]);
 
-  // Execute sell
-  const sell = useCallback(async (
+  // Execute sell with full context
+  const sellWithContext = useCallback(async (
     launchPk: string,
     tokenAmount: number,
-    slippage: number
+    slippage: number,
+    context: TradeContext
   ): Promise<string> => {
     if (!wallet.connected || !wallet.address) {
       throw new Error('Wallet not connected');
+    }
+
+    const client = clientRef.current;
+    if (!client) {
+      throw new Error('Program client not initialized');
     }
 
     setLoading(true);
     setError(null);
 
     try {
-      // Build sell instruction (similar to buy)
-      const tx = new Transaction();
+      const seller = new PublicKey(wallet.address);
+      const launchPubkey = new PublicKey(launchPk);
+      const mint = new PublicKey(context.mint);
+      const creator = new PublicKey(context.creator);
 
+      // Calculate expected output and apply slippage
+      const estimate = estimateSell(tokenAmount, context);
+      const minSolOut = Math.floor(estimate.solOut * (1 - slippage / 100) * LAMPORTS_PER_SOL);
+
+      const params: SellParams = {
+        tokenAmount: new BN(Math.floor(tokenAmount * 1e9)),
+        minSolOut: new BN(minSolOut),
+      };
+
+      // Build transaction using LaunchrClient
+      const tx = await client.buildSellTx(seller, launchPubkey, mint, creator, params);
+
+      // Get recent blockhash
       const { blockhash } = await connection.getLatestBlockhash();
       tx.recentBlockhash = blockhash;
-      tx.feePayer = new PublicKey(wallet.address);
+      tx.feePayer = seller;
 
+      // Sign and send
       const signedTx = await wallet.signTransaction(tx);
       const signature = await connection.sendRawTransaction(signedTx.serialize());
-      
+
+      // Confirm
       await connection.confirmTransaction(signature, 'confirmed');
+
+      // Refresh balance
       await wallet.refreshBalance();
 
       return signature;
@@ -558,11 +838,65 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult {
     } finally {
       setLoading(false);
     }
-  }, [wallet, connection]);
+  }, [wallet, connection, estimateSell]);
+
+  // Legacy buy (uses API to fetch context)
+  const buy = useCallback(async (
+    launchPk: string,
+    solAmount: number,
+    slippage: number
+  ): Promise<string> => {
+    // Fetch launch data to get context
+    const launchRes = await api.getLaunch(launchPk);
+    if (!launchRes.data) {
+      throw new Error('Launch not found');
+    }
+
+    const launch = launchRes.data;
+    const context: TradeContext = {
+      mint: launch.mint,
+      creator: launch.creator,
+      virtualSolReserve: launch.virtualSolReserve,
+      virtualTokenReserve: launch.virtualTokenReserve,
+      protocolFeeBps: 100,
+      creatorFeeBps: launch.creatorFeeBps || 0,
+    };
+
+    return buyWithContext(launchPk, solAmount, slippage, context);
+  }, [buyWithContext]);
+
+  // Legacy sell (uses API to fetch context)
+  const sell = useCallback(async (
+    launchPk: string,
+    tokenAmount: number,
+    slippage: number
+  ): Promise<string> => {
+    // Fetch launch data to get context
+    const launchRes = await api.getLaunch(launchPk);
+    if (!launchRes.data) {
+      throw new Error('Launch not found');
+    }
+
+    const launch = launchRes.data;
+    const context: TradeContext = {
+      mint: launch.mint,
+      creator: launch.creator,
+      virtualSolReserve: launch.virtualSolReserve,
+      virtualTokenReserve: launch.virtualTokenReserve,
+      protocolFeeBps: 100,
+      creatorFeeBps: launch.creatorFeeBps || 0,
+    };
+
+    return sellWithContext(launchPk, tokenAmount, slippage, context);
+  }, [sellWithContext]);
 
   return {
     buy,
     sell,
+    buyWithContext,
+    sellWithContext,
+    estimateBuy,
+    estimateSell,
     loading,
     error,
   };
@@ -582,31 +916,68 @@ export interface CreateLaunchParams {
   creatorFeeBps: number;
 }
 
+export interface CreateLaunchResult {
+  signature: string;
+  mint: string;
+  launchPda: string;
+}
+
 export function useCreateLaunch(wallet: UseWalletResult) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const connection = useConnection();
+  const clientRef = useRef<LaunchrClient | null>(null);
+
+  // Initialize client
+  useEffect(() => {
+    if (!clientRef.current) {
+      clientRef.current = getLaunchrClient() || initLaunchrClient(connection);
+    }
+  }, [connection]);
 
   const createLaunch = useCallback(async (params: CreateLaunchParams): Promise<string> => {
     if (!wallet.connected || !wallet.address) {
       throw new Error('Wallet not connected');
     }
 
+    const client = clientRef.current;
+    if (!client) {
+      throw new Error('Program client not initialized');
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // Build create_launch instruction
-      // In production, this would use Anchor's instruction builder
-      const tx = new Transaction();
+      const creator = new PublicKey(wallet.address);
 
+      // Build program params
+      const programParams: ProgramCreateLaunchParams = {
+        name: params.name,
+        symbol: params.symbol,
+        uri: params.uri,
+        twitter: params.twitter || null,
+        telegram: params.telegram || null,
+        website: params.website || null,
+        creatorFeeBps: params.creatorFeeBps,
+      };
+
+      // Build transaction using LaunchrClient
+      const { transaction, mint } = await client.buildCreateLaunchTx(creator, programParams);
+
+      // Get recent blockhash
       const { blockhash } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = new PublicKey(wallet.address);
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = creator;
 
-      const signedTx = await wallet.signTransaction(tx);
+      // Partially sign with mint keypair (required for mint creation)
+      transaction.partialSign(mint);
+
+      // Sign with wallet
+      const signedTx = await wallet.signTransaction(transaction);
       const signature = await connection.sendRawTransaction(signedTx.serialize());
-      
+
+      // Confirm
       await connection.confirmTransaction(signature, 'confirmed');
       await wallet.refreshBalance();
 
@@ -620,8 +991,73 @@ export function useCreateLaunch(wallet: UseWalletResult) {
     }
   }, [wallet, connection]);
 
+  // Extended create that returns mint and launch addresses
+  const createLaunchFull = useCallback(async (params: CreateLaunchParams): Promise<CreateLaunchResult> => {
+    if (!wallet.connected || !wallet.address) {
+      throw new Error('Wallet not connected');
+    }
+
+    const client = clientRef.current;
+    if (!client) {
+      throw new Error('Program client not initialized');
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const creator = new PublicKey(wallet.address);
+
+      // Build program params
+      const programParams: ProgramCreateLaunchParams = {
+        name: params.name,
+        symbol: params.symbol,
+        uri: params.uri,
+        twitter: params.twitter || null,
+        telegram: params.telegram || null,
+        website: params.website || null,
+        creatorFeeBps: params.creatorFeeBps,
+      };
+
+      // Build transaction using LaunchrClient
+      const { transaction, mint } = await client.buildCreateLaunchTx(creator, programParams);
+
+      // Get launch PDA
+      const launchPda = client.getLaunchPda(mint.publicKey);
+
+      // Get recent blockhash
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = creator;
+
+      // Partially sign with mint keypair
+      transaction.partialSign(mint);
+
+      // Sign with wallet
+      const signedTx = await wallet.signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(signedTx.serialize());
+
+      // Confirm
+      await connection.confirmTransaction(signature, 'confirmed');
+      await wallet.refreshBalance();
+
+      return {
+        signature,
+        mint: mint.publicKey.toBase58(),
+        launchPda: launchPda.toBase58(),
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create launch';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [wallet, connection]);
+
   return {
     createLaunch,
+    createLaunchFull,
     loading,
     error,
   };
@@ -766,4 +1202,215 @@ export function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
 
   return debouncedValue;
+}
+
+// =============================================================================
+// SOL PRICE HOOK (Pyth Oracle)
+// =============================================================================
+
+export interface SolPriceData {
+  price: number;
+  change24h: number;
+  confidence: number;
+  lastUpdate: number;
+}
+
+export function useSolPrice(refreshInterval: number = 10000): {
+  solPrice: SolPriceData;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [solPrice, setSolPrice] = useState<SolPriceData>({
+    price: 0,
+    change24h: 0,
+    confidence: 0,
+    lastUpdate: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const previousPriceRef = useRef<number>(0);
+
+  const fetchSolPrice = useCallback(async () => {
+    try {
+      const response = await api.getSolPrice();
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data) {
+        const prevPrice = previousPriceRef.current;
+        const newPrice = response.data.price;
+
+        // Calculate 24h change based on previous price
+        // In production, this would come from the API
+        const change24h = prevPrice > 0
+          ? ((newPrice - prevPrice) / prevPrice) * 100
+          : 0;
+
+        previousPriceRef.current = newPrice;
+
+        setSolPrice({
+          price: newPrice,
+          change24h,
+          confidence: response.data.confidence,
+          lastUpdate: response.data.publishTime,
+        });
+        setError(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch SOL price:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch price');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSolPrice();
+
+    const interval = setInterval(fetchSolPrice, refreshInterval);
+    return () => clearInterval(interval);
+  }, [fetchSolPrice, refreshInterval]);
+
+  return { solPrice, loading, error, refetch: fetchSolPrice };
+}
+
+// =============================================================================
+// TOKEN METADATA HOOK (Metaplex DAS)
+// =============================================================================
+
+export interface TokenMetadata {
+  mint: string;
+  name: string;
+  symbol: string;
+  image?: string;
+  description?: string;
+  uri: string;
+  attributes?: { trait_type: string; value: string | number }[];
+  collection?: { verified: boolean; key: string; name?: string };
+  creators?: { address: string; share: number; verified: boolean }[];
+  royalty?: number;
+  isMutable: boolean;
+}
+
+export function useTokenMetadata(mintAddress: string | undefined): {
+  metadata: TokenMetadata | null;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [metadata, setMetadata] = useState<TokenMetadata | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchMetadata = useCallback(async () => {
+    if (!mintAddress) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getTokenMetadata(mintAddress);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data) {
+        setMetadata({
+          mint: response.data.mint,
+          name: response.data.name,
+          symbol: response.data.symbol,
+          image: response.data.image,
+          description: response.data.description,
+          uri: response.data.uri,
+          attributes: response.data.attributes,
+          collection: response.data.collection,
+          creators: response.data.creators,
+          royalty: response.data.royalty,
+          isMutable: response.data.isMutable,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch token metadata:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch metadata');
+    } finally {
+      setLoading(false);
+    }
+  }, [mintAddress]);
+
+  useEffect(() => {
+    fetchMetadata();
+  }, [fetchMetadata]);
+
+  return { metadata, loading, error, refetch: fetchMetadata };
+}
+
+// =============================================================================
+// MULTI-TOKEN METADATA HOOK
+// =============================================================================
+
+export function useMultipleTokenMetadata(mintAddresses: string[]): {
+  metadataMap: Map<string, TokenMetadata>;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [metadataMap, setMetadataMap] = useState<Map<string, TokenMetadata>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchAllMetadata = useCallback(async () => {
+    if (mintAddresses.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getMultipleTokenMetadata(mintAddresses);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data?.metadata) {
+        const newMap = new Map<string, TokenMetadata>();
+        Object.entries(response.data.metadata).forEach(([mint, data]) => {
+          newMap.set(mint, {
+            mint: data.mint,
+            name: data.name,
+            symbol: data.symbol,
+            image: data.image,
+            description: data.description,
+            uri: data.uri,
+            attributes: data.attributes,
+            collection: data.collection,
+            creators: data.creators,
+            royalty: data.royalty,
+            isMutable: data.isMutable,
+          });
+        });
+        setMetadataMap(newMap);
+      }
+    } catch (err) {
+      console.error('Failed to fetch token metadata:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch metadata');
+    } finally {
+      setLoading(false);
+    }
+  }, [mintAddresses]);
+
+  useEffect(() => {
+    fetchAllMetadata();
+  }, [fetchAllMetadata]);
+
+  return { metadataMap, loading, error, refetch: fetchAllMetadata };
 }

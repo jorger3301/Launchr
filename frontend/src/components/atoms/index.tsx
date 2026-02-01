@@ -7,12 +7,12 @@ import React, { useState } from "react";
 // Launch into Orbit 🚀
 // ============================================================================
 
-// Design tokens
+// Design tokens - Launchr Brand Kit
 export const colors = {
   // Brand colors
-  primary: "#34d399",      // Green accent
-  secondary: "#a78bfa",    // Purple secondary
-  accent: "#34d399",       // Green success
+  primary: "#22C55E",      // Launchr Green (green-500)
+  secondary: "#34D399",    // Launch Mint (green-400)
+  accent: "#16A34A",       // Deep Green (green-600)
 
   // Background (uses CSS variables for theme support)
   bgDeep: "var(--bg)",
@@ -37,11 +37,11 @@ export const AVATAR_GRADIENTS = [
   ["#8b5cf6", "#7c3aed"],
   ["#06b6d4", "#0891b2"],
   ["#ec4899", "#db2777"],
-  ["#10b981", "#059669"],
+  ["#22C55E", "#16A34A"],
   ["#f59e0b", "#d97706"],
   ["#6366f1", "#4f46e5"],
   ["#ef4444", "#dc2626"],
-  ["#14b8a6", "#0d9488"],
+  ["#34D399", "#16A34A"],
   ["#a855f7", "#9333ea"],
 ];
 
@@ -97,15 +97,15 @@ export const Button: React.FC<ButtonProps> = ({
   const baseStyles = `
     inline-flex items-center justify-center font-medium
     transition-all duration-200 rounded-xl
-    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0a0a14]
+    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#111827]
     disabled:opacity-50 disabled:cursor-not-allowed
   `;
 
   const variants = {
     primary: `
-      bg-gradient-to-r from-teal-400 to-cyan-400 text-gray-900
-      hover:from-teal-300 hover:to-cyan-300
-      focus:ring-teal-400 shadow-lg shadow-teal-500/25
+      bg-gradient-to-r from-green-400 to-green-600 text-gray-900
+      hover:from-green-300 hover:to-green-500
+      focus:ring-green-400 shadow-lg shadow-green-500/25
     `,
     secondary: `
       bg-white/10 text-white border border-white/20
@@ -123,7 +123,7 @@ export const Button: React.FC<ButtonProps> = ({
       focus:ring-red-400
     `,
     gradient: `
-      bg-gradient-to-r from-purple-500 via-teal-400 to-cyan-400 text-white
+      bg-gradient-to-r from-purple-500 via-green-400 to-green-600 text-white
       hover:opacity-90 shadow-lg shadow-purple-500/25
       focus:ring-purple-400
     `,
@@ -193,7 +193,7 @@ export const Input: React.FC<InputProps> = ({
             w-full bg-white/5 border rounded-xl
             px-4 py-2.5 text-white placeholder-gray-500
             transition-all duration-200
-            focus:outline-none focus:ring-2 focus:ring-teal-400/50 focus:border-teal-400
+            focus:outline-none focus:ring-2 focus:ring-green-400/50 focus:border-green-400
             ${leftIcon ? "pl-10" : ""}
             ${rightIcon ? "pr-10" : ""}
             ${error ? "border-red-500/50 focus:border-red-500 focus:ring-red-500/50" : "border-white/10 hover:border-white/20"}
@@ -249,7 +249,7 @@ export const Text: React.FC<TextProps> = ({
     primary: "text-white",
     secondary: "text-gray-300",
     muted: "text-gray-500",
-    accent: "text-teal-400",
+    accent: "text-green-400",
     success: "text-green-400",
     warning: "text-amber-400",
     error: "text-red-400",
@@ -296,7 +296,7 @@ export const Badge: React.FC<BadgeProps> = ({
     warning: "bg-amber-500/20 text-amber-400 border-amber-500/30",
     error: "bg-red-500/20 text-red-400 border-red-500/30",
     info: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    accent: "bg-teal-500/20 text-teal-400 border-teal-500/30",
+    accent: "bg-green-500/20 text-green-400 border-green-500/30",
     muted: "bg-gray-500/20 text-gray-400 border-gray-500/30",
   };
 
@@ -335,7 +335,7 @@ export const Spinner: React.FC<SpinnerProps> = ({ size = "md", className = "" })
 
   return (
     <svg
-      className={`animate-spin text-teal-400 ${sizes[size]} ${className}`}
+      className={`animate-spin text-green-400 ${sizes[size]} ${className}`}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -394,7 +394,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       )}
       <div className={`w-full bg-white/10 rounded-full overflow-hidden ${sizes[size]}`}>
         <div
-          className="h-full bg-gradient-to-r from-teal-400 to-cyan-400 rounded-full transition-all duration-500"
+          className="h-full bg-gradient-to-r from-green-400 to-green-600 rounded-full transition-all duration-500"
           style={{ width: `${percentage}%` }}
         />
       </div>
@@ -440,7 +440,7 @@ export const Avatar: React.FC<AvatarProps> = ({
     <div
       className={`
         ${sizes[size]} rounded-full overflow-hidden
-        bg-gradient-to-br from-teal-400 to-purple-500
+        bg-gradient-to-br from-green-400 to-purple-500
         flex items-center justify-center font-bold text-white
         ${className}
       `}
@@ -734,54 +734,45 @@ export const LaunchrLogo: React.FC<LogoProps> = ({
   className = "",
 }) => {
   const sizes = {
-    sm: { icon: 24, text: "text-lg" },
-    md: { icon: 32, text: "text-xl" },
-    lg: { icon: 48, text: "text-3xl" },
+    sm: { icon: 24, text: "text-lg", badge: 28 },
+    md: { icon: 32, text: "text-xl", badge: 36 },
+    lg: { icon: 48, text: "text-3xl", badge: 52 },
   };
 
+  const badgeSize = sizes[size].badge;
+
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex items-center gap-2.5 ${className}`}>
+      {/* L-bracket with launch dot - Brand Logo */}
       <svg
-        width={sizes[size].icon}
-        height={sizes[size].icon}
-        viewBox="0 0 48 48"
+        width={badgeSize}
+        height={badgeSize}
+        viewBox="0 0 120 120"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
-        {/* Rocket body */}
-        <path
-          d="M24 4C24 4 32 12 32 24C32 36 24 44 24 44C24 44 16 36 16 24C16 12 24 4 24 4Z"
-          fill="url(#launchr-gradient)"
-        />
-        {/* Orbit ring */}
-        <ellipse
-          cx="24"
-          cy="24"
-          rx="18"
-          ry="6"
-          stroke="url(#orbit-gradient)"
-          strokeWidth="2"
-          transform="rotate(-30 24 24)"
-          fill="none"
-        />
-        {/* Flame */}
-        <path
-          d="M20 40L24 48L28 40"
-          fill="#f59e0b"
-        />
         <defs>
-          <linearGradient id="launchr-gradient" x1="16" y1="4" x2="32" y2="44">
-            <stop stopColor="#5eead4" />
-            <stop offset="1" stopColor="#a78bfa" />
-          </linearGradient>
-          <linearGradient id="orbit-gradient" x1="6" y1="24" x2="42" y2="24">
-            <stop stopColor="#5eead4" />
-            <stop offset="1" stopColor="#3b82f6" />
+          <linearGradient id="launchr-logo-grad" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#34D399"/>
+            <stop offset="100%" stopColor="#16A34A"/>
           </linearGradient>
         </defs>
+        {/* Gradient background with rounded corners */}
+        <rect width="120" height="120" rx="26" fill="url(#launchr-logo-grad)"/>
+        {/* L-bracket */}
+        <path
+          d="M32 34 L32 88 L86 88"
+          stroke="white"
+          strokeWidth="12"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        {/* Launch dot */}
+        <circle cx="82" cy="38" r="8" fill="white"/>
       </svg>
       {showText && (
-        <span className={`font-bold ${sizes[size].text} bg-gradient-to-r from-teal-400 to-purple-400 bg-clip-text text-transparent`}>
+        <span className={`font-bold ${sizes[size].text} bg-gradient-to-r from-green-400 to-green-600 bg-clip-text text-transparent`}>
           Launchr
         </span>
       )}

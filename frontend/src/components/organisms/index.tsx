@@ -125,7 +125,7 @@ export const TradePanel: React.FC<TradePanelProps> = ({
         </Text>
         <button
           onClick={() => setShowSlippage(!showSlippage)}
-          className="flex items-center gap-1.5 text-sm text-teal-400 hover:text-teal-300"
+          className="flex items-center gap-1.5 text-sm text-green-400 hover:text-green-300"
         >
           <IconSettings className="w-4 h-4" />
           {slippage}%
@@ -197,7 +197,7 @@ export const TradePanel: React.FC<TradePanelProps> = ({
           href={`https://app.orbitfinance.io/pool/${launch.orbitPool}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3 flex items-center justify-center gap-2 text-sm text-teal-400 hover:text-teal-300"
+          className="mt-3 flex items-center justify-center gap-2 text-sm text-green-400 hover:text-green-300"
         >
           <IconOrbit className="w-4 h-4" />
           Continue trading on Orbit
@@ -638,7 +638,7 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
                 step="10"
                 value={formData.creatorFeeBps}
                 onChange={(e) => updateField('creatorFeeBps', parseInt(e.target.value))}
-                className="flex-1 accent-teal-500"
+                className="flex-1 accent-green-500"
               />
               <Text variant="body" className="w-16 text-right font-mono">
                 {(formData.creatorFeeBps / 100).toFixed(1)}%
@@ -696,11 +696,11 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
           </div>
         </div>
 
-        <div className="mt-4 p-4 bg-teal-500/10 border border-teal-500/30 rounded-lg">
+        <div className="mt-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
           <div className="flex items-start gap-2">
-            <IconOrbit className="w-5 h-5 text-teal-400 mt-0.5" />
+            <IconOrbit className="w-5 h-5 text-green-400 mt-0.5" />
             <div>
-              <Text variant="body" className="font-medium text-teal-400">
+              <Text variant="body" className="font-medium text-green-400">
                 Launch into Orbit
               </Text>
               <Text variant="caption" color="muted">
@@ -764,7 +764,7 @@ export const GraduateButton: React.FC<GraduateButtonProps> = ({
         target="_blank"
         rel="noopener noreferrer"
         className={`flex items-center justify-center gap-2 px-6 py-3 
-          bg-gradient-to-r from-teal-500 to-emerald-500 rounded-xl
+          bg-gradient-to-r from-green-500 to-green-500 rounded-xl
           text-white font-semibold hover:opacity-90 transition-opacity ${className}`}
       >
         <IconOrbit className="w-5 h-5" />
@@ -778,7 +778,7 @@ export const GraduateButton: React.FC<GraduateButtonProps> = ({
     <Card className={`p-4 ${className}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <IconGraduate className="w-5 h-5 text-teal-400" />
+          <IconGraduate className="w-5 h-5 text-green-400" />
           <Text variant="body" className="font-semibold">
             Graduate to Orbit
           </Text>
@@ -896,7 +896,7 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({
               <Text variant="body" className="font-mono">
                 {entry.tokenBalance.toLocaleString()} {tokenSymbol}
               </Text>
-              <Text variant="caption" className={entry.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+              <Text variant="caption" className={entry.pnl >= 0 ? 'text-green-400' : 'text-rose-400'}>
                 {entry.pnl >= 0 ? '+' : ''}{entry.pnl.toFixed(4)} SOL
               </Text>
             </div>
@@ -949,7 +949,7 @@ export const Footer: React.FC<FooterProps> = ({ className = '' }) => {
             href="https://orbitfinance.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-teal-400 hover:text-teal-300"
+            className="flex items-center gap-1 text-green-400 hover:text-green-300"
           >
             <IconOrbit className="w-4 h-4" />
             Orbit Finance
@@ -1080,13 +1080,13 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       >
         <defs>
           <linearGradient id="priceGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#5eead4" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="#5eead4" stopOpacity="0" />
+            <stop offset="0%" stopColor="#22C55E" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#22C55E" stopOpacity="0" />
           </linearGradient>
         </defs>
         <polyline
           fill="none"
-          stroke="#5eead4"
+          stroke="#22C55E"
           strokeWidth="2"
           vectorEffect="non-scaling-stroke"
           points={points}

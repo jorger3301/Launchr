@@ -1,11 +1,13 @@
 /**
  * Launches Routes
- * 
+ *
  * REST API endpoints for launch data.
+ * Includes Metaplex DAS integration for token metadata.
  */
 
 import { Router, Request, Response } from 'express';
 import { IndexerService } from '../services/indexer';
+import { MetaplexService } from '../services/metaplex';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -133,6 +135,51 @@ router.get('/graduated', async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/launches/metadata - Get multiple token metadata (batch)
+// ---------------------------------------------------------------------------
+
+router.post('/metadata', async (req: Request, res: Response) => {
+  try {
+    const metaplex: MetaplexService | null = req.app.locals.metaplex;
+    const { mints } = req.body;
+
+    if (!mints || !Array.isArray(mints) || mints.length === 0) {
+      res.status(400).json({ error: 'mints array required in request body' });
+      return;
+    }
+
+    if (mints.length > 50) {
+      res.status(400).json({ error: 'Maximum 50 mints per request' });
+      return;
+    }
+
+    if (!metaplex) {
+      // Return empty metadata if service not available
+      const emptyMetadata: Record<string, any> = {};
+      for (const mint of mints) {
+        emptyMetadata[mint] = null;
+      }
+      res.json({ metadata: emptyMetadata });
+      return;
+    }
+
+    const metadataMap = await metaplex.getMultipleTokenMetadata(mints);
+
+    const metadata: Record<string, any> = {};
+    for (const mint of mints) {
+      const data = metadataMap.get(mint);
+      metadata[mint] = data || null;
+    }
+
+    res.json({ metadata });
+
+  } catch (error) {
+    logger.error('Failed to get batch token metadata:', error);
+    res.status(500).json({ error: 'Failed to fetch token metadata' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/launches/:publicKey - Get single launch
 // ---------------------------------------------------------------------------
 
@@ -142,7 +189,7 @@ router.get('/:publicKey', async (req: Request, res: Response) => {
     const { publicKey } = req.params;
 
     const launch = await indexer.getLaunch(publicKey);
-    
+
     if (!launch) {
       return res.status(404).json({ error: 'Launch not found' });
     }
@@ -183,6 +230,36 @@ router.get('/:publicKey/trades', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Failed to get trades:', error);
     res.status(500).json({ error: 'Failed to fetch trades' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/launches/:publicKey/metadata - Get token metadata via Metaplex
+// ---------------------------------------------------------------------------
+
+router.get('/:publicKey/metadata', async (req: Request, res: Response) => {
+  try {
+    const metaplex: MetaplexService | null = req.app.locals.metaplex;
+    const { publicKey } = req.params;
+
+    if (!metaplex) {
+      // Return null metadata if service not available
+      res.json(null);
+      return;
+    }
+
+    const metadata = await metaplex.getTokenMetadata(publicKey);
+
+    if (!metadata) {
+      res.status(404).json({ error: 'Token metadata not found' });
+      return;
+    }
+
+    res.json(metadata);
+
+  } catch (error) {
+    logger.error('Failed to get token metadata:', error);
+    res.status(500).json({ error: 'Failed to fetch token metadata' });
   }
 });
 

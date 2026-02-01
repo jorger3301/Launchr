@@ -19,6 +19,11 @@ import { SolanaService } from './services/solana';
 import { IndexerService } from './services/indexer';
 import { CacheService } from './services/cache';
 import { WebSocketService } from './services/websocket';
+import { initHelius, getHelius } from './services/helius';
+import { initJupiter, getJupiter } from './services/jupiter';
+import { initJito, getJito } from './services/jito';
+import { initPyth, getPyth } from './services/pyth';
+import { initMetaplex, getMetaplex } from './services/metaplex';
 
 import launchRoutes from './routes/launches';
 import tradeRoutes from './routes/trades';
@@ -37,6 +42,8 @@ const RPC_ENDPOINT = process.env.RPC_ENDPOINT || 'https://api.devnet.solana.com'
 const PROGRAM_ID = process.env.PROGRAM_ID || 'LNCHRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';
+const SOLANA_CLUSTER = (process.env.SOLANA_CLUSTER || 'devnet') as 'mainnet-beta' | 'devnet';
 
 // =============================================================================
 // APP SETUP
@@ -87,11 +94,25 @@ const indexerService = new IndexerService(solanaService, cacheService);
 const wss = new WebSocketServer({ server, path: '/ws' });
 const wsService = new WebSocketService(wss, indexerService);
 
+// Initialize Solana ecosystem services
+const jupiterService = initJupiter();
+const jitoService = initJito();
+const pythService = initPyth(SOLANA_CLUSTER);
+const metaplexService = initMetaplex(RPC_ENDPOINT);
+
+// Initialize Helius if API key is provided
+const heliusService = HELIUS_API_KEY ? initHelius(HELIUS_API_KEY, SOLANA_CLUSTER) : null;
+
 // Make services available to routes
 app.locals.solana = solanaService;
 app.locals.cache = cacheService;
 app.locals.indexer = indexerService;
 app.locals.ws = wsService;
+app.locals.jupiter = jupiterService;
+app.locals.jito = jitoService;
+app.locals.helius = heliusService;
+app.locals.pyth = pythService;
+app.locals.metaplex = metaplexService;
 
 // =============================================================================
 // ROUTES
@@ -116,6 +137,13 @@ app.get('/', (req, res) => {
       users: '/api/users',
       health: '/health',
       websocket: '/ws',
+    },
+    services: {
+      jupiter: 'enabled',
+      jito: 'enabled',
+      pyth: 'enabled',
+      metaplex: 'enabled',
+      helius: heliusService ? 'enabled' : 'disabled (no API key)',
     },
   });
 });
@@ -153,11 +181,21 @@ async function start() {
     wsService.start();
     logger.info('WebSocket service started');
 
+    // Initialize Jito with fastest block engine (non-blocking)
+    jitoService.findFastestBlockEngine().catch(err => {
+      logger.warn('Failed to find fastest Jito block engine:', err);
+    });
+
     // Start HTTP server
     server.listen(PORT, () => {
       logger.info(`🚀 Launchr API running on port ${PORT}`);
       logger.info(`   RPC: ${RPC_ENDPOINT}`);
       logger.info(`   Program: ${PROGRAM_ID}`);
+      logger.info(`   Jupiter: enabled`);
+      logger.info(`   Jito: enabled`);
+      logger.info(`   Pyth: enabled`);
+      logger.info(`   Metaplex: enabled`);
+      logger.info(`   Helius: ${heliusService ? 'enabled' : 'disabled (set HELIUS_API_KEY)'}`);
     });
 
   } catch (error) {

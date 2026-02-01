@@ -1,9 +1,12 @@
+[toolchain]
+anchor_version = "0.29.0"
+
 [features]
 seeds = false
 skip-lint = false
 
 [programs.devnet]
-launchr = "LNCHRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+launchr = "8QbLSptEeyGS6xxp6jsTstoZh7uuR1NqMxs1r4qmQ5aS"
 
 [registry]
 url = "https://api.apr.dev"

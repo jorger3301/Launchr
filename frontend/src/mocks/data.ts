@@ -90,6 +90,8 @@ function generateMockLaunch(index: number): LaunchData {
     totalSupply,
     tokensSold,
     realSolReserve,
+    virtualSolReserve: currentReserveSol,
+    virtualTokenReserve: currentReserveTokens,
     graduationThreshold,
     currentPrice,
     marketCap,
@@ -100,6 +102,7 @@ function generateMockLaunch(index: number): LaunchData {
     twitter: Math.random() > 0.3 ? `@${token.symbol.toLowerCase()}sol` : undefined,
     telegram: Math.random() > 0.5 ? `t.me/${token.symbol.toLowerCase()}` : undefined,
     website: Math.random() > 0.6 ? `https://${token.name.toLowerCase()}.xyz` : undefined,
+    creatorFeeBps: randomBetween(0, 250),
   };
 }
 

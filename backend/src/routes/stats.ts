@@ -1,12 +1,14 @@
 /**
  * Stats Routes
- * 
+ *
  * REST API endpoints for protocol statistics.
+ * Includes Pyth oracle price feeds integration.
  */
 
 import { Router, Request, Response } from 'express';
 import { IndexerService } from '../services/indexer';
 import { WebSocketService } from '../services/websocket';
+import { PythService, PYTH_PRICE_FEEDS } from '../services/pyth';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -106,12 +108,122 @@ router.get('/indexer', async (req: Request, res: Response) => {
   try {
     const indexer: IndexerService = req.app.locals.indexer;
     const state = indexer.getState();
-    
+
     res.json(state);
 
   } catch (error) {
     logger.error('Failed to get indexer stats:', error);
     res.status(500).json({ error: 'Failed to fetch indexer stats' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/stats/sol-price - Get SOL/USD price from Pyth Oracle
+// ---------------------------------------------------------------------------
+
+router.get('/sol-price', async (req: Request, res: Response) => {
+  try {
+    const pyth: PythService | null = req.app.locals.pyth;
+
+    if (!pyth) {
+      // Return fallback price if Pyth service not available
+      res.json({
+        price: 100.0,
+        confidence: 0.5,
+        symbol: 'SOL/USD',
+        publishTime: Math.floor(Date.now() / 1000),
+        emaPrice: 100.0,
+      });
+      return;
+    }
+
+    const priceData = await pyth.getSolUsdPrice();
+
+    if (!priceData) {
+      res.json({
+        price: 100.0,
+        confidence: 0.5,
+        symbol: 'SOL/USD',
+        publishTime: Math.floor(Date.now() / 1000),
+        emaPrice: 100.0,
+      });
+      return;
+    }
+
+    // Get full price data for more details
+    const fullPriceData = await pyth.getPrice(PYTH_PRICE_FEEDS['SOL/USD']);
+
+    res.json({
+      price: priceData,
+      confidence: fullPriceData?.confidence || 0,
+      symbol: 'SOL/USD',
+      publishTime: fullPriceData?.publishTime || Math.floor(Date.now() / 1000),
+      emaPrice: fullPriceData?.emaPrice || priceData,
+    });
+
+  } catch (error) {
+    logger.error('Failed to get SOL price:', error);
+    // Return fallback on error
+    res.json({
+      price: 100.0,
+      confidence: 0.5,
+      symbol: 'SOL/USD',
+      publishTime: Math.floor(Date.now() / 1000),
+      emaPrice: 100.0,
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/stats/prices - Get multiple token prices from Pyth Oracle
+// ---------------------------------------------------------------------------
+
+router.get('/prices', async (req: Request, res: Response) => {
+  try {
+    const pyth: PythService | null = req.app.locals.pyth;
+    const { symbols } = req.query;
+
+    if (!symbols || typeof symbols !== 'string') {
+      res.status(400).json({ error: 'symbols query parameter required' });
+      return;
+    }
+
+    const symbolList = symbols.split(',').map(s => s.trim());
+    const prices: Record<string, any> = {};
+
+    if (!pyth) {
+      // Return fallback prices
+      for (const symbol of symbolList) {
+        prices[symbol] = {
+          price: 0,
+          confidence: 0,
+          symbol,
+          publishTime: Math.floor(Date.now() / 1000),
+          emaPrice: 0,
+        };
+      }
+      res.json({ prices });
+      return;
+    }
+
+    for (const symbol of symbolList) {
+      const priceData = await pyth.getPriceBySymbol(symbol);
+      if (priceData) {
+        prices[symbol] = {
+          price: priceData.price,
+          confidence: priceData.confidence,
+          symbol,
+          publishTime: priceData.publishTime,
+          emaPrice: priceData.emaPrice,
+        };
+      }
+    }
+
+    res.json({ prices });
+
+  } catch (error) {
+    logger.error('Failed to get prices:', error);
+    res.status(500).json({ error: 'Failed to fetch prices' });
   }
 });
 

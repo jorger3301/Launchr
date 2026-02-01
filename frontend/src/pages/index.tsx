@@ -92,7 +92,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onCreateLaunch, stats }) => {
   return (
     <div className="relative overflow-hidden">
       {/* Background Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-[#5eead4]/10 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#22C55E]/10 via-transparent to-transparent" />
       
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
         <div className="text-center">
@@ -103,14 +103,14 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onCreateLaunch, stats }) => {
 
           {/* Tagline */}
           <Text variant="h1" className="mb-4 !text-4xl sm:!text-5xl lg:!text-6xl">
-            <span className="bg-gradient-to-r from-[#5eead4] to-[#a78bfa] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#22C55E] to-[#a78bfa] bg-clip-text text-transparent">
               Launch into Orbit
             </span>
           </Text>
           
           <Text variant="body" color="muted" className="max-w-2xl mx-auto mb-8 !text-lg">
             Fair token launches with bonding curves that graduate into 
-            <span className="text-[#5eead4] font-medium"> Orbit Finance DLMM </span>
+            <span className="text-[#22C55E] font-medium"> Orbit Finance DLMM </span>
             liquidity. No rugs. No dev dumps. Just pure, transparent launches.
           </Text>
 
@@ -136,7 +136,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onCreateLaunch, stats }) => {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4 sm:gap-8 max-w-2xl mx-auto">
             <div className="text-center">
-              <Text variant="h2" className="!text-[#5eead4] mb-1">
+              <Text variant="h2" className="!text-[#22C55E] mb-1">
                 {stats.totalLaunches.toLocaleString()}
               </Text>
               <Text variant="caption" color="muted">Total Launches</Text>
@@ -174,7 +174,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onCreateLaunch, stats }) => {
           />
           <defs>
             <linearGradient id="orbitGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#5eead4" />
+              <stop offset="0%" stopColor="#22C55E" />
               <stop offset="100%" stopColor="#a78bfa" />
             </linearGradient>
           </defs>
@@ -275,7 +275,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <IconTrending className="w-6 h-6 text-[#5eead4]" />
+              <IconTrending className="w-6 h-6 text-[#22C55E]" />
               <Text variant="h3">Trending</Text>
             </div>
             <Button variant="ghost" size="sm" onClick={() => handleTabChange('trending')}>
@@ -292,7 +292,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 onClick={() => onLaunchClick(launch)}
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#5eead4] to-[#a78bfa] flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#22C55E] to-[#a78bfa] flex items-center justify-center">
                     <Text variant="body" className="!font-bold">
                       {launch.symbol.slice(0, 2)}
                     </Text>
@@ -349,7 +349,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   className={`
                     px-3 py-1.5 rounded-md text-sm font-medium transition-colors
                     ${filter === f 
-                      ? 'bg-[#5eead4] text-[#0a0a14]' 
+                      ? 'bg-[#22C55E] text-[#111827]' 
                       : 'text-white/60 hover:text-white'}
                   `}
                 >
@@ -363,7 +363,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
               className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white
-                         focus:outline-none focus:border-[#5eead4]/50"
+                         focus:outline-none focus:border-[#22C55E]/50"
             >
               <option value="newest">Newest</option>
               <option value="volume">Volume</option>
@@ -533,7 +533,7 @@ export const LaunchDetailPage: React.FC<LaunchDetailPageProps> = ({
       <Card className="mt-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <IconGraduate className="w-5 h-5 text-[#5eead4]" />
+            <IconGraduate className="w-5 h-5 text-[#22C55E]" />
             <Text variant="label">Graduation Progress</Text>
           </div>
           {launch.status === 'Graduated' && (
@@ -562,12 +562,12 @@ export const LaunchDetailPage: React.FC<LaunchDetailPageProps> = ({
               onClick={() => setActiveTab(tab)}
               className={`
                 px-4 py-3 text-sm font-medium transition-colors relative
-                ${activeTab === tab ? 'text-[#5eead4]' : 'text-white/60 hover:text-white'}
+                ${activeTab === tab ? 'text-[#22C55E]' : 'text-white/60 hover:text-white'}
               `}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
               {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#5eead4]" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#22C55E]" />
               )}
             </button>
           ))}
@@ -778,7 +778,7 @@ export const MyLaunchesPage: React.FC<MyLaunchesPageProps> = ({
                 className={`
                   px-4 py-2 rounded-md text-sm font-medium transition-colors
                   ${view === 'created' 
-                    ? 'bg-[#5eead4] text-[#0a0a14]' 
+                    ? 'bg-[#22C55E] text-[#111827]' 
                     : 'text-white/60 hover:text-white'}
                 `}
               >
@@ -789,7 +789,7 @@ export const MyLaunchesPage: React.FC<MyLaunchesPageProps> = ({
                 className={`
                   px-4 py-2 rounded-md text-sm font-medium transition-colors
                   ${view === 'positions' 
-                    ? 'bg-[#5eead4] text-[#0a0a14]' 
+                    ? 'bg-[#22C55E] text-[#111827]' 
                     : 'text-white/60 hover:text-white'}
                 `}
               >
@@ -832,7 +832,7 @@ export const MyLaunchesPage: React.FC<MyLaunchesPageProps> = ({
                         onClick={() => onLaunchClick(launch)}
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#5eead4] to-[#a78bfa] flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#22C55E] to-[#a78bfa] flex items-center justify-center">
                             <Text variant="body" className="!font-bold">
                               {launch.symbol.slice(0, 2)}
                             </Text>

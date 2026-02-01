@@ -7,41 +7,41 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Primary - Teal
-        primary: {
-          50: '#f0fdfa',
-          100: '#ccfbf1',
-          200: '#99f6e4',
-          300: '#5eead4', // Main
-          400: '#2dd4bf',
-          500: '#14b8a6',
-          600: '#0d9488',
-          700: '#0f766e',
-          800: '#115e59',
-          900: '#134e4a',
+        // Launchr Brand - Green Scale
+        green: {
+          50: '#ECFDF5',
+          100: '#D1FAE5',
+          200: '#A7F3D0',
+          300: '#6EE7B7',
+          400: '#34D399',  // Gradient start
+          500: '#22C55E',  // Primary brand color
+          600: '#16A34A',  // Gradient end
+          700: '#15803D',
+          800: '#166534',
+          900: '#14532D',
         },
-        // Secondary - Purple
-        secondary: {
-          50: '#faf5ff',
-          100: '#f3e8ff',
-          200: '#e9d5ff',
-          300: '#d8b4fe',
-          400: '#c084fc',
-          500: '#a78bfa', // Main
-          600: '#9333ea',
-          700: '#7e22ce',
-          800: '#6b21a8',
-          900: '#581c87',
+        // Gray Scale (matches brand kit)
+        gray: {
+          50: '#F9FAFB',
+          100: '#F3F4F6',
+          200: '#E5E7EB',
+          300: '#D1D5DB',
+          400: '#9CA3AF',
+          500: '#6B7280',
+          600: '#4B5563',
+          700: '#374151',
+          800: '#1F2937',  // Card background
+          900: '#111827',  // Primary background (Void)
         },
-        // Backgrounds
+        // Backgrounds - Brand Kit
         bg: {
-          deep: '#0a0a14',
-          card: '#12121f',
-          elevated: '#1a1a2e',
+          deep: '#111827',
+          card: '#1F2937',
+          elevated: '#374151',
         },
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
         mono: ['JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
       },
       fontSize: {
@@ -51,9 +51,10 @@ module.exports = {
         '4xl': '2rem',
       },
       boxShadow: {
-        'glow': '0 0 30px rgba(94, 234, 212, 0.3)',
-        'glow-lg': '0 0 60px rgba(94, 234, 212, 0.4)',
-        'inner-glow': 'inset 0 0 30px rgba(94, 234, 212, 0.1)',
+        'glow': '0 0 30px rgba(34, 197, 94, 0.3)',
+        'glow-lg': '0 0 60px rgba(34, 197, 94, 0.4)',
+        'glow-sm': '0 0 15px rgba(34, 197, 94, 0.2)',
+        'inner-glow': 'inset 0 0 30px rgba(34, 197, 94, 0.1)',
       },
       animation: {
         'fade-in': 'fadeIn 0.2s ease-out',
@@ -77,8 +78,8 @@ module.exports = {
           '100%': { opacity: '1', transform: 'scale(1)' },
         },
         pulseGlow: {
-          '0%, 100%': { opacity: '0.5', boxShadow: '0 0 20px rgba(94, 234, 212, 0.3)' },
-          '50%': { opacity: '1', boxShadow: '0 0 40px rgba(94, 234, 212, 0.5)' },
+          '0%, 100%': { opacity: '0.5', boxShadow: '0 0 20px rgba(34, 197, 94, 0.3)' },
+          '50%': { opacity: '1', boxShadow: '0 0 40px rgba(34, 197, 94, 0.5)' },
         },
         gradientShift: {
           '0%': { backgroundPosition: '0% 50%' },
@@ -88,7 +89,8 @@ module.exports = {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-primary': 'linear-gradient(135deg, #5eead4, #a78bfa)',
+        'gradient-primary': 'linear-gradient(135deg, #34D399, #16A34A)',
+        'gradient-void': 'linear-gradient(135deg, #111827, #1F2937)',
         'grid-pattern': 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)',
       },
       backgroundSize: {

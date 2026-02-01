@@ -183,9 +183,9 @@ LaunchGraduated { launch, mint, orbit_pool, final_price, total_liquidity }
 
 Built with atomic design principles and a custom design language:
 
-- **Colors:** Teal primary (#5eead4), Purple secondary (#a78bfa)
-- **Theme:** Dark mode with glassmorphism effects
-- **Typography:** Inter font family
+- **Colors:** Green primary (#22C55E), Gradient (#34D399 → #16A34A)
+- **Theme:** Dark mode with Void gradient (#111827 → #1F2937) and glassmorphism effects
+- **Typography:** Plus Jakarta Sans font family
 
 ### Components
 
