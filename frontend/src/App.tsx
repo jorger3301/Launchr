@@ -2603,7 +2603,7 @@ const App: React.FC = () => {
           <div className="hero-buttons" style={s(ani("fu", 0.16), { display: "flex", gap: 10, marginTop: 30, flexWrap: "wrap" })}>
             <button
               onClick={() => go('create')}
-              className="btn-press glow-pulse btn-glow"
+              className="btn-press btn-premium-glow ripple-container"
               style={s(bpS, { height: 44, padding: "0 24px", fontSize: 14, display: "flex", alignItems: "center", gap: 8, justifyContent: "center" })}
             >
               <SvgPlus /> Create Launch
@@ -2617,7 +2617,7 @@ const App: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="glass-card card-lift" style={s(ani("si", 0.1), { padding: 40 })}>
+        <div className="glass-card card-lift hover-scale-premium card-3d" style={s(ani("si", 0.1), { padding: 40 })}>
           <div style={{ textAlign: "center" }}>
             <h2 style={{ fontSize: 36, fontWeight: 700, letterSpacing: -1, color: "var(--t1)" }}>Permissionless</h2>
             <h2 style={{ fontSize: 36, fontWeight: 700, letterSpacing: -1, color: "var(--t2)", marginTop: 2 }}>Token Launches</h2>
@@ -2625,7 +2625,7 @@ const App: React.FC = () => {
               <LiveDot />
               <span style={{ fontSize: 12, color: "var(--t2)" }}>Live on Devnet</span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginTop: 28 }} className="grid-stagger stats-grid-3">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginTop: 28 }} className="grid-stagger stats-grid-3 stat-card-animate">
               <HoverCard className="glass-card-inner" style={{ padding: 18 }} glowColor="rgba(99, 102, 241, 0.15)">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 600, letterSpacing: 0.5 }}>LAUNCHES</span>
@@ -3035,7 +3035,7 @@ const App: React.FC = () => {
                   <tr
                     key={l.id}
                     onClick={() => go('detail', l)}
-                    className="hoverable stagger-item table-row-hover"
+                    className="hoverable stagger-item table-row-hover stagger-reveal"
                     style={{
                       cursor: "pointer",
                       borderBottom: "1px solid var(--glass-border)",
@@ -3108,7 +3108,7 @@ const App: React.FC = () => {
           <Tooltip content="Create new launch" position="left">
             <button
               onClick={() => go('create')}
-              className="fab-button"
+              className="fab-button btn-premium-glow ripple-container"
               style={{
                 position: 'fixed',
                 bottom: 32,
@@ -4379,7 +4379,7 @@ const App: React.FC = () => {
                     <div
                       key={pos.launch.id}
                       onClick={() => go('detail', pos.launch)}
-                      className="glass-card-inner table-row-hover btn-press"
+                      className="glass-card-inner table-row-hover btn-press stagger-reveal hover-scale-premium"
                       style={s(ani("fu", i * 0.04), {
                         padding: 18,
                         cursor: "pointer",
@@ -4553,7 +4553,7 @@ const App: React.FC = () => {
                     <div
                       key={launch.id}
                       onClick={() => go('detail', launch)}
-                      className="glass-card-inner table-row-hover btn-press"
+                      className="glass-card-inner table-row-hover btn-press stagger-reveal hover-scale-premium"
                       style={s(ani("fu", i * 0.04), {
                         padding: 18,
                         cursor: "pointer",
@@ -6610,7 +6610,7 @@ const App: React.FC = () => {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="toast-enter"
+            className="toast-enter toast-premium"
             style={{
               padding: 0,
               borderRadius: 14,
