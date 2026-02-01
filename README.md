@@ -1,47 +1,93 @@
-# 🚀 Launchr - Launch into Orbit
+# 🚀 Launchr
 
-**Bonding curve token launches that graduate into Orbit Finance DLMM liquidity.**
+**Launch into Orbit** — Bonding curve token launches that graduate into Orbit Finance DLMM liquidity.
 
-![Launchr Banner](docs/banner.png)
+<p align="center">
+  <img src="docs/launchr-banner.png" alt="Launchr Banner" width="100%">
+</p>
 
 ## Overview
 
-Launchr is a permissionless token launchpad on Solana that uses constant-product bonding curves for fair price discovery. When sufficient liquidity accumulates, launches automatically graduate to Orbit Finance's concentrated liquidity pools.
+Launchr is a fair token launch platform on Solana that combines bonding curve mechanics with seamless graduation to Orbit Finance DLMM liquidity pools. No rugs. No dev dumps. Just pure, transparent launches.
 
 ### Key Features
 
-- **🎯 Fair Launch**: Anyone can create a token with transparent, on-chain pricing
-- **📈 Bonding Curve**: Constant product AMM (x*y=k) ensures predictable pricing
-- **🎓 Automatic Graduation**: Launches migrate to Orbit DLMM when threshold reached
-- **💰 Fee Distribution**: Protocol + creator fees with Orbit holder rewards
-- **🔒 Secure**: Non-upgradeable program, all logic on-chain
+- **🎯 Fair Launch** — Bonding curves ensure fair price discovery
+- **📈 Automatic Graduation** — Tokens graduate to Orbit DLMM when threshold is reached
+- **💧 Deep Liquidity** — Graduated tokens benefit from concentrated DLMM liquidity
+- **🛡️ Creator Protection** — 2% creator allocation with fee sharing
+- **📊 Real-time Tracking** — Monitor your positions and P&L
 
 ## Architecture
 
 ```
-launchr/
-├── program/          # Solana Anchor program (Rust)
-├── frontend/         # React TypeScript app
-├── backend/          # Node.js API server
-├── docs/             # Documentation
-└── docker-compose.yml
+┌─────────────────────────────────────────────────────────────────┐
+│                         LAUNCHR                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌───────────────┐         ┌───────────────┐                   │
+│   │   BONDING     │   85 SOL  │    ORBIT     │                   │
+│   │   CURVE       │ ────────► │    DLMM      │                   │
+│   │   PHASE       │ Graduate  │    POOL      │                   │
+│   └───────────────┘           └───────────────┘                   │
+│         │                            │                           │
+│    Buy / Sell                   Concentrated                     │
+│    on Curve                     Liquidity                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Token Economics
 
-| Allocation | Percentage | Description |
-|------------|------------|-------------|
-| Creator | 2% | Immediate allocation to creator |
-| Bonding Curve | 80% | Available for trading |
-| Graduation | 18% | Reserved for Orbit liquidity |
+| Allocation | Percentage | Amount |
+|------------|-----------|--------|
+| Bonding Curve | 80% | 800M tokens |
+| Graduation Liquidity | 18% | 180M tokens |
+| Creator | 2% | 20M tokens |
+| **Total Supply** | 100% | 1B tokens |
 
-### Initial Curve Parameters
+### Graduation Requirements
 
-- **Virtual SOL Reserve**: 30 SOL
-- **Virtual Token Reserve**: 800M tokens
-- **Graduation Threshold**: 85 SOL
+- **Threshold:** 85 SOL raised on bonding curve
+- **Trigger:** Permissionless — anyone can graduate once threshold is reached
+- **Result:** All liquidity migrates to Orbit Finance DLMM pool
 
-## Quick Start
+## Project Structure
+
+```
+launchr/
+├── programs/launchr/src/     # Solana program (Anchor)
+│   ├── lib.rs                # Program entry point
+│   ├── seeds.rs              # PDA seeds
+│   ├── state/                # Account structures
+│   │   ├── config.rs         # Global configuration
+│   │   ├── launch.rs         # Token launch state
+│   │   └── user_position.rs  # User positions
+│   ├── math/                 # Mathematical functions
+│   │   ├── bonding_curve.rs  # Constant product AMM
+│   │   └── orbit_math.rs     # DLMM calculations
+│   └── instructions/         # Program instructions
+│       ├── init_config.rs    # Initialize protocol
+│       ├── create_launch.rs  # Create new launch
+│       ├── buy.rs            # Buy tokens
+│       ├── sell.rs           # Sell tokens
+│       └── graduate.rs       # Graduate to Orbit
+│
+├── app/src/                  # React frontend
+│   ├── components/           # Atomic design system
+│   │   ├── atoms/            # Basic UI components
+│   │   ├── molecules/        # Composed components
+│   │   ├── organisms/        # Feature components
+│   │   └── templates/        # Page layouts
+│   ├── pages/                # Page views
+│   ├── hooks/                # Custom React hooks
+│   └── styles/               # Global styles
+│
+├── Cargo.toml                # Rust workspace
+└── Anchor.toml               # Anchor configuration
+```
+
+## Getting Started
 
 ### Prerequisites
 
@@ -49,172 +95,191 @@ launchr/
 - Solana CLI 1.18+
 - Anchor 0.29+
 - Node.js 18+
-- Docker (optional)
+- Yarn or npm
 
-### 1. Deploy Program
+### Installation
 
 ```bash
-cd program
+# Clone the repository
+git clone https://github.com/CipherLabs/launchr
+cd launchr
+
+# Install Rust dependencies
+cargo build
+
+# Install frontend dependencies
+cd app
+npm install
+
+# Build the program
 anchor build
+```
+
+### Development
+
+```bash
+# Start local validator
+solana-test-validator
+
+# Deploy program (devnet)
 anchor deploy --provider.cluster devnet
-```
 
-### 2. Start Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Edit .env with your settings
-npm run dev
-```
-
-### 3. Start Frontend
-
-```bash
-cd frontend
-npm install
+# Run frontend
+cd app
 npm start
 ```
 
-### Docker Deployment
+### Testing
 
 ```bash
-# Start all services
-docker-compose up -d
+# Run program tests
+anchor test
 
-# View logs
-docker-compose logs -f
+# Run frontend tests
+cd app
+npm test
 ```
+
+## Smart Contract
+
+### Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `init_config` | Initialize protocol configuration (admin only) |
+| `update_config` | Update fees, thresholds, pause states |
+| `transfer_admin` | Transfer admin authority |
+| `create_launch` | Create a new token launch |
+| `buy` | Buy tokens on bonding curve |
+| `sell` | Sell tokens on bonding curve |
+| `graduate` | Graduate launch to Orbit DLMM |
+
+### PDAs
+
+| Account | Seeds |
+|---------|-------|
+| Config | `["config"]` |
+| Launch | `["launch", mint]` |
+| User Position | `["user_position", launch, user]` |
+| Curve Vault | `["curve_vault", launch]` |
+| Token Vault | `["token_vault", launch]` |
+
+### Events
+
+```rust
+// Emitted when a new launch is created
+LaunchCreated { launch, mint, creator, name, symbol }
+
+// Emitted on every trade
+TradeExecuted { launch, user, trade_type, sol_amount, token_amount, price }
+
+// Emitted when launch graduates to Orbit
+LaunchGraduated { launch, mint, orbit_pool, final_price, total_liquidity }
+```
+
+## Frontend
+
+### Design System
+
+Built with atomic design principles and a custom design language:
+
+- **Colors:** Green primary (#22C55E), Gradient (#34D399 → #16A34A)
+- **Theme:** Dark mode with Void gradient (#111827 → #1F2937) and glassmorphism effects
+- **Typography:** Plus Jakarta Sans font family
+
+### Components
+
+#### Atoms
+- Button, Input, Text, Badge, Spinner
+- ProgressBar, Avatar, Skeleton, Card
+- Icons (Rocket, Trending, Wallet, etc.)
+- LaunchrLogo
+
+#### Molecules
+- SearchBar, TokenBadge, PriceDisplay
+- StatCard, GraduationProgress, TradeInput
+- TransactionRow, PositionSummary, SocialLinks
+
+#### Organisms
+- TradePanel, LaunchHeader, LaunchGrid
+- TransactionFeed, HoldersList, CreateLaunchForm
+- PriceChart
+
+#### Templates
+- MainLayout, LaunchDetailLayout
+- CreateLaunchLayout, LoadingLayout, ErrorLayout
 
 ## API Reference
 
-### REST Endpoints
+### Hooks
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/launches` | GET | List all launches |
-| `/api/launches/trending` | GET | Get trending launches |
-| `/api/launches/:publicKey` | GET | Get single launch |
-| `/api/launches/:publicKey/trades` | GET | Get launch trades |
-| `/api/stats` | GET | Global protocol stats |
-| `/api/users/:address/positions` | GET | User positions |
-| `/health` | GET | Health check |
+```typescript
+// Wallet connection
+const { address, balance, connected, connect, disconnect } = useWallet();
 
-### WebSocket Events
+// Fetch all launches
+const { launches, trendingLaunches, loading, refetch } = useLaunches();
 
-```javascript
-// Connect
-const ws = new WebSocket('ws://localhost:3001/ws');
+// Single launch details
+const { launch, trades, holders, priceHistory } = useLaunch(publicKey);
 
-// Subscribe to channels
-ws.send(JSON.stringify({ type: 'subscribe', channel: 'trades' }));
-ws.send(JSON.stringify({ type: 'subscribe', channel: 'launches' }));
+// User position
+const { position, loading } = useUserPosition(launchPk, userAddress);
 
-// Receive updates
-ws.onmessage = (event) => {
-  const { type, channel, data } = JSON.parse(event.data);
-  console.log(`${channel}: ${type}`, data);
-};
+// Trading
+const { buy, sell, loading, error } = useTrade(wallet);
+
+// Create new launch
+const { createLaunch, loading, error } = useCreateLaunch(wallet);
 ```
 
-## Program Instructions
+## Fees
 
-### `init_config`
-Initialize global protocol configuration (one-time).
-
-### `create_launch`
-Create a new token with bonding curve.
-
-**Parameters:**
-- `name`: Token name (max 32 chars)
-- `symbol`: Token symbol (max 10 chars)
-- `uri`: Metadata URI
-- `creator_fee_bps`: Creator fee (max 500 = 5%)
-
-### `buy`
-Buy tokens from the bonding curve.
-
-**Parameters:**
-- `sol_amount`: SOL to spend (lamports)
-- `min_tokens_out`: Slippage protection
-
-### `sell`
-Sell tokens back to the bonding curve.
-
-**Parameters:**
-- `token_amount`: Tokens to sell
-- `min_sol_out`: Slippage protection
-
-### `graduate`
-Migrate launch to Orbit Finance DLMM.
-
-**Parameters:**
-- `bin_step_bps`: Orbit bin step (optional)
-- `num_liquidity_bins`: Distribution bins (optional)
-
-## Environment Variables
-
-### Backend
-```env
-PORT=3001
-RPC_ENDPOINT=https://api.devnet.solana.com
-PROGRAM_ID=LNCHRxxx...
-REDIS_URL=redis://localhost:6379
-CORS_ORIGIN=http://localhost:3000
-```
-
-### Frontend
-```env
-REACT_APP_API_URL=http://localhost:3001
-REACT_APP_WS_URL=ws://localhost:3001/ws
-REACT_APP_RPC_ENDPOINT=https://api.devnet.solana.com
-REACT_APP_PROGRAM_ID=LNCHRxxx...
-```
-
-## Development
-
-### Program Tests
-
-```bash
-cd program
-anchor test
-```
-
-### Frontend Tests
-
-```bash
-cd frontend
-npm test
-```
-
-### Backend Tests
-
-```bash
-cd backend
-npm test
-```
+| Fee Type | Amount | Distribution |
+|----------|--------|--------------|
+| Protocol Fee | 1% | Protocol treasury |
+| Creator Fee | 0-3% | Launch creator |
+| **Post-Graduation** | | |
+| CIPHER Holders | 30% | Fee vault |
+| NFT Holders | 20% | Fee vault |
+| Creator | Variable | Creator address |
 
 ## Security
 
-- Program is non-upgradeable after deployment
-- All PDA seeds are derived deterministically
-- Slippage protection on all trades
-- Rate limiting on API endpoints
-- Input validation throughout
+- All smart contracts are open source
+- Bonding curve math uses checked arithmetic
+- PDAs ensure account security
+- Creator tokens are locked during bonding phase
+
+## Roadmap
+
+- [x] Bonding curve mechanics
+- [x] Orbit Finance DLMM integration
+- [x] Frontend application
+- [ ] Mainnet deployment
+- [ ] Token locking mechanisms
+- [ ] Advanced analytics
+- [ ] Mobile app
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+MIT License — see [LICENSE](LICENSE) for details.
 
 ## Links
 
-- **Orbit Finance**: [orbit.finance](https://orbit.finance)
-- **CipherLabs**: [@CipherLabs_](https://twitter.com/CipherLabs_)
-- **Documentation**: [docs.launchr.xyz](https://docs.launchr.xyz)
+- 🌐 Website: [launchr.cipherlabs.xyz](https://launchr.cipherlabs.xyz)
+- 🐦 Twitter: [@CipherLabs_](https://twitter.com/CipherLabs_)
+- 📚 Docs: [docs.cipherlabs.xyz/launchr](https://docs.cipherlabs.xyz/launchr)
+- 💬 Discord: [discord.gg/cipherlabs](https://discord.gg/cipherlabs)
 
 ---
 
-Built with 💚 by CipherLabs
-
-*Launch into Orbit* 🚀
+<p align="center">
+  Built with 💚 by <a href="https://cipherlabs.xyz">CipherLabs</a>
+  <br>
+  Powered by <a href="https://orbit.finance">Orbit Finance</a>
+</p>
