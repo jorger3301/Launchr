@@ -2350,3 +2350,321 @@ html {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* =============================================================================
+   INSTITUTIONAL GRADE UX ENHANCEMENTS
+   ============================================================================= */
+
+/* Enhanced focus-visible states for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--grn);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--grn);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(110, 231, 183, 0.15);
+}
+
+/* Remove default focus outline when using mouse */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Improved focus ring for cards and interactive elements */
+.glass-card:focus-within,
+.glass-card-inner:focus-within {
+  box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.3), 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+/* Keyboard navigation indicator */
+.keyboard-nav-active *:focus {
+  outline: 2px solid var(--grn);
+  outline-offset: 3px;
+}
+
+/* Professional button states */
+button:active:not(:disabled),
+.btn-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+button:disabled,
+.btn-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Input refinements */
+input::placeholder,
+textarea::placeholder {
+  color: var(--t3);
+  opacity: 0.8;
+}
+
+input:focus::placeholder,
+textarea:focus::placeholder {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+/* Selection improvements */
+input::selection,
+textarea::selection {
+  background-color: rgba(110, 231, 183, 0.3);
+}
+
+/* Smooth state transitions for all interactive elements */
+button,
+a,
+input,
+select,
+textarea,
+.interactive-hover {
+  transition: all 0.2s var(--ease-out-quart, cubic-bezier(0.165, 0.84, 0.44, 1));
+}
+
+/* Enhanced table interactions */
+.table-row-hover {
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.table-row-hover:hover {
+  background-color: var(--glass2);
+}
+
+.table-row-hover:active {
+  transform: scale(0.995);
+}
+
+/* Status indicator pulse */
+.status-live {
+  position: relative;
+}
+
+.status-live::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  background: var(--grn);
+  border-radius: 50%;
+  transform: translateY(-50%);
+  animation: pulse-scale 2s ease-in-out infinite;
+}
+
+/* Price change indicators with smooth transitions */
+.price-change-positive {
+  color: var(--grn);
+  transition: color 0.3s ease;
+}
+
+.price-change-negative {
+  color: var(--red);
+  transition: color 0.3s ease;
+}
+
+/* Improved skeleton loading with wave effect */
+.skeleton-wave {
+  position: relative;
+  overflow: hidden;
+  background: var(--glass2);
+}
+
+.skeleton-wave::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.08),
+    transparent
+  );
+  animation: skeleton-wave 1.5s infinite;
+}
+
+@keyframes skeleton-wave {
+  100% {
+    left: 100%;
+  }
+}
+
+/* Card hover lift effect refinement */
+.card-hover-lift {
+  transition: transform 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart);
+}
+
+.card-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+}
+
+/* Subtle border glow on hover */
+.border-glow-hover {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.border-glow-hover:hover {
+  border-color: rgba(110, 231, 183, 0.3);
+  box-shadow: 0 0 20px rgba(110, 231, 183, 0.1);
+}
+
+/* Professional data update flash */
+.data-updated {
+  animation: data-flash 0.6s ease-out;
+}
+
+@keyframes data-flash {
+  0% {
+    background-color: rgba(110, 231, 183, 0.15);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Smooth number transitions */
+.number-transition {
+  transition: transform 0.3s var(--ease-out-quart);
+  display: inline-block;
+}
+
+.number-transition.updating {
+  transform: scale(1.05);
+}
+
+/* Enhanced modal backdrop blur */
+.modal-backdrop {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Input validation states */
+.input-valid {
+  border-color: var(--grn) !important;
+  box-shadow: 0 0 0 3px rgba(110, 231, 183, 0.1);
+}
+
+.input-invalid {
+  border-color: var(--red) !important;
+  box-shadow: 0 0 0 3px rgba(252, 165, 165, 0.1);
+  animation: shake-subtle 0.3s ease-out;
+}
+
+@keyframes shake-subtle {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* Smooth scroll snap for horizontal scrolling */
+.scroll-snap-x {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-snap-item {
+  scroll-snap-align: start;
+}
+
+/* Professional tooltip arrow refinement */
+.tooltip-arrow {
+  width: 8px;
+  height: 8px;
+  background: var(--bg-card);
+  transform: rotate(45deg);
+  border: 1px solid var(--glass-border);
+  border-top: none;
+  border-left: none;
+}
+
+/* Enhanced loading spinner */
+.spinner-professional {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--glass2);
+  border-top-color: var(--grn);
+  border-radius: 50%;
+  animation: spin-smooth 0.8s linear infinite;
+}
+
+@keyframes spin-smooth {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Notification badge pulse */
+.notification-badge {
+  position: relative;
+}
+
+.notification-badge::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  background: var(--red);
+  border-radius: 50%;
+  border: 2px solid var(--bg-card);
+  animation: notification-pulse 2s infinite;
+}
+
+@keyframes notification-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .interactive-hover:hover {
+    background: inherit;
+    transform: none;
+  }
+
+  button,
+  .btn-press {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* Larger touch targets on mobile */
+  button:not(.btn-icon) {
+    min-height: 44px;
+  }
+}
+
+/* Print styles */
+@media print {
+  .glass-card,
+  .glass-card-inner {
+    background: white !important;
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
