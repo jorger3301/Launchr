@@ -336,11 +336,22 @@ class WebSocketClient {
   }
 
   private processMessage(message: WebSocketMessage): void {
+    // Validate message structure
+    if (!message || typeof message !== 'object' || !message.type) {
+      console.warn('Invalid WebSocket message format:', message);
+      return;
+    }
+
     // Normalize backend messages to frontend format
     if (message.type === 'connected') {
+      const channels = message.data?.channels;
+      if (!Array.isArray(channels)) {
+        console.warn('Invalid connected message - missing channels array');
+        return;
+      }
       const normalized: NormalizedMessage = {
         type: 'connected',
-        channels: message.data.channels
+        channels
       };
       this.handlers.forEach(handler => handler(normalized));
       return;
@@ -349,23 +360,46 @@ class WebSocketClient {
     if (message.type === 'update') {
       const { channel, data } = message;
 
+      // Validate update message has required fields
+      if (!channel || !data || typeof data !== 'object') {
+        console.warn('Invalid update message - missing channel or data:', message);
+        return;
+      }
+
       if (channel === 'trades') {
+        // Validate trade data has required fields
+        if (
+          typeof data.trader !== 'string' ||
+          typeof data.launch !== 'string' ||
+          data.tokenAmount === undefined ||
+          data.solAmount === undefined
+        ) {
+          console.warn('Invalid trade data - missing required fields:', data);
+          return;
+        }
+
         // Transform trade data to frontend format
         const normalized: NormalizedMessage = {
           type: 'trade',
           data: {
-            type: data.type,
+            type: data.type || 'buy',
             user: data.trader,
-            amount: data.tokenAmount,
-            solAmount: data.solAmount,
-            price: data.price,
-            timestamp: data.timestamp,
-            txSignature: data.signature,
+            amount: data.tokenAmount ?? 0,
+            solAmount: data.solAmount ?? 0,
+            price: data.price ?? 0,
+            timestamp: data.timestamp ?? Date.now(),
+            txSignature: data.signature || '',
           },
           launchPk: data.launch
         };
         this.handlers.forEach(handler => handler(normalized));
       } else if (channel === 'launches') {
+        // Validate launch data
+        if (!data.type || (data.type !== 'created' && data.type !== 'graduated')) {
+          console.warn('Invalid launch event type:', data.type);
+          return;
+        }
+
         // Handle launch events (created, graduated)
         const eventType = data.type === 'created' ? 'launch_created' : 'launch_graduated';
         const normalized: NormalizedMessage = {

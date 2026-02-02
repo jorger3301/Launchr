@@ -256,14 +256,15 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative ${className}`} role="search">
       <Input
         value={value}
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        leftIcon={<IconSearch className="w-4 h-4" />}
+        leftIcon={<IconSearch className="w-4 h-4" aria-hidden="true" />}
         rightIcon={loading ? <Spinner size="sm" /> : undefined}
+        aria-label="Search tokens"
       />
     </div>
   );
@@ -319,25 +320,26 @@ export const WalletDisplay: React.FC<WalletDisplayProps> = ({
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       {balance !== undefined && (
-        <Text variant="body" className="font-mono">
+        <Text variant="body" className="font-mono" aria-label={`Balance: ${balance.toFixed(4)} SOL`}>
           {balance.toFixed(4)} SOL
         </Text>
       )}
       <button
         onClick={handleCopy}
         className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-lg
-          border border-white/10 hover:bg-white/10 transition-colors"
+          border border-white/10 hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/50"
+        aria-label={copied ? 'Address copied!' : `Copy wallet address: ${shortAddress}`}
       >
         <Text variant="body" className="font-mono">
           {shortAddress}
         </Text>
         {copied ? (
-          <IconCheck className="w-4 h-4 text-green-400" />
+          <IconCheck className="w-4 h-4 text-green-400" aria-hidden="true" />
         ) : (
-          <IconCopy className="w-4 h-4 text-white/50" />
+          <IconCopy className="w-4 h-4 text-white/50" aria-hidden="true" />
         )}
       </button>
-      <Button variant="ghost" size="sm" onClick={onDisconnect}>
+      <Button variant="ghost" size="sm" onClick={onDisconnect} aria-label="Disconnect wallet">
         Disconnect
       </Button>
     </div>
@@ -423,6 +425,20 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
     setDetectedWallets(updated);
   }, [wallets, isOpen]);
 
+  // Handle keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   const handleSelect = useCallback((walletType: string) => {
     setConnecting(walletType);
     // Small delay to show connecting state
@@ -436,12 +452,18 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wallet-modal-title"
+    >
       {/* Backdrop with premium blur animation */}
       <div
         className="absolute inset-0 modal-backdrop-premium"
         style={{ background: 'rgba(0,0,0,0.6)' }}
         onClick={onClose}
+        aria-hidden="true"
       />
 
       {/* Modal with premium entrance animation */}
@@ -460,6 +482,7 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
             <div
               className="p-2 rounded-xl"
               style={{ background: 'var(--glass2)' }}
+              aria-hidden="true"
             >
               <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
@@ -467,14 +490,15 @@ export const WalletSelector: React.FC<WalletSelectorProps> = ({
                 <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
               </svg>
             </div>
-            <Text variant="h4" className="font-semibold">Connect Wallet</Text>
+            <span id="wallet-modal-title"><Text variant="h4" className="font-semibold">Connect Wallet</Text></span>
           </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-white/10 rounded-lg transition-all hover:rotate-90"
             style={{ transition: 'all 0.2s ease' }}
+            aria-label="Close wallet selector"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -901,18 +925,20 @@ export const TradeInput: React.FC<TradeInputProps> = ({
           placeholder="0.00"
           disabled={disabled}
           className="pr-20"
+          aria-label={`Amount to ${type}`}
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
           {onMaxClick && (
             <button
               onClick={onMaxClick}
-              className="text-xs text-green-400 hover:text-green-300 font-medium"
+              className="text-xs text-green-400 hover:text-green-300 font-medium focus:outline-none focus:ring-2 focus:ring-green-500/50 rounded"
               disabled={disabled}
+              aria-label={`Use maximum ${type === 'buy' ? 'SOL' : tokenSymbol} balance`}
             >
               MAX
             </button>
           )}
-          <Text variant="caption" className="font-medium">
+          <Text variant="caption" className="font-medium" aria-hidden="true">
             {type === 'buy' ? 'SOL' : tokenSymbol}
           </Text>
         </div>
@@ -948,7 +974,11 @@ export const TradeToggle: React.FC<TradeToggleProps> = ({
   className = '',
 }) => {
   return (
-    <div className={`flex bg-white/5 rounded-lg p-1 ${className}`}>
+    <div
+      className={`flex bg-white/5 rounded-lg p-1 ${className}`}
+      role="group"
+      aria-label="Trade type selector"
+    >
       <button
         onClick={() => onChange('buy')}
         className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
@@ -956,6 +986,8 @@ export const TradeToggle: React.FC<TradeToggleProps> = ({
             ? 'bg-green-500 text-white'
             : 'text-white/60 hover:text-white'
         }`}
+        aria-pressed={value === 'buy'}
+        aria-label="Buy tokens"
       >
         Buy
       </button>
@@ -966,6 +998,8 @@ export const TradeToggle: React.FC<TradeToggleProps> = ({
             ? 'bg-rose-500 text-white'
             : 'text-white/60 hover:text-white'
         }`}
+        aria-pressed={value === 'sell'}
+        aria-label="Sell tokens"
       >
         Sell
       </button>
@@ -1146,20 +1180,20 @@ export const SocialLinks: React.FC<SocialLinksProps> = ({
   if (links.length === 0) return null;
 
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <nav className={`flex items-center gap-2 ${className}`} aria-label="Social links">
       {links.map(({ url, icon: Icon, label }) => (
         <a
           key={label}
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="p-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
-          title={label}
+          className="p-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/50"
+          aria-label={`Visit ${label}`}
         >
-          <Icon className="w-4 h-4 text-white/60 hover:text-white" />
+          <Icon className="w-4 h-4 text-white/60 hover:text-white" aria-hidden="true" />
         </a>
       ))}
-    </div>
+    </nav>
   );
 };
 
@@ -1620,12 +1654,47 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   onChange,
   className = '',
 }) => {
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
+    const tabCount = tabs.length;
+    let newIndex = index;
+
+    switch (e.key) {
+      case 'ArrowRight':
+        newIndex = (index + 1) % tabCount;
+        break;
+      case 'ArrowLeft':
+        newIndex = (index - 1 + tabCount) % tabCount;
+        break;
+      case 'Home':
+        newIndex = 0;
+        break;
+      case 'End':
+        newIndex = tabCount - 1;
+        break;
+      default:
+        return;
+    }
+
+    e.preventDefault();
+    onChange(tabs[newIndex].id);
+  };
+
   return (
-    <div className={`flex items-center gap-1 bg-white/5 p-1 rounded-lg ${className}`}>
-      {tabs.map((tab) => (
+    <div
+      className={`flex items-center gap-1 bg-white/5 p-1 rounded-lg ${className}`}
+      role="tablist"
+      aria-label="Navigation tabs"
+    >
+      {tabs.map((tab, index) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
+          onKeyDown={(e) => handleKeyDown(e, index)}
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          aria-controls={`tabpanel-${tab.id}`}
+          tabIndex={activeTab === tab.id ? 0 : -1}
           className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium
             transition-all ${
             activeTab === tab.id
@@ -1633,10 +1702,10 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
               : 'text-white/60 hover:text-white hover:bg-white/5'
           }`}
         >
-          {tab.icon}
+          {tab.icon && <span aria-hidden="true">{tab.icon}</span>}
           {tab.label}
           {tab.badge !== undefined && (
-            <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
+            <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs" aria-label={`${tab.badge} items`}>
               {tab.badge}
             </span>
           )}
