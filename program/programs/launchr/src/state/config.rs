@@ -6,7 +6,6 @@ use anchor_lang::prelude::*;
 
 /// Global configuration account for the Launchr protocol
 #[account]
-#[derive(Default)]
 pub struct Config {
     /// Admin authority - can update config and pause launches
     pub admin: Pubkey,
@@ -143,4 +142,27 @@ pub mod defaults {
     
     /// WSOL mint address
     pub const WSOL_MINT: &str = "So11111111111111111111111111111111111111112";
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            admin: Pubkey::default(),
+            fee_authority: Pubkey::default(),
+            protocol_fee_bps: 0,
+            graduation_threshold: 0,
+            quote_mint: Pubkey::default(),
+            orbit_program_id: Pubkey::default(),
+            default_bin_step_bps: 0,
+            default_base_fee_bps: 0,
+            launches_paused: false,
+            trading_paused: false,
+            total_launches: 0,
+            total_graduations: 0,
+            total_volume_lamports: 0,
+            total_fees_collected: 0,
+            bump: 0,
+            _reserved: [0u8; 64],
+        }
+    }
 }

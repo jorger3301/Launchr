@@ -6,7 +6,7 @@ seeds = false
 skip-lint = false
 
 [programs.devnet]
-launchr = "8QbLSptEeyGS6xxp6jsTstoZh7uuR1NqMxs1r4qmQ5aS"
+launchr = "AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK"
 
 [registry]
 url = "https://api.apr.dev"

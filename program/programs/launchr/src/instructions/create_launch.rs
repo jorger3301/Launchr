@@ -237,6 +237,9 @@ pub fn create_launch(ctx: Context<CreateLaunch>, params: CreateLaunchParams) -> 
     // Update global stats
     config.record_launch();
     
+    // Log before emitting (since emit moves the values)
+    msg!("🚀 Launch created: {} ({})", params.name, params.symbol);
+
     // Emit event
     emit!(LaunchCreated {
         mint: launch.mint,
@@ -247,8 +250,6 @@ pub fn create_launch(ctx: Context<CreateLaunch>, params: CreateLaunchParams) -> 
         graduation_threshold: launch.graduation_threshold,
         timestamp: clock.unix_timestamp,
     });
-    
-    msg!("🚀 Launch created: {} ({})", params.name, params.symbol);
     msg!("Mint: {}", launch.mint);
     msg!("Bonding curve: {} tokens (80%)", curve_tokens);
     msg!("LP reserve: {} tokens (20%)", launch.graduation_tokens);

@@ -7,8 +7,7 @@ use anchor_lang::prelude::*;
 /// Q64.64 fixed-point multiplier (2^64)
 pub const Q64_64: u128 = 1 << 64;
 
-/// Q128 fixed-point multiplier (2^128)
-pub const Q128: u128 = 1 << 128;
+// Q128 would be 2^128 but that overflows u128, not needed for our calculations
 
 /// Number of bins per BinArray
 pub const BIN_ARRAY_SIZE: i32 = 64;
@@ -120,10 +119,11 @@ pub fn bin_index_to_price(bin_index: i32, bin_step_bps: u16) -> u128 {
     } else {
         // For negative index: 1 / (1 + step)^|index|
         let denominator = pow_q64(one_plus_step, (-bin_index) as u32);
-        if denominator == 0 {
+        if denominator == 0 || denominator <= Q64_64 {
             return 0;
         }
-        (Q64_64 * Q64_64) / denominator
+        // Avoid overflow: Q64_64^2 / denom = Q64_64 / (denom / Q64_64)
+        Q64_64 / (denominator / Q64_64)
     }
 }
 
@@ -242,10 +242,22 @@ pub fn create_graduation_fee_config(creator_fee_bps: u16) -> OrbitFeeConfig {
 
 /// Integer natural logarithm approximation for Q64.64 values
 fn integer_ln(value: u128) -> i128 {
-    if value <= Q64_64 {
-        // value < 1, negative ln
-        let inverse = (Q64_64 * Q64_64) / value;
-        return -(integer_ln_positive(inverse) as i128);
+    if value == 0 {
+        return i128::MIN;
+    }
+
+    // ln(2) in Q64.64 ≈ 12786308645202655660
+    const LN_2_Q64: u128 = 12786308645202655660;
+
+    if value < Q64_64 {
+        // value < 1.0 in Q64.64, so ln(value) is negative
+        // Use bit position to approximate: ln(value) ≈ -(64 - bit_position) * ln(2)
+        let leading_zeros = value.leading_zeros();
+        let bit_position = 127_u32.saturating_sub(leading_zeros);
+        if bit_position < 64 {
+            return -((64 - bit_position) as i128 * LN_2_Q64 as i128);
+        }
+        return 0;
     }
     integer_ln_positive(value) as i128
 }

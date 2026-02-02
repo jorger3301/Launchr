@@ -25,7 +25,6 @@ impl Default for LaunchStatus {
 
 /// Token launch account - represents a single token on the bonding curve
 #[account]
-#[derive(Default)]
 pub struct Launch {
     /// Token mint address
     pub mint: Pubkey,
@@ -298,5 +297,41 @@ pub mod curve_params {
     /// Initial k value (constant product)
     pub fn initial_k() -> u128 {
         INITIAL_VIRTUAL_SOL as u128 * INITIAL_VIRTUAL_TOKENS as u128
+    }
+}
+
+impl Default for Launch {
+    fn default() -> Self {
+        Self {
+            mint: Pubkey::default(),
+            creator: Pubkey::default(),
+            status: LaunchStatus::default(),
+            total_supply: 0,
+            tokens_sold: 0,
+            graduation_tokens: 0,
+            creator_tokens: 0,
+            virtual_sol_reserve: 0,
+            virtual_token_reserve: 0,
+            real_sol_reserve: 0,
+            real_token_reserve: 0,
+            graduation_threshold: 0,
+            created_at: 0,
+            graduated_at: 0,
+            buy_volume: 0,
+            sell_volume: 0,
+            trade_count: 0,
+            holder_count: 0,
+            orbit_pool: Pubkey::default(),
+            creator_fee_bps: 0,
+            name: [0u8; 32],
+            symbol: [0u8; 10],
+            uri: [0u8; 200],
+            twitter: [0u8; 64],
+            telegram: [0u8; 64],
+            website: [0u8; 64],
+            bump: 0,
+            authority_bump: 0,
+            _reserved: [0u8; 32],
+        }
     }
 }
