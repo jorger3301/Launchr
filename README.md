@@ -54,18 +54,23 @@ launchr/
 
 | Allocation | Percentage | Description |
 |------------|------------|-------------|
-| Creator | 2% | Immediate allocation to creator |
 | Bonding Curve | 80% | Available for trading |
-| Graduation | 18% | Reserved for Orbit liquidity |
+| LP Reserve | 20% | Reserved for Orbit DLMM migration |
+
+### Graduation Rewards
+
+| Reward | Amount | Description |
+|--------|--------|-------------|
+| Creator Reward | 2 SOL | Paid to creator on successful graduation |
 
 ### Bonding Curve Parameters
 
+- **Total Supply**: 1 Billion tokens (1,000,000,000)
 - **Virtual SOL Reserve**: 30 SOL
 - **Virtual Token Reserve**: 800M tokens
-- **Total Supply**: 1 Billion tokens
 - **Graduation Threshold**: 85 SOL real reserve
-- **Protocol Fee**: 1%
-- **Max Creator Fee**: 5%
+- **Protocol Fee**: 1% (100 bps)
+- **Max Creator Fee**: 5% (500 bps)
 
 ## Tech Stack
 
