@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts",
-    "test": "jest"
+    "test": "jest",
+    "init-config": "ts-node scripts/init-config.ts"
   },
   "dependencies": {
     "@solana/web3.js": "^1.87.6",

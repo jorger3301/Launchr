@@ -454,6 +454,288 @@ export const LaunchGrid: React.FC<LaunchGridProps> = ({
 };
 
 // =============================================================================
+// IMAGE UPLOAD COMPONENT
+// =============================================================================
+
+interface ImageUploadProps {
+  value: string;
+  onChange: (uri: string) => void;
+  error?: string;
+  className?: string;
+}
+
+const ImageUpload: React.FC<ImageUploadProps> = ({
+  value,
+  onChange,
+  error,
+  className = '',
+}) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string>(value);
+  const [uploadError, setUploadError] = useState<string>('');
+  const [inputMode, setInputMode] = useState<'upload' | 'url'>('upload');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Update preview when value changes
+  useEffect(() => {
+    if (value && value.startsWith('http')) {
+      setPreviewUrl(value);
+    }
+  }, [value]);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      await handleFile(files[0]);
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      await handleFile(files[0]);
+    }
+  };
+
+  const handleFile = async (file: File) => {
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please upload an image file (PNG, JPG, GIF, or WebP)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Image must be less than 5MB');
+      return;
+    }
+
+    setUploadError('');
+    setIsUploading(true);
+
+    try {
+      // Create local preview immediately
+      const localPreview = URL.createObjectURL(file);
+      setPreviewUrl(localPreview);
+
+      // Upload to a free image hosting service (imgbb or similar)
+      // For production, you'd use IPFS (Pinata, NFT.Storage, etc.)
+      const formData = new FormData();
+      formData.append('image', file);
+
+      // Using imgbb free API (you can replace with your preferred service)
+      const response = await fetch('https://api.imgbb.com/1/upload?key=demo', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        // Fallback: use the local blob URL and inform user
+        // In production, integrate with IPFS/Arweave
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          setPreviewUrl(base64);
+          // For demo purposes, just use the preview
+          // In production, this would upload to IPFS
+          onChange(localPreview);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const data = await response.json();
+      if (data.success && data.data?.url) {
+        setPreviewUrl(data.data.url);
+        onChange(data.data.url);
+      } else {
+        throw new Error('Upload failed');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      // Use local preview as fallback
+      setUploadError('Upload service unavailable. Using local preview.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleUrlChange = (url: string) => {
+    onChange(url);
+    if (url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('ipfs://'))) {
+      // Convert IPFS URI to HTTP gateway URL for preview
+      const previewUri = url.startsWith('ipfs://')
+        ? url.replace('ipfs://', 'https://ipfs.io/ipfs/')
+        : url;
+      setPreviewUrl(previewUri);
+      setUploadError('');
+    }
+  };
+
+  const clearImage = () => {
+    setPreviewUrl('');
+    onChange('');
+    setUploadError('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className={`space-y-3 ${className}`}>
+      <div className="flex items-center justify-between">
+        <label className="block text-sm font-medium text-gray-300">
+          Token Image <span className="text-rose-400">*</span>
+        </label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setInputMode('upload')}
+            className={`px-3 py-1 text-xs rounded-lg transition-all ${
+              inputMode === 'upload'
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
+            }`}
+          >
+            Upload
+          </button>
+          <button
+            type="button"
+            onClick={() => setInputMode('url')}
+            className={`px-3 py-1 text-xs rounded-lg transition-all ${
+              inputMode === 'url'
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
+            }`}
+          >
+            URL
+          </button>
+        </div>
+      </div>
+
+      {inputMode === 'upload' ? (
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`
+            relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer
+            transition-all duration-200
+            ${isDragging
+              ? 'border-green-400 bg-green-400/10'
+              : error || uploadError
+                ? 'border-rose-500/50 bg-rose-500/5 hover:border-rose-500/70'
+                : 'border-white/20 bg-white/5 hover:border-green-400/50 hover:bg-white/10'
+            }
+          `}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          {isUploading ? (
+            <div className="py-4">
+              <Spinner size="lg" className="mx-auto mb-3" />
+              <Text variant="body" color="muted">Uploading image...</Text>
+            </div>
+          ) : previewUrl ? (
+            <div className="relative inline-block">
+              <img
+                src={previewUrl}
+                alt="Token preview"
+                className="w-24 h-24 rounded-xl object-cover mx-auto border border-white/10"
+                onError={() => setPreviewUrl('')}
+              />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  clearImage();
+                }}
+                className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center text-white hover:bg-rose-600 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <Text variant="caption" color="muted" className="mt-3 block">
+                Click or drag to replace
+              </Text>
+            </div>
+          ) : (
+            <div className="py-4">
+              <div className="w-16 h-16 mx-auto mb-3 rounded-xl bg-white/10 flex items-center justify-center">
+                <svg className="w-8 h-8 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <Text variant="body" className="font-medium mb-1">
+                {isDragging ? 'Drop image here' : 'Drag & drop or click to upload'}
+              </Text>
+              <Text variant="caption" color="muted">
+                PNG, JPG, GIF or WebP (max 5MB)
+              </Text>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <Input
+            value={value}
+            onChange={(e) => handleUrlChange(e.target.value)}
+            placeholder="https://... or ipfs://..."
+            error={error}
+            hint="IPFS, Arweave, or HTTP URL"
+          />
+          {previewUrl && (
+            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl">
+              <img
+                src={previewUrl}
+                alt="Token preview"
+                className="w-12 h-12 rounded-lg object-cover border border-white/10"
+                onError={() => setPreviewUrl('')}
+              />
+              <div className="flex-1 min-w-0">
+                <Text variant="caption" color="muted">Preview</Text>
+                <Text variant="body" className="truncate text-sm">
+                  {value.length > 40 ? `${value.slice(0, 40)}...` : value}
+                </Text>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(error || uploadError) && (
+        <Text variant="caption" className="text-rose-400 flex items-center gap-1">
+          <IconWarning className="w-3 h-3" />
+          {error || uploadError}
+        </Text>
+      )}
+    </div>
+  );
+};
+
+// =============================================================================
 // CREATE LAUNCH FORM
 // =============================================================================
 
@@ -482,10 +764,14 @@ export interface CreateLaunchData {
   creatorFeeBps: number;
 }
 
+// Transaction progress states
+type TransactionStep = 'idle' | 'signing' | 'confirming' | 'success' | 'error';
+
 export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
   onSubmit,
   loading = false,
   className = '',
+  error: externalError,
 }) => {
   const [formData, setFormData] = useState<CreateLaunchData>({
     name: '',
@@ -498,151 +784,380 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
     creatorFeeBps: 100, // 1% default
   });
   const [errors, setErrors] = useState<Partial<Record<keyof CreateLaunchData, string>>>({});
+  const [touched, setTouched] = useState<Partial<Record<keyof CreateLaunchData, boolean>>>({});
+  const [txStep, setTxStep] = useState<TransactionStep>('idle');
+  const [showPreview, setShowPreview] = useState(false);
 
   const updateField = <K extends keyof CreateLaunchData>(
     field: K,
     value: CreateLaunchData[K]
   ) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    setErrors(prev => ({ ...prev, [field]: undefined }));
+    // Clear error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  const handleBlur = (field: keyof CreateLaunchData) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+    validateField(field);
+  };
+
+  const validateField = (field: keyof CreateLaunchData): boolean => {
+    let error: string | undefined;
+
+    switch (field) {
+      case 'name':
+        if (!formData.name.trim()) {
+          error = 'Token name is required';
+        } else if (formData.name.length > 32) {
+          error = 'Name must be 32 characters or less';
+        }
+        break;
+      case 'symbol':
+        if (!formData.symbol.trim()) {
+          error = 'Symbol is required';
+        } else if (formData.symbol.length > 10) {
+          error = 'Symbol must be 10 characters or less';
+        } else if (!/^[A-Z0-9]+$/.test(formData.symbol.toUpperCase())) {
+          error = 'Symbol must be alphanumeric only';
+        }
+        break;
+      case 'imageUri':
+        if (!formData.imageUri.trim()) {
+          error = 'Token image is required';
+        }
+        break;
+      case 'creatorFeeBps':
+        if (formData.creatorFeeBps < 0 || formData.creatorFeeBps > 500) {
+          error = 'Fee must be between 0% and 5%';
+        }
+        break;
+      case 'twitter':
+        if (formData.twitter && !formData.twitter.includes('twitter.com') && !formData.twitter.includes('x.com')) {
+          error = 'Enter a valid Twitter/X URL';
+        }
+        break;
+      case 'telegram':
+        if (formData.telegram && !formData.telegram.includes('t.me')) {
+          error = 'Enter a valid Telegram URL';
+        }
+        break;
+      case 'website':
+        if (formData.website && !formData.website.startsWith('http')) {
+          error = 'Website must start with http:// or https://';
+        }
+        break;
+    }
+
+    setErrors(prev => ({ ...prev, [field]: error }));
+    return !error;
   };
 
   const validate = (): boolean => {
-    const newErrors: typeof errors = {};
+    const fields: (keyof CreateLaunchData)[] = ['name', 'symbol', 'imageUri', 'creatorFeeBps'];
+    let isValid = true;
 
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required';
-    } else if (formData.name.length > 32) {
-      newErrors.name = 'Name must be 32 characters or less';
-    }
+    fields.forEach(field => {
+      if (!validateField(field)) {
+        isValid = false;
+      }
+    });
 
-    if (!formData.symbol.trim()) {
-      newErrors.symbol = 'Symbol is required';
-    } else if (formData.symbol.length > 10) {
-      newErrors.symbol = 'Symbol must be 10 characters or less';
-    } else if (!/^[A-Z0-9]+$/.test(formData.symbol.toUpperCase())) {
-      newErrors.symbol = 'Symbol must be alphanumeric';
-    }
+    // Mark all fields as touched
+    setTouched({ name: true, symbol: true, imageUri: true, creatorFeeBps: true });
 
-    if (!formData.imageUri.trim()) {
-      newErrors.imageUri = 'Image URI is required';
-    }
-
-    if (formData.creatorFeeBps < 0 || formData.creatorFeeBps > 500) {
-      newErrors.creatorFeeBps = 'Fee must be between 0% and 5%';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return isValid;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
-    await onSubmit({
-      ...formData,
-      symbol: formData.symbol.toUpperCase(),
-    });
+    setTxStep('signing');
+
+    try {
+      await onSubmit({
+        ...formData,
+        symbol: formData.symbol.toUpperCase(),
+      });
+      setTxStep('success');
+    } catch (err) {
+      console.error('Transaction error:', err);
+      setTxStep('error');
+    }
   };
+
+  // Calculate form completion percentage
+  const completionPercentage = useMemo(() => {
+    let filled = 0;
+    let total = 4; // Required fields: name, symbol, imageUri, creatorFeeBps
+
+    if (formData.name.trim()) filled++;
+    if (formData.symbol.trim()) filled++;
+    if (formData.imageUri.trim()) filled++;
+    if (formData.creatorFeeBps >= 0) filled++;
+
+    return Math.round((filled / total) * 100);
+  }, [formData]);
+
+  // Success celebration effect
+  useEffect(() => {
+    if (txStep === 'success') {
+      // Trigger confetti or celebration animation
+      const timer = setTimeout(() => {
+        // Could integrate with a confetti library here
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [txStep]);
+
+  // Transaction progress modal
+  if (txStep !== 'idle') {
+    return (
+      <Card className={`p-8 text-center ${className}`}>
+        {txStep === 'signing' && (
+          <>
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-500/20 flex items-center justify-center animate-pulse">
+              <svg className="w-10 h-10 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </div>
+            <Text variant="h3" className="mb-2">Waiting for Signature</Text>
+            <Text variant="body" color="muted" className="mb-6">
+              Please confirm the transaction in your wallet
+            </Text>
+            <div className="flex items-center justify-center gap-2">
+              <Spinner size="sm" />
+              <Text variant="caption" color="muted">Waiting...</Text>
+            </div>
+          </>
+        )}
+
+        {txStep === 'confirming' && (
+          <>
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-amber-500/20 flex items-center justify-center">
+              <Spinner size="lg" />
+            </div>
+            <Text variant="h3" className="mb-2">Confirming Transaction</Text>
+            <Text variant="body" color="muted" className="mb-6">
+              Your token is being created on Solana...
+            </Text>
+            <ProgressBar value={75} className="max-w-xs mx-auto" />
+          </>
+        )}
+
+        {txStep === 'success' && (
+          <>
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-500/20 flex items-center justify-center">
+              <svg className="w-10 h-10 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <Text variant="h3" className="mb-2 text-green-400">Launch Created!</Text>
+            <Text variant="body" color="muted" className="mb-6">
+              Your token "{formData.name}" ({formData.symbol}) is now live!
+            </Text>
+            <div className="flex gap-3 justify-center">
+              <Button variant="primary" onClick={() => window.location.href = '/explore'}>
+                View All Launches
+              </Button>
+              <Button variant="secondary" onClick={() => {
+                setTxStep('idle');
+                setFormData({
+                  name: '',
+                  symbol: '',
+                  description: '',
+                  imageUri: '',
+                  twitter: '',
+                  telegram: '',
+                  website: '',
+                  creatorFeeBps: 100,
+                });
+              }}>
+                Create Another
+              </Button>
+            </div>
+          </>
+        )}
+
+        {txStep === 'error' && (
+          <>
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-rose-500/20 flex items-center justify-center">
+              <svg className="w-10 h-10 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <Text variant="h3" className="mb-2 text-rose-400">Transaction Failed</Text>
+            <Text variant="body" color="muted" className="mb-6">
+              {externalError || 'Something went wrong. Please try again.'}
+            </Text>
+            <Button variant="secondary" onClick={() => setTxStep('idle')}>
+              Try Again
+            </Button>
+          </>
+        )}
+      </Card>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className={`space-y-6 ${className}`}>
+      {/* Progress Indicator */}
+      <div className="mb-2">
+        <div className="flex items-center justify-between mb-2">
+          <Text variant="caption" color="muted">Form Completion</Text>
+          <Text variant="caption" className="text-green-400 font-mono">{completionPercentage}%</Text>
+        </div>
+        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full transition-all duration-500"
+            style={{ width: `${completionPercentage}%` }}
+          />
+        </div>
+      </div>
+
       {/* Token Details */}
       <Card className="p-6">
-        <Text variant="h4" className="mb-4 font-semibold">
-          Token Details
-        </Text>
-        
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+            <span className="text-green-400 font-bold">1</span>
+          </div>
+          <Text variant="h4" className="font-semibold">Token Details</Text>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <Input
+              label="Token Name"
+              value={formData.name}
+              onChange={(e) => updateField('name', e.target.value)}
+              onBlur={() => handleBlur('name')}
+              placeholder="My Awesome Token"
+              error={touched.name ? errors.name : undefined}
+              hint={`${formData.name.length}/32 characters`}
+            />
+          </div>
+          <div>
+            <Input
+              label="Symbol"
+              value={formData.symbol}
+              onChange={(e) => updateField('symbol', e.target.value.toUpperCase())}
+              onBlur={() => handleBlur('symbol')}
+              placeholder="TOKEN"
+              error={touched.symbol ? errors.symbol : undefined}
+              hint={`${formData.symbol.length}/10 characters`}
+            />
+          </div>
+        </div>
+
+        <div className="mb-6">
           <Input
-            label="Token Name"
-            value={formData.name}
-            onChange={(e) => updateField('name', e.target.value)}
-            placeholder="My Token"
-            error={errors.name}
-            hint="Max 32 characters"
-          />
-          <Input
-            label="Symbol"
-            value={formData.symbol}
-            onChange={(e) => updateField('symbol', e.target.value.toUpperCase())}
-            placeholder="TOKEN"
-            error={errors.symbol}
-            hint="Max 10 characters"
+            label="Description"
+            value={formData.description}
+            onChange={(e) => updateField('description', e.target.value)}
+            placeholder="A brief description of your token and its purpose..."
+            hint="Optional - appears on your token's page"
           />
         </div>
 
-        <Input
-          label="Description"
-          value={formData.description}
-          onChange={(e) => updateField('description', e.target.value)}
-          placeholder="Describe your token..."
-          className="mb-4"
-        />
-
-        <Input
-          label="Image URI"
+        {/* Image Upload */}
+        <ImageUpload
           value={formData.imageUri}
-          onChange={(e) => updateField('imageUri', e.target.value)}
-          placeholder="https://..."
-          error={errors.imageUri}
-          hint="IPFS or HTTP URL to token image"
+          onChange={(uri) => updateField('imageUri', uri)}
+          error={touched.imageUri ? errors.imageUri : undefined}
         />
       </Card>
 
       {/* Social Links */}
       <Card className="p-6">
-        <Text variant="h4" className="mb-4 font-semibold">
-          Social Links (Optional)
-        </Text>
-        
-        <div className="space-y-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+            <span className="text-white/60 font-bold">2</span>
+          </div>
+          <Text variant="h4" className="font-semibold">Social Links</Text>
+          <Badge variant="muted" className="ml-2">Optional</Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Input
-            label="Twitter"
+            label="Twitter / X"
             value={formData.twitter}
             onChange={(e) => updateField('twitter', e.target.value)}
-            placeholder="https://twitter.com/..."
+            onBlur={() => handleBlur('twitter')}
+            placeholder="https://x.com/..."
+            error={touched.twitter ? errors.twitter : undefined}
+            leftIcon={
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+            }
           />
           <Input
             label="Telegram"
             value={formData.telegram}
             onChange={(e) => updateField('telegram', e.target.value)}
+            onBlur={() => handleBlur('telegram')}
             placeholder="https://t.me/..."
+            error={touched.telegram ? errors.telegram : undefined}
+            leftIcon={
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+              </svg>
+            }
           />
           <Input
             label="Website"
             value={formData.website}
             onChange={(e) => updateField('website', e.target.value)}
+            onBlur={() => handleBlur('website')}
             placeholder="https://..."
+            error={touched.website ? errors.website : undefined}
+            leftIcon={
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+              </svg>
+            }
           />
         </div>
       </Card>
 
       {/* Fee Settings */}
       <Card className="p-6">
-        <Text variant="h4" className="mb-4 font-semibold">
-          Fee Settings
-        </Text>
-        
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+            <span className="text-white/60 font-bold">3</span>
+          </div>
+          <Text variant="h4" className="font-semibold">Fee Settings</Text>
+        </div>
+
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-white/60 mb-2">
-              Creator Fee (0% - 5%)
-            </label>
-            <div className="flex items-center gap-4">
-              <input
-                type="range"
-                min="0"
-                max="500"
-                step="10"
-                value={formData.creatorFeeBps}
-                onChange={(e) => updateField('creatorFeeBps', parseInt(e.target.value))}
-                className="flex-1 accent-green-500"
-              />
-              <Text variant="body" className="w-16 text-right font-mono">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm text-white/60">
+                Creator Fee
+              </label>
+              <span className="text-lg font-bold text-green-400 font-mono">
                 {(formData.creatorFeeBps / 100).toFixed(1)}%
-              </Text>
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="500"
+              step="10"
+              value={formData.creatorFeeBps}
+              onChange={(e) => updateField('creatorFeeBps', parseInt(e.target.value))}
+              className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-green-500
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-400
+                [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-lg
+                [&::-webkit-slider-thumb]:shadow-green-500/30"
+            />
+            <div className="flex justify-between mt-1">
+              <Text variant="caption" color="muted">0%</Text>
+              <Text variant="caption" color="muted">5% max</Text>
             </div>
             {errors.creatorFeeBps && (
               <Text variant="caption" className="text-rose-400 mt-1">
@@ -651,66 +1166,130 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
             )}
           </div>
 
-          <div className="p-4 bg-white/5 rounded-lg">
-            <Text variant="caption" color="muted">
-              Fee Breakdown:
-            </Text>
-            <ul className="mt-2 space-y-1 text-sm">
-              <li className="flex justify-between">
-                <span className="text-white/60">Protocol Fee</span>
-                <span>1%</span>
-              </li>
-              <li className="flex justify-between">
-                <span className="text-white/60">Your Creator Fee</span>
-                <span>{(formData.creatorFeeBps / 100).toFixed(1)}%</span>
-              </li>
-              <li className="flex justify-between border-t border-white/10 pt-1 mt-1">
-                <span className="text-white/60">Total Fee</span>
-                <span className="font-semibold">
+          <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+            <Text variant="caption" color="muted" className="mb-3 block">Fee Breakdown per Trade:</Text>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-white/60">Protocol Fee</span>
+                <span className="text-sm font-mono">1.0%</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-white/60">Your Creator Fee</span>
+                <span className="text-sm font-mono text-green-400">{(formData.creatorFeeBps / 100).toFixed(1)}%</span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                <span className="text-sm font-medium">Total Fee</span>
+                <span className="text-sm font-bold font-mono text-white">
                   {(1 + formData.creatorFeeBps / 100).toFixed(1)}%
                 </span>
-              </li>
-            </ul>
+              </div>
+            </div>
           </div>
         </div>
       </Card>
 
       {/* Token Allocation Info */}
       <Card className="p-6">
-        <Text variant="h4" className="mb-4 font-semibold">
-          Token Allocation
-        </Text>
-        
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <Text variant="body" color="muted">You receive (creator)</Text>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
+            <IconRocket className="w-4 h-4 text-white/60" />
+          </div>
+          <Text variant="h4" className="font-semibold">Token Allocation</Text>
+        </div>
+
+        <div className="space-y-3 mb-4">
+          <div className="flex justify-between items-center p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-purple-500" />
+              <Text variant="body">You receive (creator)</Text>
+            </div>
             <Badge variant="accent">2%</Badge>
           </div>
-          <div className="flex justify-between items-center">
-            <Text variant="body" color="muted">Bonding curve trading</Text>
+          <div className="flex justify-between items-center p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-blue-500" />
+              <Text variant="body">Bonding curve trading</Text>
+            </div>
             <Badge variant="info">80%</Badge>
           </div>
-          <div className="flex justify-between items-center">
-            <Text variant="body" color="muted">Graduation liquidity</Text>
+          <div className="flex justify-between items-center p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-green-500" />
+              <Text variant="body">Graduation liquidity</Text>
+            </div>
             <Badge variant="success">18%</Badge>
           </div>
         </div>
 
-        <div className="mt-4 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
-          <div className="flex items-start gap-2">
-            <IconOrbit className="w-5 h-5 text-green-400 mt-0.5" />
+        <div className="p-4 bg-gradient-to-r from-green-500/10 to-green-400/10 border border-green-500/30 rounded-xl">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center flex-shrink-0">
+              <IconOrbit className="w-5 h-5 text-green-400" />
+            </div>
             <div>
-              <Text variant="body" className="font-medium text-green-400">
+              <Text variant="body" className="font-semibold text-green-400 mb-1">
                 Launch into Orbit
               </Text>
               <Text variant="caption" color="muted">
                 When your launch reaches 85 SOL, it automatically graduates
-                to Orbit Finance DLMM for concentrated liquidity trading.
+                to Orbit Finance DLMM for concentrated liquidity trading with
+                deeper markets and lower slippage.
               </Text>
             </div>
           </div>
         </div>
       </Card>
+
+      {/* Preview Toggle */}
+      {formData.name && formData.symbol && formData.imageUri && (
+        <Card className="p-4">
+          <button
+            type="button"
+            onClick={() => setShowPreview(!showPreview)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2">
+              <IconSearch className="w-5 h-5 text-white/40" />
+              <Text variant="body" className="font-medium">Preview Your Token</Text>
+            </div>
+            <svg
+              className={`w-5 h-5 text-white/40 transition-transform ${showPreview ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showPreview && (
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl">
+                <img
+                  src={formData.imageUri.startsWith('ipfs://')
+                    ? formData.imageUri.replace('ipfs://', 'https://ipfs.io/ipfs/')
+                    : formData.imageUri
+                  }
+                  alt={formData.name}
+                  className="w-16 h-16 rounded-xl object-cover border border-white/10"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%23374151" width="100" height="100"/><text x="50" y="55" text-anchor="middle" fill="%23fff" font-size="40">?</text></svg>';
+                  }}
+                />
+                <div className="flex-1">
+                  <Text variant="h4" className="font-bold">{formData.name}</Text>
+                  <Text variant="body" color="muted">${formData.symbol}</Text>
+                  {formData.description && (
+                    <Text variant="caption" color="muted" className="mt-1 line-clamp-2">
+                      {formData.description}
+                    </Text>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Submit */}
       <Button
@@ -719,10 +1298,22 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
         size="lg"
         fullWidth
         loading={loading}
+        disabled={completionPercentage < 100}
         leftIcon={<IconRocket className="w-5 h-5" />}
+        className="py-4"
       >
-        Create Launch
+        {completionPercentage < 100
+          ? 'Complete All Required Fields'
+          : 'Create Launch'
+        }
       </Button>
+
+      {/* Cost Estimate */}
+      <div className="text-center">
+        <Text variant="caption" color="muted">
+          Estimated cost: ~0.02 SOL (network fees)
+        </Text>
+      </div>
     </form>
   );
 };
