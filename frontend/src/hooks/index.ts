@@ -82,34 +82,42 @@ interface WalletInfo {
   detected: boolean;
 }
 
+// Wallet icon SVGs as data URIs (reliable, no external dependencies)
+const WALLET_ICONS = {
+  phantom: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#AB9FF2" rx="26"/><path fill="#fff" d="M110.5 64c0-25.4-20.6-46-46-46-25.4 0-46 20.6-46 46 0 .8 0 1.5.1 2.3.4 3.5 3.4 6.2 6.9 6.2h7.7c3.4 0 6.4-2.5 6.9-5.9.3-2 1.3-3.8 2.8-5.1 2.5-2.1 6.1-2.8 9.3-1.8 4.9 1.6 7.7 6.8 6.2 11.7-.6 2-1.9 3.6-3.5 4.8-1.5 1.1-2.3 2.9-2.3 4.8v3.3c0 3.5 2.9 6.4 6.4 6.4h3.8c3.5 0 6.4-2.9 6.4-6.4V77c0-1.9-.8-3.7-2.3-4.8-1.6-1.2-2.9-2.8-3.5-4.8-1.5-4.9 1.3-10.1 6.2-11.7 3.2-1 6.8-.3 9.3 1.8 1.5 1.3 2.5 3.1 2.8 5.1.5 3.4 3.5 5.9 6.9 5.9h7.7c3.5 0 6.5-2.7 6.9-6.2.1-.8.1-1.5.1-2.3z"/><circle cx="51" cy="52" r="6" fill="#AB9FF2"/><circle cx="77" cy="52" r="6" fill="#AB9FF2"/></svg>`)}`,
+  solflare: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#FC6C1C" rx="26"/><path fill="#fff" d="M64 24c-6.6 0-12 5.4-12 12v4c0 2.2 1.8 4 4 4s4-1.8 4-4v-4c0-2.2 1.8-4 4-4s4 1.8 4 4v8c0 6.6-5.4 12-12 12h-8c-6.6 0-12 5.4-12 12v8c0 2.2 1.8 4 4 4s4-1.8 4-4v-8c0-2.2 1.8-4 4-4h8c11 0 20-9 20-20v-8c0-6.6-5.4-12-12-12z"/><path fill="#fff" d="M76 68c-2.2 0-4 1.8-4 4v8c0 2.2-1.8 4-4 4s-4-1.8-4-4v-4c0-2.2-1.8-4-4-4s-4 1.8-4 4v4c0 6.6 5.4 12 12 12s12-5.4 12-12v-8c0-2.2-1.8-4-4-4z"/></svg>`)}`,
+  backpack: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#E33E3F" rx="26"/><rect x="36" y="44" width="56" height="56" rx="8" fill="#fff"/><rect x="44" y="52" width="40" height="40" rx="4" fill="#E33E3F"/><rect x="48" y="28" width="32" height="20" rx="4" fill="#fff"/><circle cx="64" cy="72" r="8" fill="#fff"/></svg>`)}`,
+  jupiter: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#1FA27F" rx="26"/><circle cx="64" cy="64" r="28" fill="#fff"/><ellipse cx="64" cy="64" rx="44" ry="12" fill="none" stroke="#fff" stroke-width="6"/><circle cx="64" cy="64" r="12" fill="#1FA27F"/></svg>`)}`,
+};
+
 // Wallet provider detection
 function detectWallets(): WalletInfo[] {
   const wallets: WalletInfo[] = [
     {
       type: 'phantom',
       name: 'Phantom',
-      icon: 'https://phantom.app/img/phantom-logo.svg',
+      icon: WALLET_ICONS.phantom,
       url: 'https://phantom.app/',
       detected: typeof window !== 'undefined' && !!(window as any).solana?.isPhantom,
     },
     {
       type: 'solflare',
       name: 'Solflare',
-      icon: 'https://solflare.com/favicon.ico',
+      icon: WALLET_ICONS.solflare,
       url: 'https://solflare.com/',
       detected: typeof window !== 'undefined' && !!(window as any).solflare?.isSolflare,
     },
     {
       type: 'backpack',
       name: 'Backpack',
-      icon: 'https://backpack.app/favicon.ico',
+      icon: WALLET_ICONS.backpack,
       url: 'https://backpack.app/',
       detected: typeof window !== 'undefined' && !!(window as any).backpack?.isBackpack,
     },
     {
       type: 'jupiter',
       name: 'Jupiter',
-      icon: 'https://jup.ag/favicon.ico',
+      icon: WALLET_ICONS.jupiter,
       url: 'https://jup.ag/',
       detected: typeof window !== 'undefined' && !!(window as any).jupiter,
     },

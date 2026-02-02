@@ -365,30 +365,42 @@ interface WalletSelectorProps {
   className?: string;
 }
 
+// Wallet icon SVGs as data URIs (reliable, no external dependencies)
+const WALLET_ICONS = {
+  // Phantom - Purple background with ghost icon
+  phantom: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#AB9FF2" rx="26"/><path fill="#fff" d="M110.5 64c0-25.4-20.6-46-46-46-25.4 0-46 20.6-46 46 0 .8 0 1.5.1 2.3.4 3.5 3.4 6.2 6.9 6.2h7.7c3.4 0 6.4-2.5 6.9-5.9.3-2 1.3-3.8 2.8-5.1 2.5-2.1 6.1-2.8 9.3-1.8 4.9 1.6 7.7 6.8 6.2 11.7-.6 2-1.9 3.6-3.5 4.8-1.5 1.1-2.3 2.9-2.3 4.8v3.3c0 3.5 2.9 6.4 6.4 6.4h3.8c3.5 0 6.4-2.9 6.4-6.4V77c0-1.9-.8-3.7-2.3-4.8-1.6-1.2-2.9-2.8-3.5-4.8-1.5-4.9 1.3-10.1 6.2-11.7 3.2-1 6.8-.3 9.3 1.8 1.5 1.3 2.5 3.1 2.8 5.1.5 3.4 3.5 5.9 6.9 5.9h7.7c3.5 0 6.5-2.7 6.9-6.2.1-.8.1-1.5.1-2.3z"/><circle cx="51" cy="52" r="6" fill="#AB9FF2"/><circle cx="77" cy="52" r="6" fill="#AB9FF2"/></svg>`)}`,
+  // Solflare - Orange background with flame
+  solflare: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#FC6C1C" rx="26"/><path fill="#fff" d="M64 24c-6.6 0-12 5.4-12 12v4c0 2.2 1.8 4 4 4s4-1.8 4-4v-4c0-2.2 1.8-4 4-4s4 1.8 4 4v8c0 6.6-5.4 12-12 12h-8c-6.6 0-12 5.4-12 12v8c0 2.2 1.8 4 4 4s4-1.8 4-4v-8c0-2.2 1.8-4 4-4h8c11 0 20-9 20-20v-8c0-6.6-5.4-12-12-12z"/><path fill="#fff" d="M76 68c-2.2 0-4 1.8-4 4v8c0 2.2-1.8 4-4 4s-4-1.8-4-4v-4c0-2.2-1.8-4-4-4s-4 1.8-4 4v4c0 6.6 5.4 12 12 12s12-5.4 12-12v-8c0-2.2-1.8-4-4-4z"/></svg>`)}`,
+  // Backpack - Red/coral background with backpack shape
+  backpack: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#E33E3F" rx="26"/><rect x="36" y="44" width="56" height="56" rx="8" fill="#fff"/><rect x="44" y="52" width="40" height="40" rx="4" fill="#E33E3F"/><rect x="48" y="28" width="32" height="20" rx="4" fill="#fff"/><circle cx="64" cy="72" r="8" fill="#fff"/></svg>`)}`,
+  // Jupiter - Green/teal with planet/ring
+  jupiter: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#1FA27F" rx="26"/><circle cx="64" cy="64" r="28" fill="#fff"/><ellipse cx="64" cy="64" rx="44" ry="12" fill="none" stroke="#fff" stroke-width="6"/><circle cx="64" cy="64" r="12" fill="#1FA27F"/></svg>`)}`,
+};
+
 // Default wallet configurations
 const DEFAULT_WALLETS: WalletOption[] = [
   {
     type: 'phantom',
     name: 'Phantom',
-    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgZmlsbD0iIzRCM0M4QyIgcng9IjY0Ii8+PHBhdGggZmlsbD0iI0ZGRiIgZD0iTTExMC40IDY0LjFjMC0xLjQtLjEtMi44LS4zLTQuMmwtLjItMS4yYy0yLjktMjAtMjAuNi0zNS40LTQxLjgtMzUuNC0yMy4yIDAtNDIgMTguOC00MiA0MnYuM2MwIC40IDAgLjggMCAxLjJsLjEgMS4yYy4yIDEuNy40IDMuNCAxIDUgMi40IDcuNiA3LjYgMTQuMSAxNC42IDE3LjkgNS43IDMuMSAxMi4xIDQuNyAxOC41IDQuN2g2LjljMi40IDAgNC40LTIgNC40LTQuNHYtLjNjMC0yLjQtMi00LjQtNC40LTQuNGgtNi45Yy00LjQgMC04LjgtMS4xLTEyLjctMy4yLTQuOC0yLjYtOC40LTctMTAuMS0xMi40LS40LTEuMS0uNi0yLjItLjctMy40bC0uMS0xLjFjMC0uMyAwLS43IDAtMXYtLjNjMC0xNy4xIDEzLjktMzEgMzEtMzEgMTUuNSAwIDI4LjUgMTEuNCAxMC44IDI1LjhsLS4xIDFjLjEgMS4xLjIgMi4zLjIgMy40djMuMWMwIDIuNSAyIDQuNSA0LjUgNC41aDI0LjFjMi41IDAgNC41LTIgNC41LTQuNXYtMy4xeiIvPjwvc3ZnPg==',
+    icon: WALLET_ICONS.phantom,
     detected: typeof window !== 'undefined' && !!(window as any).solana?.isPhantom,
   },
   {
     type: 'solflare',
     name: 'Solflare',
-    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgZmlsbD0iI0ZDNTMxRCIgcng9IjY0Ii8+PHBhdGggZmlsbD0iI0ZGRiIgZD0iTTY0IDI0TDQwIDY0bDI0IDQwIDI0LTQwLTI0LTQwWm0wIDE2bDE2IDI0LTE2IDI0LTE2LTI0IDE2LTI0WiIvPjwvc3ZnPg==',
+    icon: WALLET_ICONS.solflare,
     detected: typeof window !== 'undefined' && !!(window as any).solflare?.isSolflare,
   },
   {
     type: 'backpack',
     name: 'Backpack',
-    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgZmlsbD0iI0U4M0UzRSIgcng9IjY0Ii8+PHBhdGggZmlsbD0iI0ZGRiIgZD0iTTg4IDQ4SDQwdjQ4aDQ4VjQ4Wm0tOCA0MEg0OFY1Nmg0MHY0MFoiLz48cGF0aCBmaWxsPSIjRkZGIiBkPSJNNTIgMzJoMjR2MTZINTJWMzJaIi8+PC9zdmc+',
+    icon: WALLET_ICONS.backpack,
     detected: typeof window !== 'undefined' && !!(window as any).backpack?.isBackpack,
   },
   {
     type: 'jupiter',
     name: 'Jupiter',
-    icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgZmlsbD0iIzFGQTI3RiIgcng9IjY0Ii8+PGNpcmNsZSBjeD0iNjQiIGN5PSI2NCIgcj0iMzIiIGZpbGw9IiNGRkYiLz48Y2lyY2xlIGN4PSI2NCIgY3k9IjY0IiByPSIxNiIgZmlsbD0iIzFGQTI3RiIvPjwvc3ZnPg==',
+    icon: WALLET_ICONS.jupiter,
     detected: typeof window !== 'undefined' && !!(window as any).jupiter,
   },
 ];
