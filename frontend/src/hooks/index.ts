@@ -9,12 +9,13 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, ComputeBudgetProgram, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import BN from 'bn.js';
 import { LaunchData, TradeData, UserPositionData } from '../components/molecules';
 import { api, wsClient, NormalizedMessage } from '../services/api';
 import { LaunchrClient, initLaunchrClient, getLaunchrClient } from '../program/client';
 import { BuyParams, SellParams, CreateLaunchParams as ProgramCreateLaunchParams } from '../program/idl';
+import { validateTransaction, isTransactionSafe } from '../lib/transaction-validator';
 
 // =============================================================================
 // TYPES
@@ -68,6 +69,156 @@ const RPC_ENDPOINT = process.env.REACT_APP_RPC_ENDPOINT || 'https://api.devnet.s
 const PROGRAM_ID_STRING = process.env.REACT_APP_PROGRAM_ID || '11111111111111111111111111111111';
 const PROGRAM_ID = new PublicKey(PROGRAM_ID_STRING);
 
+// Default compute budget for transactions
+const DEFAULT_COMPUTE_UNITS = 200_000;
+const DEFAULT_PRIORITY_FEE = 50_000; // microlamports per compute unit
+
+// =============================================================================
+// TRANSACTION HELPERS
+// =============================================================================
+
+/**
+ * Prepares a transaction with compute budget, validation, simulation, and proper blockhash handling.
+ * This is required for Phantom, Solflare, Backpack, and Jupiter wallets.
+ */
+async function prepareAndSimulateTransaction(
+  connection: Connection,
+  transaction: Transaction,
+  feePayer: PublicKey,
+  computeUnits: number = DEFAULT_COMPUTE_UNITS,
+  priorityFee: number = DEFAULT_PRIORITY_FEE
+): Promise<{ transaction: Transaction; blockhash: string; lastValidBlockHeight: number }> {
+  // Step 0: SECURITY - Validate all program IDs before proceeding
+  const safetyCheck = isTransactionSafe(transaction);
+  if (!safetyCheck.safe) {
+    console.error('Transaction security check failed:', safetyCheck);
+    throw new Error(
+      `SECURITY: Transaction rejected - unauthorized program(s) detected: ${safetyCheck.unauthorizedPrograms?.join(', ')}`
+    );
+  }
+
+  // Step 1: Add compute budget instructions at the beginning
+  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+    units: computeUnits,
+  });
+  const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
+    microLamports: priorityFee,
+  });
+
+  // Prepend compute budget instructions
+  transaction.instructions = [computeBudgetIx, priorityFeeIx, ...transaction.instructions];
+
+  // Step 2: Get latest blockhash with lastValidBlockHeight for expiry tracking
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = feePayer;
+
+  // Step 3: Simulate transaction to verify it will succeed
+  const simulation = await connection.simulateTransaction(transaction);
+
+  if (simulation.value.err) {
+    const errorMsg = typeof simulation.value.err === 'string'
+      ? simulation.value.err
+      : JSON.stringify(simulation.value.err);
+    throw new Error(`Transaction simulation failed: ${errorMsg}`);
+  }
+
+  // Log compute units used for debugging
+  if (simulation.value.unitsConsumed) {
+    console.log(`Simulation consumed ${simulation.value.unitsConsumed} compute units`);
+  }
+
+  return { transaction, blockhash, lastValidBlockHeight };
+}
+
+/**
+ * Sends a signed transaction and confirms it with retry logic.
+ */
+async function sendAndConfirmTransactionWithRetry(
+  connection: Connection,
+  signedTransaction: Transaction,
+  blockhash: string,
+  lastValidBlockHeight: number,
+  maxRetries: number = 3
+): Promise<string> {
+  let signature: string | null = null;
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    try {
+      // Send transaction
+      signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
+        skipPreflight: false, // Enable preflight for additional validation
+        preflightCommitment: 'confirmed',
+        maxRetries: 0, // We handle retries ourselves
+      });
+
+      // Confirm with blockhash expiry check
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature,
+          blockhash,
+          lastValidBlockHeight,
+        },
+        'confirmed'
+      );
+
+      if (confirmation.value.err) {
+        throw new Error(`Transaction confirmed but failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+
+      return signature;
+    } catch (err) {
+      retries++;
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+
+      // Check if blockhash expired
+      if (errorMessage.includes('blockhash') && errorMessage.includes('expired')) {
+        throw new Error('Transaction expired. Please try again.');
+      }
+
+      // Check if we should retry
+      if (retries >= maxRetries) {
+        throw err;
+      }
+
+      // Wait before retry (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+      console.log(`Retrying transaction (attempt ${retries + 1}/${maxRetries})...`);
+    }
+  }
+
+  throw new Error('Transaction failed after max retries');
+}
+
+/**
+ * Verifies transaction success by checking account state changes.
+ */
+async function verifyTransactionSuccess(
+  connection: Connection,
+  signature: string
+): Promise<boolean> {
+  try {
+    const tx = await connection.getTransaction(signature, {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0,
+    });
+
+    if (!tx) {
+      return false;
+    }
+
+    if (tx.meta?.err) {
+      console.error('Transaction failed:', tx.meta.err);
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // =============================================================================
 // WALLET TYPES & DETECTION
 // =============================================================================
@@ -82,46 +233,34 @@ interface WalletInfo {
   detected: boolean;
 }
 
-// Wallet icon SVGs as data URIs (accurate brand representations)
-const WALLET_ICONS = {
-  // Phantom - Purple gradient with ghost silhouette
-  phantom: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><defs><linearGradient id="pg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse"><stop stop-color="#534BB1"/><stop offset="1" stop-color="#551BF9"/></linearGradient></defs><rect width="128" height="128" fill="url(#pg)" rx="26"/><path fill="#fff" d="M38.8 67.5c0 3.6 2.9 6.5 6.5 6.5h5c3.2 0 5.9-2.4 6.4-5.5.5-3.5 3.4-6.2 7-6.2 3.9 0 7 3.2 7 7.1v4.4c0 3.6 2.9 6.5 6.5 6.5h.4c3.6 0 6.5-2.9 6.5-6.5v-4.4c0-3.9 3.1-7.1 7-7.1 3.6 0 6.5 2.7 7 6.2.5 3.1 3.2 5.5 6.4 5.5h5c3.6 0 6.5-2.9 6.5-6.5 0-22.1-17.9-40-40-40s-40 17.9-40 40z"/><circle cx="54" cy="53" r="5" fill="#534BB1"/><circle cx="80" cy="53" r="5" fill="#534BB1"/></svg>`)}`,
-  // Solflare - Orange gradient with flame/sun burst
-  solflare: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><defs><linearGradient id="sg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse"><stop stop-color="#FCC00A"/><stop offset="1" stop-color="#FC7B0A"/></linearGradient></defs><rect width="128" height="128" fill="url(#sg)" rx="26"/><path fill="#fff" d="M64 28L74 48h-20L64 28zM64 100L54 80h20L64 100zM28 64L48 54v20L28 64zM100 64L80 74V54l20 10zM40.2 40.2L54 48l-6 14-7.8-21.8zM87.8 40.2L74 48l6 14 7.8-21.8zM40.2 87.8L54 80l-6-14-7.8 21.8zM87.8 87.8L74 80l6-14 7.8 21.8z"/><circle cx="64" cy="64" r="16" fill="#fff"/></svg>`)}`,
-  // Backpack - Coral/red with rounded backpack icon
-  backpack: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#E33E3F" rx="26"/><path fill="#fff" d="M48 34h32a4 4 0 014 4v8H44v-8a4 4 0 014-4z"/><rect x="36" y="46" width="56" height="52" rx="10" fill="#fff"/><rect x="48" y="58" width="32" height="28" rx="6" fill="#E33E3F"/><rect x="58" y="46" width="12" height="12" rx="2" fill="#fff"/></svg>`)}`,
-  // Jupiter - Black with green cat logo
-  jupiter: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none"><rect width="128" height="128" fill="#131318" rx="26"/><defs><linearGradient id="jg" x1="40" y1="40" x2="88" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#C7F284"/><stop offset="1" stop-color="#00BEF0"/></linearGradient></defs><path fill="url(#jg)" d="M64 32c-17.7 0-32 14.3-32 32 0 8.8 3.6 16.8 9.4 22.6L52 76c-2.5-3.2-4-7.2-4-11.5 0-10.2 8.3-18.5 18.5-18.5S85 54.3 85 64.5c0 4.3-1.5 8.3-4 11.5l10.6 10.6C97.4 80.8 101 72.8 101 64c0-17.7-19.3-32-37-32z"/><circle cx="52" cy="58" r="5" fill="url(#jg)"/><circle cx="76" cy="58" r="5" fill="url(#jg)"/><path fill="url(#jg)" d="M64 78c-4 0-7.5-2-9.5-5h19c-2 3-5.5 5-9.5 5z"/></svg>`)}`,
-};
-
 // Wallet provider detection
 function detectWallets(): WalletInfo[] {
   const wallets: WalletInfo[] = [
     {
       type: 'phantom',
       name: 'Phantom',
-      icon: WALLET_ICONS.phantom,
+      icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgMTI4IDEyOCIgZmlsbD0ibm9uZSI+PHJlY3Qgd2lkdGg9IjEyOCIgaGVpZ2h0PSIxMjgiIGZpbGw9IiNBQjlGRjIiLz48cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTU1LjY0MTYgODIuMTQ3N0M1MC44NzQ0IDg5LjQ1MjUgNDIuODg2MiA5OC42OTY2IDMyLjI1NjggOTguNjk2NkMyNy4yMzIgOTguNjk2NiAyMi40MDA0IDk2LjYyOCAyMi40MDA0IDg3LjY0MjRDMjIuNDAwNCA2NC43NTg0IDUzLjY0NDUgMjkuMzMzNSA4Mi42MzM5IDI5LjMzMzVDOTkuMTI1NyAyOS4zMzM1IDEwNS42OTcgNDAuNzc1NSAxMDUuNjk3IDUzLjc2ODlDMTA1LjY5NyA3MC40NDcxIDk0Ljg3MzkgODkuNTE3MSA4NC4xMTU2IDg5LjUxNzFDODAuNzAxMyA4OS41MTcxIDc5LjAyNjQgODcuNjQyNCA3OS4wMjY0IDg0LjY2ODhDNzkuMDI2NCA4My44OTMxIDc5LjE1NTIgODMuMDUyNyA3OS40MTI5IDgyLjE0NzdDNzUuNzQwOSA4OC40MTgyIDY4LjY1NDYgOTQuMjM2MSA2Mi4wMTkyIDk0LjIzNjFDNTcuMTg3NyA5NC4yMzYxIDU0LjczOTcgOTEuMTk3OSA1NC43Mzk3IDg2LjkzMTRDNTQuNzM5NyA4NS4zNzk5IDU1LjA2MTggODMuNzYzOCA1NS42NDE2IDgyLjE0NzdaTTgwLjYxMzMgNTMuMzE4MkM4MC42MTMzIDU3LjEwNDQgNzguMzc5NSA1OC45OTc1IDc1Ljg4MDYgNTguOTk3NUM3My4zNDM4IDU4Ljk5NzUgNzEuMTQ3OSA1Ny4xMDQ0IDcxLjE0NzkgNTMuMzE4MkM3MS4xNDc5IDQ5LjUzMiA3My4zNDM4IDQ3LjYzODkgNzUuODgwNiA0Ny42Mzg5Qzc4LjM3OTUgNDcuNjM4OSA4MC42MTMzIDQ5LjUzMiA4MC42MTMzIDUzLjMxODJaTTk0LjgxMDIgNTMuMzE4NEM5NC44MTAyIDU3LjEwNDYgOTIuNTc2MyA1OC45OTc3IDkwLjA3NzUgNTguOTk3N0M4Ny41NDA3IDU4Ljk5NzcgODUuMzQ0NyA1Ny4xMDQ2IDg1LjM0NDcgNTMuMzE4NEM4NS4zNDQ3IDQ5LjUzMjMgODcuNTQwNyA0Ny42MzkyIDkwLjA3NzUgNDcuNjM5MkM5Mi41NzYzIDQ3LjYzOTIgOTQuODEwMiA0OS41MzIzIDk0LjgxMDIgNTMuMzE4NFoiIGZpbGw9IiNGRkZERjgiLz48L3N2Zz4=',
       url: 'https://phantom.app/',
       detected: typeof window !== 'undefined' && !!(window as any).solana?.isPhantom,
     },
     {
       type: 'solflare',
       name: 'Solflare',
-      icon: WALLET_ICONS.solflare,
+      icon: 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48c3ZnIGlkPSJTIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MCA1MCI+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiMwMjA1MGE7c3Ryb2tlOiNmZmVmNDY7c3Ryb2tlLW1pdGVybGltaXQ6MTA7c3Ryb2tlLXdpZHRoOi41cHg7fS5jbHMtMntmaWxsOiNmZmVmNDY7fTwvc3R5bGU+PC9kZWZzPjxyZWN0IGNsYXNzPSJjbHMtMiIgeD0iMCIgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiByeD0iMTIiIHJ5PSIxMiIvPjxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTI0LjIzLDI2LjQybDIuNDYtMi4zOCw0LjU5LDEuNWMzLjAxLDEsNC41MSwyLjg0LDQuNTEsNS40MywwLDEuOTYtLjc1LDMuMjYtMi4yNSw0LjkzbC0uNDYuNS4xNy0xLjE3Yy42Ny00LjI2LS41OC02LjA5LTQuNzItNy40M2wtNC4zLTEuMzhoMFpNMTguMDUsMTEuODVsMTIuNTIsNC4xNy0yLjcxLDIuNTktNi41MS0yLjE3Yy0yLjI1LS43NS0zLjAxLTEuOTYtMy4zLTQuNTF2LS4wOGgwWk0xNy4zLDMzLjA2bDIuODQtMi43MSw1LjM0LDEuNzVjMi44LjkyLDMuNzYsMi4xMywzLjQ2LDUuMThsLTExLjY1LTQuMjJoMFpNMTMuNzEsMjAuOTVjMC0uNzkuNDItMS41NCwxLjEzLTIuMTcuNzUsMS4wOSwyLjA1LDIuMDUsNC4wOSwyLjcxbDQuNDIsMS40Ni0yLjQ2LDIuMzgtNC4zNC0xLjQyYy0yLS42Ny0yLjg0LTEuNjctMi44NC0yLjk2TTI2LjgyLDQyLjg3YzkuMTgtNi4wOSwxNC4xMS0xMC4yMywxNC4xMS0xNS4zMiwwLTMuMzgtMi01LjI2LTYuNDMtNi43MmwtMy4zNC0xLjEzLDkuMTQtOC43Ny0xLjg0LTEuOTYtMi43MSwyLjM4LTEyLjgxLTQuMjJjLTMuOTcsMS4yOS04Ljk3LDUuMDktOC45Nyw4Ljg5LDAsLjQyLjA0LjgzLjE3LDEuMjktMy4zLDEuODgtNC42MywzLjYzLTQuNjMsNS44LDAsMi4wNSwxLjA5LDQuMDksNC41NSw1LjIybDIuNzUuOTItOS41Miw5LjE0LDEuODQsMS45NiwyLjk2LTIuNzEsMTQuNzMsNS4yMmgwWiIvPjwvc3ZnPg==',
       url: 'https://solflare.com/',
       detected: typeof window !== 'undefined' && !!(window as any).solflare?.isSolflare,
     },
     {
       type: 'backpack',
       name: 'Backpack',
-      icon: WALLET_ICONS.backpack,
+      icon: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMSAxNS45OTk3OTk3MjgzOTM1NTUiPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMF8xXzgwMykiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJNNi41NDIwMSAxLjI1ODA1QzcuMTIzNTYgMS4yNTgwNSA3LjY2OTA1IDEuMzM2MDEgOC4xNzQxIDEuNDgwNTlDNy42Nzk2MyAwLjMyODE2OSA2LjY1Mjk3IDAgNS41MTAzOCAwQzQuMzY1NTUgMCAzLjMzNzEgMC4zMjk0NTkgMi44NDM3NSAxLjQ4NzM4QzMuMzQ1MSAxLjMzNzcxIDMuODg4MjQgMS4yNTgwNSA0LjQ2NzggMS4yNTgwNUg2LjU0MjAxWk00LjMzNDc4IDIuNDE1MDRDMS41NzMzNSAyLjQxNTA0IDAgNC41ODc0MyAwIDcuMjY3MlYxMC4wMkMwIDEwLjI4OCAwLjIyMzg1OCAxMC41IDAuNSAxMC41SDEwLjVDMTAuNzc2MSAxMC41IDExIDEwLjI4OCAxMSAxMC4wMlY3LjI2NzJDMTEgNC41ODc0MyA5LjE3MDQxIDIuNDE1MDQgNi40MDg5OSAyLjQxNTA0SDQuMzM0NzhaTTUuNDk2MDkgNy4yOTEwMkM2LjQ2MjU5IDcuMjkxMDIgNy4yNDYwOSA2LjUwNzUxIDcuMjQ2MDkgNS41NDEwMkM3LjI0NjA5IDQuNTc0NTIgNi40NjI1OSAzLjc5MTAyIDUuNDk2MDkgMy43OTEwMkM0LjUyOTYgMy43OTEwMiAzLjc0NjA5IDQuNTc0NTIgMy43NDYwOSA1LjU0MTAyQzMuNzQ2MDkgNi41MDc1MSA0LjUyOTYgNy4yOTEwMiA1LjQ5NjA5IDcuMjkxMDJaTTAgMTIuMTE4QzAgMTEuODUwMSAwLjIyMzg1OCAxMS42MzI4IDAuNSAxMS42MzI4SDEwLjVDMTAuNzc2MSAxMS42MzI4IDExIDExLjg1MDEgMTEgMTIuMTE4VjE1LjAyOTNDMTEgMTUuNTY1MyAxMC41NTIzIDE1Ljk5OTggMTAgMTUuOTk5OEgxQzAuNDQ3NzE1IDE1Ljk5OTggMCAxNS41NjUzIDAgMTUuMDI5M1YxMi4xMThaIiBmaWxsPSIjRTMzRTNGIj48L3BhdGg+PC9nPjwvc3ZnPgo=',
       url: 'https://backpack.app/',
       detected: typeof window !== 'undefined' && !!(window as any).backpack?.isBackpack,
     },
     {
       type: 'jupiter',
       name: 'Jupiter',
-      icon: WALLET_ICONS.jupiter,
+      icon: 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDI0LjAuMCwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDYuMDAgQnVpbGQgMCkgIC0tPgo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9ImthdG1hbl8xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB4PSIwcHgiIHk9IjBweCIKCSB2aWV3Qm94PSIwIDAgODAwIDgwMCIgc3R5bGU9ImVuYWJsZS1iYWNrZ3JvdW5kOm5ldyAwIDAgODAwIDgwMDsiIHhtbDpzcGFjZT0icHJlc2VydmUiPgo8c3R5bGUgdHlwZT0idGV4dC9jc3MiPgoJLnN0MHtmaWxsOiMxNDE3MjY7fQoJLnN0MXtmaWxsOnVybCgjU1ZHSURfMV8pO30KCS5zdDJ7ZmlsbDp1cmwoI1NWR0lEXzJfKTt9Cgkuc3Qze2ZpbGw6dXJsKCNTVkdJRF8zXyk7fQoJLnN0NHtmaWxsOnVybCgjU1ZHSURfNF8pO30KCS5zdDV7ZmlsbDp1cmwoI1NWR0lEXzVfKTt9Cgkuc3Q2e2ZpbGw6dXJsKCNTVkdJRF82Xyk7fQo8L3N0eWxlPgo8Y2lyY2xlIGNsYXNzPSJzdDAiIGN4PSI0MDAiIGN5PSI0MDAiIHI9IjQwMCIvPgo8bGluZWFyR3JhZGllbnQgaWQ9IlNWR0lEXzFfIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjU3NC45MjU3IiB5MT0iNjY1Ljg3MjciIHgyPSIyNDguNTI1NyIgeTI9IjE0Mi4zMTI3IiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDEgMCAwIC0xIDAgODAwKSI+Cgk8c3RvcCAgb2Zmc2V0PSIwLjE2IiBzdHlsZT0ic3RvcC1jb2xvcjojQzZGNDYyIi8+Cgk8c3RvcCAgb2Zmc2V0PSIwLjg5IiBzdHlsZT0ic3RvcC1jb2xvcjojMzNEOUZGIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01MzYsNTY4LjljLTY2LjgtMTA4LjUtMTY2LjQtMTcwLTI4OS40LTE5NS42Yy00My41LTktODcuMi04LjktMTI5LjQsNy43Yy0yOC45LDExLjQtMzMuMywyMy40LTE5LjcsNTMuNwoJYzkyLjQtMjEuOSwxNzguNC0xLjUsMjU4LjksNDVjODEuMSw0Ni45LDE0MS42LDExMi4yLDE2OS4xLDIwNWMzOC42LTExLjgsNDMuNi0xOC4zLDM0LjMtNTQuMkM1NTQuMyw2MDkuNCw1NDcuNCw1ODcuNCw1MzYsNTY4LjkKCUw1MzYsNTY4Ljl6Ii8+CjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHSURfMl8iIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4MT0iNTcyLjU4OTYiIHkxPSI2NjcuMzMwMyIgeDI9IjI0Ni4xOTk2IiB5Mj0iMTQzLjc3MDMiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMSAwIDAgLTEgMCA4MDApIj4KCTxzdG9wICBvZmZzZXQ9IjAuMTYiIHN0eWxlPSJzdG9wLWNvbG9yOiNDNkY0NjIiLz4KCTxzdG9wICBvZmZzZXQ9IjAuODkiIHN0eWxlPSJzdG9wLWNvbG9yOiMzM0Q5RkYiLz4KPC9saW5lYXJHcmFkaWVudD4KPHBhdGggY2xhc3M9InN0MiIgZD0iTTYwOS4xLDQ4MC42Yy04NS44LTEyNS0yMDcuMy0xOTQuOS0zNTUuOC0yMTguM2MtMzkuMy02LjItNzkuNC00LjUtMTE2LjIsMTQuM2MtMTcuNiw5LTMzLjIsMjAuNS0zNy40LDQ0LjkKCWMxMTUuOC0zMS45LDIxOS43LTMuNywzMTcuNSw1M2M5OC4zLDU3LDE3NS4xLDEzMy41LDIwNSwyNTEuMWMyMC44LTE4LjQsMjQuNS00MSwxOS4xLTYyQzYzMy45LDUzNC44LDYyNS41LDUwNC41LDYwOS4xLDQ4MC42CglMNjA5LjEsNDgwLjZ6Ii8+CjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHSURfM18iIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4MT0iNTc3LjAxNDgiIHkxPSI2NjQuNTY3MSIgeDI9IjI1MC42MjQ3IiB5Mj0iMTQxLjAwNzEiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMSAwIDAgLTEgMCA4MDApIj4KCTxzdG9wICBvZmZzZXQ9IjAuMTYiIHN0eWxlPSJzdG9wLWNvbG9yOiNDNkY0NjIiLz4KCTxzdG9wICBvZmZzZXQ9IjAuODkiIHN0eWxlPSJzdG9wLWNvbG9yOiMzM0Q5RkYiLz4KPC9saW5lYXJHcmFkaWVudD4KPHBhdGggY2xhc3M9InN0MyIgZD0iTTEwNSw0ODguNmM3LjMsMTYuMiwxMi4xLDM0LjUsMjMsNDcuNmM1LjUsNi43LDIyLjIsNC4xLDMzLjgsNS43YzEuOCwwLjIsMy42LDAuNSw1LjQsMC43CgljMTAyLjksMTUuMywxODQuMSw2NS4xLDI0Mi4xLDE1MmMzLjQsNS4xLDguOSwxMi43LDEzLjQsMTIuN2MxNy40LTAuMSwzNC45LTIuOCw1Mi41LTQuNUM0NDksNTU3LjUsMjMyLjgsNDM4LjMsMTA1LDQ4OC42CglMMTA1LDQ4OC42eiIvPgo8bGluZWFyR3JhZGllbnQgaWQ9IlNWR0lEXzRfIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjU2OS4wMjcyIiB5MT0iNjY5LjU1MTgiIHgyPSIyNDIuNjI3MiIgeTI9IjE0NS45OTE3IiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDEgMCAwIC0xIDAgODAwKSI+Cgk8c3RvcCAgb2Zmc2V0PSIwLjE2IiBzdHlsZT0ic3RvcC1jb2xvcjojQzZGNDYyIi8+Cgk8c3RvcCAgb2Zmc2V0PSIwLjg5IiBzdHlsZT0ic3RvcC1jb2xvcjojMzNEOUZGIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxwYXRoIGNsYXNzPSJzdDQiIGQ9Ik02NTYuNiwzNjYuN0M1OTkuOSwyODcuNCw1MjEuNywyMzQuNiw0MzIuOSwxOTdjLTYxLjUtMjYuMS0xMjUuMi00MS44LTE5Mi44LTMzLjcKCWMtMjMuNCwyLjgtNDUuMyw5LjUtNjMuNCwyNC43YzIzMC45LDUuOCw0MDQuNiwxMDUuOCw1MjQsMzAzLjNjMC4yLTEzLjEsMi4yLTI3LjctMi42LTM5LjVDNjg2LjEsNDIyLjUsNjc0LjcsMzkyLDY1Ni42LDM2Ni43eiIvPgo8bGluZWFyR3JhZGllbnQgaWQ9IlNWR0lEXzVfIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgeDE9IjU3MS42OTczIiB5MT0iNjY3Ljg5MTciIHgyPSIyNDUuMjk3MyIgeTI9IjE0NC4zMzE3IiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDEgMCAwIC0xIDAgODAwKSI+Cgk8c3RvcCAgb2Zmc2V0PSIwLjE2IiBzdHlsZT0ic3RvcC1jb2xvcjojQzZGNDYyIi8+Cgk8c3RvcCAgb2Zmc2V0PSIwLjg5IiBzdHlsZT0ic3RvcC1jb2xvcjojMzNEOUZGIi8+CjwvbGluZWFyR3JhZGllbnQ+CjxwYXRoIGNsYXNzPSJzdDUiIGQ9Ik03MDkuOCwzMjUuM2MtNDctMTc4LjktMjM4LTI2NS0zNzkuMi0yMjEuNEM0ODIuNywxMzMuOSw2MDcuNSwyMDYuNCw3MDkuOCwzMjUuM3oiLz4KPGxpbmVhckdyYWRpZW50IGlkPSJTVkdJRF82XyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiIHgxPSI1NzkuMDM4MiIgeTE9IjY2My4zMTExIiB4Mj0iMjUyLjY0ODIiIHkyPSIxMzkuNzUxMSIgZ3JhZGllbnRUcmFuc2Zvcm09Im1hdHJpeCgxIDAgMCAtMSAwIDgwMCkiPgoJPHN0b3AgIG9mZnNldD0iMC4xNiIgc3R5bGU9InN0b3AtY29sb3I6I0M2RjQ2MiIvPgoJPHN0b3AgIG9mZnNldD0iMC44OSIgc3R5bGU9InN0b3AtY29sb3I6IzMzRDlGRiIvPgo8L2xpbmVhckdyYWRpZW50Pgo8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMTU1LjQsNTgzLjljNTQuNiw2OS4zLDEyNCwxMDkuNywyMTMsMTIyLjhDMzM0LjQsNjQzLjIsMjE0LjYsNTc0LjUsMTU1LjQsNTgzLjlMMTU1LjQsNTgzLjl6Ii8+Cjwvc3ZnPgo=',
       url: 'https://jup.ag/',
       detected: typeof window !== 'undefined' && !!(window as any).jupiter,
     },
@@ -762,20 +901,30 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
         minTokensOut: new BN(minTokensOut),
       };
 
-      // Build transaction using LaunchrClient
+      // Step 1: Build transaction using LaunchrClient
       const tx = await client.buildBuyTx(buyer, launchPubkey, mint, creator, params);
 
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = buyer;
+      // Step 2: Prepare transaction with compute budget and simulate
+      // This is required for Phantom, Solflare, Backpack, and Jupiter wallets
+      const { transaction: preparedTx, blockhash, lastValidBlockHeight } =
+        await prepareAndSimulateTransaction(connection, tx, buyer);
 
-      // Sign and send
-      const signedTx = await wallet.signTransaction(tx);
-      const signature = await connection.sendRawTransaction(signedTx.serialize());
+      // Step 3: Sign transaction with wallet
+      const signedTx = await wallet.signTransaction(preparedTx);
 
-      // Confirm
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Step 4: Send transaction with retry logic and confirmation
+      const signature = await sendAndConfirmTransactionWithRetry(
+        connection,
+        signedTx,
+        blockhash,
+        lastValidBlockHeight
+      );
+
+      // Step 5: Verify transaction success
+      const verified = await verifyTransactionSuccess(connection, signature);
+      if (!verified) {
+        console.warn('Transaction verification returned false, but transaction was confirmed');
+      }
 
       // Refresh balance
       await wallet.refreshBalance();
@@ -824,20 +973,30 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
         minSolOut: new BN(minSolOut),
       };
 
-      // Build transaction using LaunchrClient
+      // Step 1: Build transaction using LaunchrClient
       const tx = await client.buildSellTx(seller, launchPubkey, mint, creator, params);
 
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = seller;
+      // Step 2: Prepare transaction with compute budget and simulate
+      // This is required for Phantom, Solflare, Backpack, and Jupiter wallets
+      const { transaction: preparedTx, blockhash, lastValidBlockHeight } =
+        await prepareAndSimulateTransaction(connection, tx, seller);
 
-      // Sign and send
-      const signedTx = await wallet.signTransaction(tx);
-      const signature = await connection.sendRawTransaction(signedTx.serialize());
+      // Step 3: Sign transaction with wallet
+      const signedTx = await wallet.signTransaction(preparedTx);
 
-      // Confirm
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Step 4: Send transaction with retry logic and confirmation
+      const signature = await sendAndConfirmTransactionWithRetry(
+        connection,
+        signedTx,
+        blockhash,
+        lastValidBlockHeight
+      );
+
+      // Step 5: Verify transaction success
+      const verified = await verifyTransactionSuccess(connection, signature);
+      if (!verified) {
+        console.warn('Transaction verification returned false, but transaction was confirmed');
+      }
 
       // Refresh balance
       await wallet.refreshBalance();
@@ -974,23 +1133,34 @@ export function useCreateLaunch(wallet: UseWalletResult) {
         creatorFeeBps: params.creatorFeeBps,
       };
 
-      // Build transaction using LaunchrClient
+      // Step 1: Build transaction using LaunchrClient
       const { transaction, mint } = await client.buildCreateLaunchTx(creator, programParams);
 
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = creator;
+      // Step 2: Prepare transaction with compute budget and simulate
+      // Use higher compute units for launch creation (more complex operation)
+      const { transaction: preparedTx, blockhash, lastValidBlockHeight } =
+        await prepareAndSimulateTransaction(connection, transaction, creator, 400_000);
 
-      // Partially sign with mint keypair (required for mint creation)
-      transaction.partialSign(mint);
+      // Step 3: Partially sign with mint keypair (required for mint creation)
+      preparedTx.partialSign(mint);
 
-      // Sign with wallet
-      const signedTx = await wallet.signTransaction(transaction);
-      const signature = await connection.sendRawTransaction(signedTx.serialize());
+      // Step 4: Sign with wallet
+      const signedTx = await wallet.signTransaction(preparedTx);
 
-      // Confirm
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Step 5: Send transaction with retry logic and confirmation
+      const signature = await sendAndConfirmTransactionWithRetry(
+        connection,
+        signedTx,
+        blockhash,
+        lastValidBlockHeight
+      );
+
+      // Step 6: Verify transaction success
+      const verified = await verifyTransactionSuccess(connection, signature);
+      if (!verified) {
+        console.warn('Transaction verification returned false, but transaction was confirmed');
+      }
+
       await wallet.refreshBalance();
 
       return signature;
@@ -1031,26 +1201,37 @@ export function useCreateLaunch(wallet: UseWalletResult) {
         creatorFeeBps: params.creatorFeeBps,
       };
 
-      // Build transaction using LaunchrClient
+      // Step 1: Build transaction using LaunchrClient
       const { transaction, mint } = await client.buildCreateLaunchTx(creator, programParams);
 
       // Get launch PDA
       const launchPda = client.getLaunchPda(mint.publicKey);
 
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = creator;
+      // Step 2: Prepare transaction with compute budget and simulate
+      // Use higher compute units for launch creation (more complex operation)
+      const { transaction: preparedTx, blockhash, lastValidBlockHeight } =
+        await prepareAndSimulateTransaction(connection, transaction, creator, 400_000);
 
-      // Partially sign with mint keypair
-      transaction.partialSign(mint);
+      // Step 3: Partially sign with mint keypair
+      preparedTx.partialSign(mint);
 
-      // Sign with wallet
-      const signedTx = await wallet.signTransaction(transaction);
-      const signature = await connection.sendRawTransaction(signedTx.serialize());
+      // Step 4: Sign with wallet
+      const signedTx = await wallet.signTransaction(preparedTx);
 
-      // Confirm
-      await connection.confirmTransaction(signature, 'confirmed');
+      // Step 5: Send transaction with retry logic and confirmation
+      const signature = await sendAndConfirmTransactionWithRetry(
+        connection,
+        signedTx,
+        blockhash,
+        lastValidBlockHeight
+      );
+
+      // Step 6: Verify transaction success
+      const verified = await verifyTransactionSuccess(connection, signature);
+      if (!verified) {
+        console.warn('Transaction verification returned false, but transaction was confirmed');
+      }
+
       await wallet.refreshBalance();
 
       return {
@@ -1425,4 +1606,449 @@ export function useMultipleTokenMetadata(mintAddresses: string[]): {
   }, [fetchAllMetadata]);
 
   return { metadataMap, loading, error, refetch: fetchAllMetadata };
+}
+
+// =============================================================================
+// LAUNCH HOLDERS HOOK (Uses Backend API)
+// =============================================================================
+
+export interface HolderData {
+  address: string;
+  balance: number;
+  percentage: number;
+  rank: number;
+}
+
+export function useLaunchHolders(launchPk: string | undefined): {
+  holders: HolderData[];
+  totalHolders: number;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [holders, setHolders] = useState<HolderData[]>([]);
+  const [totalHolders, setTotalHolders] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchHolders = useCallback(async () => {
+    if (!launchPk) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getLaunchHolders(launchPk);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data) {
+        // Map topHolders to holders array
+        setHolders(response.data.topHolders || []);
+        setTotalHolders(response.data.totalHolders || 0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch holders:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch holders');
+    } finally {
+      setLoading(false);
+    }
+  }, [launchPk]);
+
+  useEffect(() => {
+    fetchHolders();
+  }, [fetchHolders]);
+
+  return { holders, totalHolders, loading, error, refetch: fetchHolders };
+}
+
+// =============================================================================
+// LAUNCH CHART HOOK (Uses Backend API)
+// =============================================================================
+
+export type ChartTimeframe = '1H' | '4H' | '1D' | '7D' | '30D';
+
+export interface CandleData {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export function useLaunchChart(
+  launchPk: string | undefined,
+  timeframe: ChartTimeframe = '1D'
+): {
+  candles: CandleData[];
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [candles, setCandles] = useState<CandleData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchChart = useCallback(async () => {
+    if (!launchPk) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getLaunchChart(launchPk, timeframe);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data?.candles) {
+        // Map 'time' to 'timestamp' for consistency
+        setCandles(response.data.candles.map(c => ({
+          timestamp: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to fetch chart data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch chart');
+    } finally {
+      setLoading(false);
+    }
+  }, [launchPk, timeframe]);
+
+  useEffect(() => {
+    fetchChart();
+  }, [fetchChart]);
+
+  return { candles, loading, error, refetch: fetchChart };
+}
+
+// =============================================================================
+// USER BALANCES HOOK (Uses Backend API)
+// =============================================================================
+
+export interface UserBalanceData {
+  solBalance: number;
+  tokenBalance: number;
+  tokenSymbol: string;
+  tokenValue: number;
+  position: {
+    tokenBalance: number;
+    solSpent: number;
+    solReceived: number;
+    buyCount: number;
+    sellCount: number;
+    costBasis: number;
+  } | null;
+}
+
+export function useUserBalances(
+  userAddress: string | undefined,
+  launchPk: string | undefined
+): {
+  balances: UserBalanceData | null;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [balances, setBalances] = useState<UserBalanceData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchBalances = useCallback(async () => {
+    if (!userAddress || !launchPk) {
+      setBalances(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getUserBalances(userAddress, launchPk);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data) {
+        setBalances(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user balances:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch balances');
+    } finally {
+      setLoading(false);
+    }
+  }, [userAddress, launchPk]);
+
+  useEffect(() => {
+    fetchBalances();
+  }, [fetchBalances]);
+
+  // Refresh balances periodically when user is connected
+  useEffect(() => {
+    if (!userAddress || !launchPk) return;
+
+    const interval = setInterval(fetchBalances, 15000); // Refresh every 15 seconds
+    return () => clearInterval(interval);
+  }, [userAddress, launchPk, fetchBalances]);
+
+  return { balances, loading, error, refetch: fetchBalances };
+}
+
+// =============================================================================
+// USER ACTIVITY HOOK (Uses Backend API)
+// =============================================================================
+
+export interface ActivityData {
+  type: 'buy' | 'sell';
+  launch: {
+    publicKey: string;
+    name: string;
+    symbol: string;
+    mint: string;
+  };
+  solAmount: number;
+  tokenAmount: number;
+  price: number;
+  timestamp: number;
+  signature: string;
+}
+
+export function useUserActivity(
+  userAddress: string | undefined,
+  limit: number = 50
+): {
+  activity: ActivityData[];
+  total: number;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [activity, setActivity] = useState<ActivityData[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchActivity = useCallback(async () => {
+    if (!userAddress) {
+      setActivity([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getUserActivity(userAddress, limit);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data) {
+        setActivity(response.data.activity || []);
+        setTotal(response.data.total || 0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user activity:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch activity');
+    } finally {
+      setLoading(false);
+    }
+  }, [userAddress, limit]);
+
+  useEffect(() => {
+    fetchActivity();
+  }, [fetchActivity]);
+
+  return { activity, total, loading, error, refetch: fetchActivity };
+}
+
+// =============================================================================
+// USER STATS HOOK (Uses Backend API)
+// =============================================================================
+
+export interface UserStats {
+  address: string;
+  positionsCount: number;
+  launchesCreated: number;
+  totalTrades: number;
+  totalBuys: number;
+  totalSells: number;
+  totalSolSpent: number;
+  totalSolReceived: number;
+  netSol: number;
+}
+
+export function useUserStats(userAddress: string | undefined): {
+  stats: UserStats | null;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStats = useCallback(async () => {
+    if (!userAddress) {
+      setStats(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getUserStats(userAddress);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data) {
+        setStats(response.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user stats:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch stats');
+    } finally {
+      setLoading(false);
+    }
+  }, [userAddress]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  return { stats, loading, error, refetch: fetchStats };
+}
+
+// =============================================================================
+// USER POSITIONS HOOK (Uses Backend API)
+// =============================================================================
+
+export interface PositionWithLaunch {
+  tokenBalance: number;
+  solSpent: number;
+  solReceived: number;
+  buyCount: number;
+  sellCount: number;
+  costBasis: number;
+  pnl: number;
+  pnlPercent: number;
+  currentValue: number;
+  launch: {
+    id: string;
+    publicKey: string;
+    name: string;
+    symbol: string;
+    mint: string;
+    imageUri?: string;
+    currentPrice?: number;
+    gi?: number;
+    status?: 'active' | 'graduated' | 'failed';
+    price?: number;
+    creator?: string;
+    marketCap?: number;
+    volume24h?: number;
+    progress?: number;
+    holderCount?: number;
+    trades?: number;
+    createdAt?: number;
+    graduatedAt?: number | null;
+  };
+}
+
+export function useUserPositions(userAddress: string | undefined): {
+  positions: PositionWithLaunch[];
+  totalValue: number;
+  totalPnl: number;
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+} {
+  const [positions, setPositions] = useState<PositionWithLaunch[]>([]);
+  const [totalValue, setTotalValue] = useState(0);
+  const [totalPnl, setTotalPnl] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPositions = useCallback(async () => {
+    if (!userAddress) {
+      setPositions([]);
+      setTotalValue(0);
+      setTotalPnl(0);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.getUserPositions(userAddress);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      if (response.data) {
+        setPositions(response.data.positions || []);
+        setTotalValue(response.data.totalValue || 0);
+        setTotalPnl(response.data.totalPnl || 0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user positions:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch positions');
+    } finally {
+      setLoading(false);
+    }
+  }, [userAddress]);
+
+  useEffect(() => {
+    fetchPositions();
+  }, [fetchPositions]);
+
+  // Refresh positions when trading activity happens via WebSocket
+  useEffect(() => {
+    if (!userAddress) return;
+
+    wsClient.connect();
+    wsClient.subscribeChannel('trades');
+
+    const unsubscribe = wsClient.onMessage((message: NormalizedMessage) => {
+      if (message.type === 'trade' && message.data.user === userAddress) {
+        // Refresh positions when user trades
+        fetchPositions();
+      }
+    });
+
+    return () => {
+      wsClient.unsubscribeChannel('trades');
+      unsubscribe();
+    };
+  }, [userAddress, fetchPositions]);
+
+  return { positions, totalValue, totalPnl, loading, error, refetch: fetchPositions };
 }

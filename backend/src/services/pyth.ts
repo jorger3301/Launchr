@@ -3,9 +3,36 @@
  *
  * Oracle price feeds for accurate SOL/USD and token pricing.
  * https://docs.pyth.network/
+ *
+ * Security features:
+ * - Price staleness validation
+ * - Confidence interval checks
+ * - Fallback price handling
+ * - Price deviation alerts
  */
 
 import { logger } from '../utils/logger';
+
+// ---------------------------------------------------------------------------
+// CONFIGURATION
+// ---------------------------------------------------------------------------
+
+const PYTH_CONFIG = {
+  // Staleness thresholds (in seconds)
+  maxPriceAge: 60, // Reject prices older than 60 seconds
+  warnPriceAge: 30, // Warn on prices older than 30 seconds
+
+  // Confidence thresholds (percentage of price)
+  maxConfidenceRatio: 0.05, // Reject if confidence > 5% of price
+  warnConfidenceRatio: 0.02, // Warn if confidence > 2% of price
+
+  // Price deviation thresholds (percentage change)
+  maxPriceDeviation: 0.10, // Alert if price moves > 10% from EMA
+  warnPriceDeviation: 0.05, // Warn if price moves > 5% from EMA
+
+  // Cache settings
+  cacheDuration: 10000, // 10 seconds
+};
 
 // ---------------------------------------------------------------------------
 // TYPES
@@ -15,13 +42,26 @@ interface PythConfig {
   cluster: 'mainnet-beta' | 'devnet';
 }
 
-interface PriceData {
+export interface PriceData {
   price: number;
   confidence: number;
   exponent: number;
   publishTime: number;
   emaPrice: number;
   emaConfidence: number;
+}
+
+export interface ValidatedPrice {
+  price: number;
+  confidence: number;
+  emaPrice: number;
+  publishTime: number;
+  age: number;
+  isStale: boolean;
+  isReliable: boolean;
+  confidenceRatio: number;
+  deviationFromEma: number;
+  warnings: string[];
 }
 
 interface PriceFeed {
@@ -64,10 +104,80 @@ export const PYTH_PRICE_FEEDS = {
 export class PythService {
   private baseUrl: string;
   private priceCache: Map<string, { data: PriceData; timestamp: number }> = new Map();
-  private cacheDuration: number = 10000; // 10 seconds
+  private lastKnownPrices: Map<string, number> = new Map();
+  private cacheDuration: number = PYTH_CONFIG.cacheDuration;
 
   constructor(config: PythConfig = { cluster: 'devnet' }) {
     this.baseUrl = PYTH_HERMES_API[config.cluster === 'mainnet-beta' ? 'mainnet' : 'devnet'];
+  }
+
+  // ---------------------------------------------------------------------------
+  // PRICE VALIDATION
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Validate a price for staleness and reliability
+   */
+  validatePrice(priceData: PriceData, feedId?: string): ValidatedPrice {
+    const now = Math.floor(Date.now() / 1000);
+    const age = now - priceData.publishTime;
+    const warnings: string[] = [];
+
+    // Check staleness
+    const isStale = age > PYTH_CONFIG.maxPriceAge;
+    if (isStale) {
+      warnings.push(`Price is stale (${age}s old, max ${PYTH_CONFIG.maxPriceAge}s)`);
+      logger.warn(`Stale price detected for ${feedId || 'unknown'}: ${age}s old`);
+    } else if (age > PYTH_CONFIG.warnPriceAge) {
+      warnings.push(`Price is getting old (${age}s)`);
+    }
+
+    // Check confidence ratio
+    const confidenceRatio = Math.abs(priceData.confidence / priceData.price);
+    const isConfidenceTooHigh = confidenceRatio > PYTH_CONFIG.maxConfidenceRatio;
+    if (isConfidenceTooHigh) {
+      warnings.push(`Confidence too high (${(confidenceRatio * 100).toFixed(2)}%)`);
+      logger.warn(`High confidence interval for ${feedId || 'unknown'}: ${(confidenceRatio * 100).toFixed(2)}%`);
+    } else if (confidenceRatio > PYTH_CONFIG.warnConfidenceRatio) {
+      warnings.push(`Confidence elevated (${(confidenceRatio * 100).toFixed(2)}%)`);
+    }
+
+    // Check deviation from EMA
+    const deviationFromEma = Math.abs(priceData.price - priceData.emaPrice) / priceData.emaPrice;
+    if (deviationFromEma > PYTH_CONFIG.maxPriceDeviation) {
+      warnings.push(`Large deviation from EMA (${(deviationFromEma * 100).toFixed(2)}%)`);
+      logger.warn(`Price deviation alert for ${feedId || 'unknown'}: ${(deviationFromEma * 100).toFixed(2)}% from EMA`);
+    } else if (deviationFromEma > PYTH_CONFIG.warnPriceDeviation) {
+      warnings.push(`Elevated deviation from EMA (${(deviationFromEma * 100).toFixed(2)}%)`);
+    }
+
+    // Track last known price for sudden change detection
+    if (feedId) {
+      const lastPrice = this.lastKnownPrices.get(feedId);
+      if (lastPrice) {
+        const priceChange = Math.abs(priceData.price - lastPrice) / lastPrice;
+        if (priceChange > PYTH_CONFIG.maxPriceDeviation) {
+          warnings.push(`Sudden price change (${(priceChange * 100).toFixed(2)}%)`);
+          logger.warn(`Sudden price change for ${feedId}: ${(priceChange * 100).toFixed(2)}%`);
+        }
+      }
+      this.lastKnownPrices.set(feedId, priceData.price);
+    }
+
+    const isReliable = !isStale && !isConfidenceTooHigh;
+
+    return {
+      price: priceData.price,
+      confidence: priceData.confidence,
+      emaPrice: priceData.emaPrice,
+      publishTime: priceData.publishTime,
+      age,
+      isStale,
+      isReliable,
+      confidenceRatio,
+      deviationFromEma,
+      warnings,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -75,7 +185,7 @@ export class PythService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Get latest price for a feed
+   * Get latest price for a feed (raw, without validation)
    */
   async getPrice(feedId: string): Promise<PriceData | null> {
     // Check cache first
@@ -120,11 +230,52 @@ export class PythService {
   }
 
   /**
-   * Get SOL/USD price
+   * Get validated price for a feed
+   */
+  async getValidatedPrice(feedId: string): Promise<ValidatedPrice | null> {
+    const priceData = await this.getPrice(feedId);
+    if (!priceData) return null;
+    return this.validatePrice(priceData, feedId);
+  }
+
+  /**
+   * Get SOL/USD price (validated)
    */
   async getSolUsdPrice(): Promise<number> {
-    const priceData = await this.getPrice(PYTH_PRICE_FEEDS['SOL/USD']);
-    return priceData?.price || 0;
+    const validated = await this.getValidatedPrice(PYTH_PRICE_FEEDS['SOL/USD']);
+    if (!validated) return 0;
+
+    // Return 0 if price is unreliable (stale or high confidence)
+    if (!validated.isReliable) {
+      logger.warn('SOL/USD price is unreliable, returning 0');
+      return 0;
+    }
+
+    return validated.price;
+  }
+
+  /**
+   * Get SOL/USD price with fallback to EMA if spot is unreliable
+   */
+  async getSolUsdPriceWithFallback(): Promise<{ price: number; source: 'spot' | 'ema' | 'none'; warnings: string[] }> {
+    const validated = await this.getValidatedPrice(PYTH_PRICE_FEEDS['SOL/USD']);
+
+    if (!validated) {
+      return { price: 0, source: 'none', warnings: ['Failed to fetch price'] };
+    }
+
+    // If spot price is reliable, use it
+    if (validated.isReliable) {
+      return { price: validated.price, source: 'spot', warnings: validated.warnings };
+    }
+
+    // Fall back to EMA if spot is unreliable
+    logger.info('Falling back to EMA price due to unreliable spot price');
+    return {
+      price: validated.emaPrice,
+      source: 'ema',
+      warnings: [...validated.warnings, 'Using EMA price as fallback'],
+    };
   }
 
   /**
@@ -166,6 +317,20 @@ export class PythService {
   }
 
   /**
+   * Get validated prices for multiple feeds
+   */
+  async getValidatedPrices(feedIds: string[]): Promise<Map<string, ValidatedPrice>> {
+    const rawPrices = await this.getPrices(feedIds);
+    const results = new Map<string, ValidatedPrice>();
+
+    for (const [feedId, priceData] of rawPrices) {
+      results.set(feedId, this.validatePrice(priceData, feedId));
+    }
+
+    return results;
+  }
+
+  /**
    * Get price with symbol lookup
    */
   async getPriceBySymbol(symbol: string): Promise<PriceData | null> {
@@ -178,15 +343,34 @@ export class PythService {
   }
 
   /**
-   * Convert token amount to USD value
+   * Get validated price with symbol lookup
+   */
+  async getValidatedPriceBySymbol(symbol: string): Promise<ValidatedPrice | null> {
+    const feedId = PYTH_PRICE_FEEDS[symbol as keyof typeof PYTH_PRICE_FEEDS];
+    if (!feedId) {
+      logger.warn(`Unknown Pyth price feed symbol: ${symbol}`);
+      return null;
+    }
+    return this.getValidatedPrice(feedId);
+  }
+
+  /**
+   * Convert token amount to USD value (with validation)
    */
   async convertToUsd(
     tokenAmount: number,
     tokenSymbol: string = 'SOL/USD'
-  ): Promise<number> {
-    const priceData = await this.getPriceBySymbol(tokenSymbol);
-    if (!priceData) return 0;
-    return tokenAmount * priceData.price;
+  ): Promise<{ usdValue: number; isReliable: boolean; warnings: string[] }> {
+    const validated = await this.getValidatedPriceBySymbol(tokenSymbol);
+    if (!validated) {
+      return { usdValue: 0, isReliable: false, warnings: ['Failed to fetch price'] };
+    }
+
+    return {
+      usdValue: tokenAmount * validated.price,
+      isReliable: validated.isReliable,
+      warnings: validated.warnings,
+    };
   }
 
   /**
@@ -196,14 +380,16 @@ export class PythService {
     price: number;
     confidenceLow: number;
     confidenceHigh: number;
+    isReliable: boolean;
   } | null> {
-    const priceData = await this.getPrice(feedId);
-    if (!priceData) return null;
+    const validated = await this.getValidatedPrice(feedId);
+    if (!validated) return null;
 
     return {
-      price: priceData.price,
-      confidenceLow: priceData.price - priceData.confidence,
-      confidenceHigh: priceData.price + priceData.confidence,
+      price: validated.price,
+      confidenceLow: validated.price - validated.confidence,
+      confidenceHigh: validated.price + validated.confidence,
+      isReliable: validated.isReliable,
     };
   }
 
@@ -216,7 +402,7 @@ export class PythService {
    */
   subscribeToPrice(
     feedId: string,
-    onUpdate: (price: PriceData) => void,
+    onUpdate: (price: ValidatedPrice) => void,
     onError?: (error: Error) => void
   ): () => void {
     const eventSource = new EventSource(
@@ -235,7 +421,10 @@ export class PythService {
             emaPrice: parseInt(data.ema_price.price) * Math.pow(10, data.ema_price.expo),
             emaConfidence: parseInt(data.ema_price.conf) * Math.pow(10, data.ema_price.expo),
           };
-          onUpdate(priceData);
+
+          // Validate and emit
+          const validated = this.validatePrice(priceData, feedId);
+          onUpdate(validated);
         }
       } catch (err) {
         logger.error('Error parsing Pyth SSE data:', err);
@@ -278,6 +467,48 @@ export class PythService {
   setCacheDuration(ms: number): void {
     this.cacheDuration = ms;
   }
+
+  /**
+   * Get current configuration
+   */
+  getConfig(): typeof PYTH_CONFIG {
+    return { ...PYTH_CONFIG };
+  }
+
+  /**
+   * Health check - verify Pyth is responding with fresh prices
+   */
+  async healthCheck(): Promise<{
+    healthy: boolean;
+    latency: number;
+    priceAge: number | null;
+    error?: string;
+  }> {
+    const start = Date.now();
+
+    try {
+      const validated = await this.getValidatedPrice(PYTH_PRICE_FEEDS['SOL/USD']);
+      const latency = Date.now() - start;
+
+      if (!validated) {
+        return { healthy: false, latency, priceAge: null, error: 'Failed to fetch price' };
+      }
+
+      return {
+        healthy: validated.isReliable,
+        latency,
+        priceAge: validated.age,
+        error: validated.isReliable ? undefined : validated.warnings.join('; '),
+      };
+    } catch (error) {
+      return {
+        healthy: false,
+        latency: Date.now() - start,
+        priceAge: null,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -288,7 +519,7 @@ let pythService: PythService | null = null;
 
 export function initPyth(cluster: 'mainnet-beta' | 'devnet' = 'devnet'): PythService {
   pythService = new PythService({ cluster });
-  logger.info('Pyth Network service initialized');
+  logger.info('Pyth Network service initialized with validation');
   return pythService;
 }
 

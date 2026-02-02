@@ -469,6 +469,56 @@ export class SolanaService {
     return buffer.slice(0, nullIndex > 0 ? nullIndex : buffer.length).toString('utf8').trim();
   }
 
+  // ---------------------------------------------------------------------------
+  // Balance Methods
+  // ---------------------------------------------------------------------------
+
+  async getSolBalance(user: PublicKey): Promise<number> {
+    try {
+      const balance = await this.connection.getBalance(user);
+      return balance;
+    } catch (error) {
+      logger.error('Failed to get SOL balance:', error);
+      return 0;
+    }
+  }
+
+  async getTokenBalance(user: PublicKey, mint: PublicKey): Promise<number> {
+    try {
+      const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(user, {
+        mint,
+      });
+
+      if (tokenAccounts.value.length === 0) {
+        return 0;
+      }
+
+      const balance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+      return balance || 0;
+    } catch (error) {
+      logger.error('Failed to get token balance:', error);
+      return 0;
+    }
+  }
+
+  async getTokenBalanceRaw(user: PublicKey, mint: PublicKey): Promise<bigint> {
+    try {
+      const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(user, {
+        mint,
+      });
+
+      if (tokenAccounts.value.length === 0) {
+        return BigInt(0);
+      }
+
+      const amount = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.amount;
+      return BigInt(amount);
+    } catch (error) {
+      logger.error('Failed to get raw token balance:', error);
+      return BigInt(0);
+    }
+  }
+
   private parseTradeFromLogs(logs: string[], signature: string, blockTime: number | null): TradeEvent | null {
     try {
       for (const log of logs) {

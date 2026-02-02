@@ -1,12 +1,46 @@
 /**
  * WebSocket Service
- * 
- * Real-time updates for Launchr clients.
+ *
+ * Real-time updates for Launchr clients with security features:
+ * - Connection rate limiting per IP
+ * - Maximum connections per IP
+ * - Message rate limiting
+ * - Subscription limits
+ * - Heartbeat monitoring
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
+import { IncomingMessage } from 'http';
 import { IndexerService } from './indexer';
 import { logger } from '../utils/logger';
+
+// =============================================================================
+// CONFIGURATION
+// =============================================================================
+
+const WS_CONFIG = {
+  // Connection limits
+  maxConnectionsPerIp: 5,
+  maxTotalConnections: 1000,
+
+  // Rate limiting
+  connectionRateLimit: 10, // Max new connections per IP per minute
+  connectionRateWindow: 60000, // 1 minute window
+
+  // Message rate limiting
+  messageRateLimit: 30, // Max messages per client per second
+  messageRateWindow: 1000, // 1 second window
+
+  // Subscription limits
+  maxSubscriptionsPerClient: 10,
+
+  // Heartbeat
+  pingInterval: 30000, // 30 seconds
+  pongTimeout: 10000, // 10 seconds to respond
+
+  // Message size
+  maxMessageSize: 1024, // 1KB max message size
+};
 
 // =============================================================================
 // TYPES
@@ -14,14 +48,23 @@ import { logger } from '../utils/logger';
 
 interface WSClient {
   ws: WebSocket;
+  ip: string;
   subscriptions: Set<string>;
   isAlive: boolean;
+  connectedAt: number;
+  messageCount: number;
+  messageWindowStart: number;
 }
 
 interface WSMessage {
   type: string;
   channel?: string;
-  data?: any;
+  data?: unknown;
+}
+
+interface ConnectionRateEntry {
+  count: number;
+  windowStart: number;
 }
 
 // =============================================================================
@@ -32,7 +75,10 @@ export class WebSocketService {
   private wss: WebSocketServer;
   private indexer: IndexerService;
   private clients: Map<WebSocket, WSClient> = new Map();
+  private connectionsByIp: Map<string, Set<WebSocket>> = new Map();
+  private connectionRates: Map<string, ConnectionRateEntry> = new Map();
   private pingInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor(wss: WebSocketServer, indexer: IndexerService) {
     this.wss = wss;
@@ -45,8 +91,8 @@ export class WebSocketService {
 
   start(): void {
     // Handle new connections
-    this.wss.on('connection', (ws) => {
-      this.handleConnection(ws);
+    this.wss.on('connection', (ws, req) => {
+      this.handleConnection(ws, req);
     });
 
     // Subscribe to indexer events
@@ -65,9 +111,14 @@ export class WebSocketService {
     // Ping clients every 30 seconds
     this.pingInterval = setInterval(() => {
       this.pingClients();
-    }, 30000);
+    }, WS_CONFIG.pingInterval);
 
-    logger.info(`WebSocket server started with ${this.wss.clients.size} clients`);
+    // Clean up stale rate limit entries every minute
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupRateLimits();
+    }, 60000);
+
+    logger.info('WebSocket server started with security features enabled');
   }
 
   stop(): void {
@@ -76,28 +127,154 @@ export class WebSocketService {
       this.pingInterval = null;
     }
 
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+
     // Close all connections
     this.clients.forEach((client) => {
-      client.ws.close();
+      client.ws.close(1001, 'Server shutting down');
     });
     this.clients.clear();
+    this.connectionsByIp.clear();
+    this.connectionRates.clear();
 
     logger.info('WebSocket server stopped');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Security: Rate Limiting
+  // ---------------------------------------------------------------------------
+
+  private getClientIp(req: IncomingMessage): string {
+    // Check Cloudflare header first
+    const cfIp = req.headers['cf-connecting-ip'];
+    if (typeof cfIp === 'string') return cfIp;
+
+    // Check X-Forwarded-For
+    const xff = req.headers['x-forwarded-for'];
+    if (typeof xff === 'string') {
+      const firstIp = xff.split(',')[0].trim();
+      if (firstIp) return firstIp;
+    }
+
+    // Check X-Real-IP
+    const realIp = req.headers['x-real-ip'];
+    if (typeof realIp === 'string') return realIp;
+
+    // Fall back to socket address
+    return req.socket.remoteAddress || 'unknown';
+  }
+
+  private checkConnectionRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = this.connectionRates.get(ip);
+
+    if (!entry || now - entry.windowStart > WS_CONFIG.connectionRateWindow) {
+      // New window
+      this.connectionRates.set(ip, { count: 1, windowStart: now });
+      return true;
+    }
+
+    if (entry.count >= WS_CONFIG.connectionRateLimit) {
+      logger.warn(`Connection rate limit exceeded for IP: ${ip}`);
+      return false;
+    }
+
+    entry.count++;
+    return true;
+  }
+
+  private checkConnectionLimit(ip: string): boolean {
+    // Check total connections
+    if (this.clients.size >= WS_CONFIG.maxTotalConnections) {
+      logger.warn('Maximum total connections reached');
+      return false;
+    }
+
+    // Check per-IP connections
+    const ipConnections = this.connectionsByIp.get(ip);
+    if (ipConnections && ipConnections.size >= WS_CONFIG.maxConnectionsPerIp) {
+      logger.warn(`Maximum connections per IP reached for: ${ip}`);
+      return false;
+    }
+
+    return true;
+  }
+
+  private checkMessageRateLimit(client: WSClient): boolean {
+    const now = Date.now();
+
+    if (now - client.messageWindowStart > WS_CONFIG.messageRateWindow) {
+      // New window
+      client.messageCount = 1;
+      client.messageWindowStart = now;
+      return true;
+    }
+
+    if (client.messageCount >= WS_CONFIG.messageRateLimit) {
+      logger.warn(`Message rate limit exceeded for IP: ${client.ip}`);
+      return false;
+    }
+
+    client.messageCount++;
+    return true;
+  }
+
+  private cleanupRateLimits(): void {
+    const now = Date.now();
+
+    // Clean up old connection rate entries
+    for (const [ip, entry] of this.connectionRates.entries()) {
+      if (now - entry.windowStart > WS_CONFIG.connectionRateWindow * 2) {
+        this.connectionRates.delete(ip);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
   // Connection Handling
   // ---------------------------------------------------------------------------
 
-  private handleConnection(ws: WebSocket): void {
+  private handleConnection(ws: WebSocket, req: IncomingMessage): void {
+    const ip = this.getClientIp(req);
+
+    // Check rate limits
+    if (!this.checkConnectionRateLimit(ip)) {
+      ws.close(1008, 'Rate limit exceeded');
+      return;
+    }
+
+    // Check connection limits
+    if (!this.checkConnectionLimit(ip)) {
+      ws.close(1008, 'Connection limit exceeded');
+      return;
+    }
+
+    const now = Date.now();
     const client: WSClient = {
       ws,
+      ip,
       subscriptions: new Set(),
       isAlive: true,
+      connectedAt: now,
+      messageCount: 0,
+      messageWindowStart: now,
     };
+
+    // Track client
     this.clients.set(ws, client);
 
-    logger.info(`Client connected (total: ${this.clients.size})`);
+    // Track IP connections
+    let ipConnections = this.connectionsByIp.get(ip);
+    if (!ipConnections) {
+      ipConnections = new Set();
+      this.connectionsByIp.set(ip, ipConnections);
+    }
+    ipConnections.add(ws);
+
+    logger.info(`Client connected from ${ip} (total: ${this.clients.size})`);
 
     // Send welcome message
     this.send(ws, {
@@ -105,11 +282,27 @@ export class WebSocketService {
       data: {
         message: 'Connected to Launchr WebSocket',
         channels: ['trades', 'launches', 'stats'],
+        limits: {
+          maxSubscriptions: WS_CONFIG.maxSubscriptionsPerClient,
+          messageRateLimit: WS_CONFIG.messageRateLimit,
+        },
       },
     });
 
     // Handle messages
     ws.on('message', (data) => {
+      // Check message size
+      if (data.toString().length > WS_CONFIG.maxMessageSize) {
+        this.send(ws, { type: 'error', data: { message: 'Message too large' } });
+        return;
+      }
+
+      // Check message rate limit
+      if (!this.checkMessageRateLimit(client)) {
+        this.send(ws, { type: 'error', data: { message: 'Rate limit exceeded' } });
+        return;
+      }
+
       try {
         const message = JSON.parse(data.toString()) as WSMessage;
         this.handleMessage(ws, message);
@@ -126,15 +319,29 @@ export class WebSocketService {
 
     // Handle close
     ws.on('close', () => {
-      this.clients.delete(ws);
-      logger.info(`Client disconnected (total: ${this.clients.size})`);
+      this.handleDisconnect(ws, ip);
     });
 
     // Handle errors
     ws.on('error', (error) => {
       logger.error('WebSocket error:', error);
-      this.clients.delete(ws);
+      this.handleDisconnect(ws, ip);
     });
+  }
+
+  private handleDisconnect(ws: WebSocket, ip: string): void {
+    this.clients.delete(ws);
+
+    // Remove from IP tracking
+    const ipConnections = this.connectionsByIp.get(ip);
+    if (ipConnections) {
+      ipConnections.delete(ws);
+      if (ipConnections.size === 0) {
+        this.connectionsByIp.delete(ip);
+      }
+    }
+
+    logger.info(`Client disconnected from ${ip} (total: ${this.clients.size})`);
   }
 
   private handleMessage(ws: WebSocket, message: WSMessage): void {
@@ -144,12 +351,31 @@ export class WebSocketService {
     switch (message.type) {
       case 'subscribe':
         if (message.channel) {
+          // Check subscription limit
+          if (client.subscriptions.size >= WS_CONFIG.maxSubscriptionsPerClient) {
+            this.send(ws, {
+              type: 'error',
+              data: { message: 'Maximum subscriptions reached' },
+            });
+            return;
+          }
+
+          // Validate channel name
+          const validChannels = ['trades', 'launches', 'stats'];
+          if (!validChannels.includes(message.channel)) {
+            this.send(ws, {
+              type: 'error',
+              data: { message: `Invalid channel: ${message.channel}` },
+            });
+            return;
+          }
+
           client.subscriptions.add(message.channel);
           this.send(ws, {
             type: 'subscribed',
             channel: message.channel,
           });
-          logger.debug(`Client subscribed to ${message.channel}`);
+          logger.debug(`Client ${client.ip} subscribed to ${message.channel}`);
         }
         break;
 
@@ -179,7 +405,7 @@ export class WebSocketService {
   // Broadcasting
   // ---------------------------------------------------------------------------
 
-  broadcast(channel: string, data: any): void {
+  broadcast(channel: string, data: unknown): void {
     const message = JSON.stringify({
       type: 'update',
       channel,
@@ -187,17 +413,21 @@ export class WebSocketService {
       timestamp: Date.now(),
     });
 
+    let broadcastCount = 0;
     this.clients.forEach((client) => {
       if (
         client.ws.readyState === WebSocket.OPEN &&
         client.subscriptions.has(channel)
       ) {
         client.ws.send(message);
+        broadcastCount++;
       }
     });
+
+    logger.debug(`Broadcast to ${broadcastCount} clients on channel: ${channel}`);
   }
 
-  broadcastAll(data: any): void {
+  broadcastAll(data: unknown): void {
     const message = JSON.stringify({
       type: 'broadcast',
       data,
@@ -225,7 +455,7 @@ export class WebSocketService {
     this.clients.forEach((client, ws) => {
       if (!client.isAlive) {
         ws.terminate();
-        this.clients.delete(ws);
+        this.handleDisconnect(ws, client.ip);
         return;
       }
 
@@ -238,7 +468,12 @@ export class WebSocketService {
   // Stats
   // ---------------------------------------------------------------------------
 
-  getStats(): { clients: number; subscriptions: Record<string, number> } {
+  getStats(): {
+    clients: number;
+    connectionsByIp: number;
+    subscriptions: Record<string, number>;
+    config: typeof WS_CONFIG;
+  } {
     const subscriptions: Record<string, number> = {};
 
     this.clients.forEach((client) => {
@@ -249,7 +484,9 @@ export class WebSocketService {
 
     return {
       clients: this.clients.size,
+      connectionsByIp: this.connectionsByIp.size,
       subscriptions,
+      config: WS_CONFIG,
     };
   }
 }

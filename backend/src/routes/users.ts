@@ -155,4 +155,112 @@ router.get('/:address/stats', async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/users/:address/activity - Get user's recent activity
+// ---------------------------------------------------------------------------
+
+router.get('/:address/activity', async (req: Request, res: Response) => {
+  try {
+    const indexer: IndexerService = req.app.locals.indexer;
+    const { address } = req.params;
+    const limit = parseInt(req.query.limit as string) || 50;
+
+    // Validate address
+    try {
+      new PublicKey(address);
+    } catch {
+      return res.status(400).json({ error: 'Invalid wallet address' });
+    }
+
+    // Get all launches and collect user's trades from each
+    const launches = await indexer.getAllLaunches();
+    const allActivity: any[] = [];
+
+    // Collect trades from each launch
+    await Promise.all(
+      launches.slice(0, 20).map(async (launch) => {
+        const trades = await indexer.getRecentTrades(launch.publicKey, 100);
+        const userTrades = trades.filter((t: any) => t.trader === address);
+
+        for (const trade of userTrades) {
+          allActivity.push({
+            type: trade.type,
+            launch: {
+              publicKey: launch.publicKey,
+              name: launch.name,
+              symbol: launch.symbol,
+              mint: launch.mint,
+            },
+            solAmount: trade.solAmount,
+            tokenAmount: trade.tokenAmount,
+            price: trade.price,
+            timestamp: trade.timestamp,
+            signature: trade.signature,
+          });
+        }
+      })
+    );
+
+    // Sort by timestamp descending
+    allActivity.sort((a, b) => b.timestamp - a.timestamp);
+
+    res.json({
+      activity: allActivity.slice(0, limit),
+      total: allActivity.length,
+    });
+  } catch (error) {
+    logger.error('Failed to get user activity:', error);
+    res.status(500).json({ error: 'Failed to fetch user activity' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/users/:address/balances - Get user's token balances for a launch
+// ---------------------------------------------------------------------------
+
+router.get('/:address/balances/:launchPk', async (req: Request, res: Response) => {
+  try {
+    const solana: SolanaService = req.app.locals.solana;
+    const indexer: IndexerService = req.app.locals.indexer;
+    const { address, launchPk } = req.params;
+
+    // Validate addresses
+    let userPubkey: PublicKey;
+    let launchPubkey: PublicKey;
+    try {
+      userPubkey = new PublicKey(address);
+      launchPubkey = new PublicKey(launchPk);
+    } catch {
+      return res.status(400).json({ error: 'Invalid address' });
+    }
+
+    // Get launch details
+    const launch = await indexer.getLaunch(launchPk);
+    if (!launch) {
+      return res.status(404).json({ error: 'Launch not found' });
+    }
+
+    // Get user's token balance
+    const tokenBalance = await solana.getTokenBalance(userPubkey, new PublicKey(launch.mint));
+
+    // Get user's SOL balance
+    const solBalance = await solana.getSolBalance(userPubkey);
+
+    // Get user's position for this launch
+    const positions = await solana.getUserPositions(userPubkey);
+    const position = positions.find(p => p.launch === launchPk);
+
+    res.json({
+      solBalance,
+      tokenBalance,
+      tokenSymbol: launch.symbol,
+      position: position || null,
+      tokenValue: tokenBalance * launch.currentPrice,
+    });
+  } catch (error) {
+    logger.error('Failed to get user balances:', error);
+    res.status(500).json({ error: 'Failed to fetch user balances' });
+  }
+});
+
 export default router;

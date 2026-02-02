@@ -1826,6 +1826,162 @@ select:focus-visible {
   }
 }
 
+/* Enhanced Mobile UX */
+@media (max-width: 768px) {
+  /* Sticky trade panel at bottom on mobile */
+  .trade-panel-mobile {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+    z-index: 100 !important;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  /* Full width modals on mobile */
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* Touch-friendly buttons */
+  button,
+  .btn-press,
+  .glass-pill {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Larger touch targets for percentage buttons */
+  .quick-action-btn {
+    min-height: 38px !important;
+    font-size: 12px !important;
+  }
+
+  /* Portfolio card stack layout */
+  .portfolio-card {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  /* Scrollable tables */
+  .trades-table-container {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Compact amount input */
+  .amount-input-wrapper {
+    padding: 0 12px !important;
+  }
+
+  /* Bottom navigation safe area */
+  .bottom-nav-safe {
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+  }
+
+  /* Wallet selector full width */
+  .wallet-selector-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: auto 0 0 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+
+  /* Graduation modal responsive */
+  .graduation-modal {
+    width: 95% !important;
+    max-width: 95% !important;
+    margin: auto !important;
+  }
+
+  /* Settings grid */
+  .settings-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Create form layout */
+  .create-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Hide sparkline on very small screens */
+  @media (max-width: 480px) {
+    .sparkline-container {
+      display: none !important;
+    }
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  /* Disable hover effects that don't work well on touch */
+  .hover-scale-premium:hover {
+    transform: none !important;
+  }
+
+  /* Larger tap targets */
+  .tap-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  /* Remove hover color changes */
+  .table-row-hover:hover {
+    background: inherit !important;
+  }
+
+  /* Active state instead of hover */
+  .table-row-hover:active {
+    background: var(--glass2) !important;
+  }
+}
+
+/* Small phone screens */
+@media (max-width: 375px) {
+  /* Further reduce font sizes */
+  .hero-heading {
+    font-size: 28px !important;
+  }
+
+  .responsive-heading {
+    font-size: 20px !important;
+  }
+
+  /* Compact stats */
+  .stats-grid-3 .stat-value {
+    font-size: 16px !important;
+  }
+
+  /* Smaller avatars */
+  .avatar-sm {
+    width: 32px !important;
+    height: 32px !important;
+  }
+}
+
+/* Landscape mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+  .trade-panel-mobile {
+    max-height: 80vh;
+  }
+
+  .modal-content {
+    max-height: 95vh;
+  }
+}
+
 /* =============================================================================
    ORBIT FINANCE INTEGRATION STYLES
    ============================================================================= */
@@ -4003,7 +4159,7 @@ textarea:focus {
 }
 
 .sol-price-value {
-  font-family: 'DM Mono', 'SF Mono', monospace;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   letter-spacing: -0.02em;
 }
 

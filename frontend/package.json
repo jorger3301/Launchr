@@ -28,10 +28,12 @@
     "stream-browserify": "^3.0.0",
     "stream-http": "^3.2.0",
     "typescript": "^5.0.0",
-    "url": "^0.11.4"
+    "url": "^0.11.4",
+    "bs58": "^5.0.0"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",
+    "@types/bs58": "^4.0.1",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",

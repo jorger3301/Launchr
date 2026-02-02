@@ -1,8 +1,15 @@
 /**
  * Launchr API Server
- * 
+ *
  * Launch into Orbit 🚀
  * REST API and WebSocket server for the Launchr protocol.
+ *
+ * Security features:
+ * - Rate limiting
+ * - Request signing validation
+ * - WebSocket rate limiting
+ * - Trading anomaly detection
+ * - Price staleness validation
  */
 
 import express from 'express';
@@ -24,12 +31,22 @@ import { initJupiter, getJupiter } from './services/jupiter';
 import { initJito, getJito } from './services/jito';
 import { initPyth, getPyth } from './services/pyth';
 import { initMetaplex, getMetaplex } from './services/metaplex';
+import { initMonitoring, getMonitoring } from './services/monitoring';
+import {
+  securityHeaders,
+  nonceHandler,
+  startSecurityService,
+  stopSecurityService,
+  getSecurityStats,
+} from './lib/security';
 
+import path from 'path';
 import launchRoutes from './routes/launches';
 import tradeRoutes from './routes/trades';
 import statsRoutes from './routes/stats';
 import userRoutes from './routes/users';
 import healthRoutes from './routes/health';
+import uploadRoutes from './routes/upload';
 
 dotenv.config();
 
@@ -51,6 +68,9 @@ const SOLANA_CLUSTER = (process.env.SOLANA_CLUSTER || 'devnet') as 'mainnet-beta
 
 const app = express();
 const server = createServer(app);
+
+// Security headers
+app.use(securityHeaders());
 
 // Middleware
 app.use(helmet());
@@ -90,7 +110,7 @@ const solanaService = new SolanaService(RPC_ENDPOINT, PROGRAM_ID);
 const cacheService = new CacheService(REDIS_URL);
 const indexerService = new IndexerService(solanaService, cacheService);
 
-// WebSocket server
+// WebSocket server with security features
 const wss = new WebSocketServer({ server, path: '/ws' });
 const wsService = new WebSocketService(wss, indexerService);
 
@@ -99,9 +119,29 @@ const jupiterService = initJupiter();
 const jitoService = initJito();
 const pythService = initPyth(SOLANA_CLUSTER);
 const metaplexService = initMetaplex(RPC_ENDPOINT);
+const monitoringService = initMonitoring();
 
 // Initialize Helius if API key is provided
 const heliusService = HELIUS_API_KEY ? initHelius(HELIUS_API_KEY, SOLANA_CLUSTER) : null;
+
+// Wire up monitoring to indexer events
+indexerService.on('trade', (trade) => {
+  monitoringService.processTrade({
+    launchPk: trade.launchPk,
+    trader: trade.trader,
+    type: trade.isBuy ? 'buy' : 'sell',
+    solAmount: trade.solAmount / 1e9,
+    tokenAmount: trade.tokenAmount / 1e9,
+    price: trade.price,
+    timestamp: trade.timestamp,
+    signature: trade.signature,
+  });
+});
+
+// Forward monitoring alerts to WebSocket
+monitoringService.on('alert', (alert) => {
+  wsService.broadcast('alerts', alert);
+});
 
 // Make services available to routes
 app.locals.solana = solanaService;
@@ -113,16 +153,77 @@ app.locals.jito = jitoService;
 app.locals.helius = heliusService;
 app.locals.pyth = pythService;
 app.locals.metaplex = metaplexService;
+app.locals.monitoring = monitoringService;
 
 // =============================================================================
 // ROUTES
 // =============================================================================
 
+// Static file serving for uploads
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 app.use('/api/launches', launchRoutes);
 app.use('/api/trades', tradeRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/upload', uploadRoutes);
 app.use('/health', healthRoutes);
+
+// Nonce endpoint for wallet authentication
+app.get('/api/auth/nonce', nonceHandler);
+
+// Monitoring endpoints
+app.get('/api/monitoring/alerts', (req, res) => {
+  const { launchPk, trader, type, severity, limit } = req.query;
+
+  const alerts = monitoringService.getAlerts({
+    launchPk: launchPk as string,
+    trader: trader as string,
+    type: type as any,
+    severity: severity as any,
+    limit: limit ? parseInt(limit as string, 10) : undefined,
+  });
+
+  res.json({ alerts });
+});
+
+app.get('/api/monitoring/launch/:launchPk', (req, res) => {
+  const metrics = monitoringService.getLaunchMetrics(req.params.launchPk);
+
+  if (!metrics) {
+    res.status(404).json({ error: 'Launch not found or no recent activity' });
+    return;
+  }
+
+  res.json(metrics);
+});
+
+app.get('/api/monitoring/stats', (req, res) => {
+  res.json(monitoringService.getStats());
+});
+
+// Security stats endpoint (admin only in production)
+app.get('/api/security/stats', (req, res) => {
+  res.json(getSecurityStats());
+});
+
+// Pyth health check
+app.get('/api/pyth/health', async (req, res) => {
+  const health = await pythService.healthCheck();
+  res.status(health.healthy ? 200 : 503).json(health);
+});
+
+// Pyth price with validation
+app.get('/api/pyth/price/:symbol', async (req, res) => {
+  const validated = await pythService.getValidatedPriceBySymbol(req.params.symbol);
+
+  if (!validated) {
+    res.status(404).json({ error: 'Price feed not found' });
+    return;
+  }
+
+  res.json(validated);
+});
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -135,15 +236,28 @@ app.get('/', (req, res) => {
       trades: '/api/trades',
       stats: '/api/stats',
       users: '/api/users',
+      upload: '/api/upload/metadata',
       health: '/health',
       websocket: '/ws',
+      auth: '/api/auth/nonce',
+      monitoring: '/api/monitoring/alerts',
+      pyth: '/api/pyth/health',
     },
     services: {
       jupiter: 'enabled',
       jito: 'enabled',
       pyth: 'enabled',
       metaplex: 'enabled',
+      monitoring: 'enabled',
       helius: heliusService ? 'enabled' : 'disabled (no API key)',
+    },
+    security: {
+      rateLimit: '100 req/min',
+      wsRateLimit: '30 msg/sec',
+      wsConnectionLimit: '5 per IP',
+      signedRequests: 'optional (enabled per-route)',
+      priceValidation: 'staleness + confidence checks',
+      tradingMonitoring: 'anomaly detection enabled',
     },
   });
 });
@@ -165,6 +279,10 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 async function start() {
   try {
+    // Start security service
+    startSecurityService();
+    logger.info('Security service started');
+
     // Initialize cache (non-blocking, falls back to in-memory)
     try {
       await cacheService.connect();
@@ -191,10 +309,8 @@ async function start() {
       logger.info(`🚀 Launchr API running on port ${PORT}`);
       logger.info(`   RPC: ${RPC_ENDPOINT}`);
       logger.info(`   Program: ${PROGRAM_ID}`);
-      logger.info(`   Jupiter: enabled`);
-      logger.info(`   Jito: enabled`);
-      logger.info(`   Pyth: enabled`);
-      logger.info(`   Metaplex: enabled`);
+      logger.info(`   Services: Jupiter, Jito, Pyth, Metaplex, Monitoring`);
+      logger.info(`   Security: Rate limiting, WS limits, Anomaly detection`);
       logger.info(`   Helius: ${heliusService ? 'enabled' : 'disabled (set HELIUS_API_KEY)'}`);
     });
 
@@ -207,11 +323,13 @@ async function start() {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down...');
-  
+
   indexerService.stop();
   wsService.stop();
+  monitoringService.stop();
+  stopSecurityService();
   await cacheService.disconnect();
-  
+
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);

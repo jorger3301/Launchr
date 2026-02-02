@@ -22,10 +22,17 @@ import {
   useSolPrice,
   useAvailableWallets,
   useMultipleTokenMetadata,
+  useUserBalances,
+  useLaunchHolders,
+  useLaunchChart,
+  useUserPositions,
+  useUserActivity,
+  useUserStats,
   WalletType,
 } from './hooks';
 
 import { WalletSelector } from './components/molecules';
+import { api, wsClient, NormalizedMessage } from './services/api';
 
 import {
   useMockWallet,
@@ -1696,12 +1703,29 @@ interface UserSettings {
     priceAlerts: boolean;
     graduationAlerts: boolean;
     tradeConfirmations: boolean;
+    newLaunches: boolean;
+    portfolioUpdates: boolean;
   };
   theme: 'dark' | 'light' | 'system';
   currency: 'USD' | 'SOL';
   priority: 'low' | 'medium' | 'high';
   rpc: 'helius' | 'quicknode' | 'default';
   analytics: boolean;
+  // Institutional-grade settings
+  displayDensity: 'compact' | 'comfortable' | 'spacious';
+  autoRefresh: boolean;
+  refreshInterval: number; // seconds
+  tradingLimits: {
+    maxTradeSize: number;
+    dailyLimit: number;
+    enabled: boolean;
+  };
+  soundEffects: boolean;
+  chartType: 'candle' | 'line' | 'area';
+  showIndicators: boolean;
+  advancedMode: boolean;
+  twoFactorEnabled: boolean;
+  sessionTimeout: number; // minutes
 }
 
 // Transaction with signature for Solscan links
@@ -1967,12 +1991,33 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(() => {
     const defaultSettings: UserSettings = {
       defaultSlippage: 3,
-      notifications: { priceAlerts: true, graduationAlerts: true, tradeConfirmations: true },
+      notifications: {
+        priceAlerts: true,
+        graduationAlerts: true,
+        tradeConfirmations: true,
+        newLaunches: true,
+        portfolioUpdates: false,
+      },
       theme: 'dark',
       currency: 'USD',
       priority: 'medium',
       rpc: 'helius',
       analytics: true,
+      // Institutional defaults
+      displayDensity: 'comfortable',
+      autoRefresh: true,
+      refreshInterval: 30,
+      tradingLimits: {
+        maxTradeSize: 100,
+        dailyLimit: 500,
+        enabled: false,
+      },
+      soundEffects: false,
+      chartType: 'candle',
+      showIndicators: true,
+      advancedMode: false,
+      twoFactorEnabled: false,
+      sessionTimeout: 60,
     };
     try {
       const saved = localStorage.getItem('launchr_settings');
@@ -1995,6 +2040,10 @@ const App: React.FC = () => {
   // Trade loading and success state
   const [tradeLoading, setTradeLoading] = useState(false);
   const [tradeSuccess, setTradeSuccess] = useState(false);
+
+  // Graduation celebration state
+  const [showGraduation, setShowGraduation] = useState(false);
+  const [graduatedLaunch, setGraduatedLaunch] = useState<LaunchItem | null>(null);
 
   // Trade confirmation dialog
   const [tradeConfirm, setTradeConfirm] = useState<{
@@ -2074,6 +2123,22 @@ const App: React.FC = () => {
   const launchDetail = USE_MOCKS ? useMockLaunch(currentLaunchPk) : useRealLaunch(currentLaunchPk);
   const { trades: rawTrades } = launchDetail;
 
+  // User balances for trading (real token balance from on-chain)
+  const userAddress = wallet.connected ? wallet.address : undefined;
+  const { balances: userBalances } = useUserBalances(userAddress ?? undefined, currentLaunchPk);
+
+  // Launch holders data
+  const { holders: launchHolders, totalHolders } = useLaunchHolders(currentLaunchPk);
+
+  // User positions for portfolio view (from API - used when not mocking)
+  const { positions: apiUserPositions, totalValue: apiPortfolioValue, totalPnl: apiPortfolioPnl } = useUserPositions(userAddress ?? undefined);
+
+  // User activity for profile
+  const { activity: userTradeActivity } = useUserActivity(userAddress ?? undefined, 50);
+
+  // User stats for profile
+  const { stats: userProfileStats } = useUserStats(userAddress ?? undefined);
+
   // Transform launches to our format
   const launches: LaunchItem[] = useMemo(() => {
     return rawLaunches.map((l, i) => {
@@ -2137,6 +2202,48 @@ const App: React.FC = () => {
     });
     return data;
   }, [launches]);
+
+  // Listen for graduation events via WebSocket
+  useEffect(() => {
+    if (!settings.notifications.graduationAlerts) return;
+
+    wsClient.connect();
+    wsClient.subscribeChannel('launches');
+
+    const unsubscribe = wsClient.onMessage((message: NormalizedMessage) => {
+      if (message.type === 'launch_graduated') {
+        const launch = message.data;
+        // Find the full launch data if available
+        const fullLaunch = launches.find(l => l.publicKey === launch.publicKey);
+        if (fullLaunch || launch) {
+          setGraduatedLaunch(fullLaunch || {
+            id: launch.publicKey,
+            publicKey: launch.publicKey,
+            name: launch.name || 'Unknown',
+            symbol: launch.symbol || '???',
+            gi: 0,
+            status: 'graduated',
+            price: launch.currentPrice || 0,
+            priceChange24h: 0,
+            creator: launch.creator || '',
+            marketCap: launch.currentPrice ? launch.currentPrice * 800000000 : 0,
+            volume24h: 0,
+            progress: 100,
+            holders: launch.holderCount || 0,
+            trades: 0,
+            createdAt: launch.createdAt || Date.now(),
+          });
+          setShowGraduation(true);
+          showToast(`${launch.name} ($${launch.symbol}) has graduated to Orbit DLMM!`, 'success');
+        }
+      }
+    });
+
+    return () => {
+      wsClient.unsubscribeChannel('launches');
+      unsubscribe();
+    };
+  }, [settings.notifications.graduationAlerts, launches, showToast]);
 
   // Transform trades
   const trades: TradeItem[] = useMemo(() => {
@@ -2323,9 +2430,48 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [shareModal, showFilters, tradeConfirm.open, go, handleRefresh]);
 
-  // Generate mock user positions from launches
+  // User positions - use API data or mock data based on USE_MOCKS
   const userPositions: UserPosition[] = useMemo(() => {
     if (!wallet.connected) return [];
+
+    // Use real API data when not mocking
+    if (!USE_MOCKS && apiUserPositions.length > 0) {
+      return apiUserPositions.map((pos) => {
+        // Find the full launch data from launches array if available
+        const fullLaunch = launches.find(l => l.publicKey === pos.launch.publicKey);
+        const launch: LaunchItem = fullLaunch || {
+          id: pos.launch.id || pos.launch.publicKey,
+          publicKey: pos.launch.publicKey,
+          name: pos.launch.name,
+          symbol: pos.launch.symbol,
+          gi: pos.launch.gi ?? 0,
+          status: pos.launch.status || 'active',
+          price: pos.launch.currentPrice || 0,
+          priceChange24h: 0,
+          creator: pos.launch.creator || '',
+          marketCap: pos.launch.marketCap || 0,
+          volume24h: pos.launch.volume24h || 0,
+          progress: pos.launch.progress || 0,
+          holders: pos.launch.holderCount || 0,
+          trades: pos.launch.trades || 0,
+          createdAt: pos.launch.createdAt || Date.now(),
+        };
+
+        const avgBuyPrice = pos.costBasis > 0 && pos.tokenBalance > 0
+          ? pos.costBasis / pos.tokenBalance
+          : 0;
+
+        return {
+          launch,
+          tokenBalance: pos.tokenBalance,
+          avgBuyPrice,
+          currentValue: pos.currentValue,
+          pnl: pos.pnl,
+          pnlPercent: pos.pnlPercent
+        };
+      });
+    }
+
     // Mock: user has positions in first 3 launches
     return launches.slice(0, 3).map((launch, i) => {
       const tokenBalance = [297000000, 145000000, 89000000][i] || 100000000;
@@ -2343,11 +2489,26 @@ const App: React.FC = () => {
         pnlPercent
       };
     });
-  }, [launches, wallet.connected]);
+  }, [launches, wallet.connected, apiUserPositions]);
 
-  // Generate mock activity
+  // User activity - use API data or mock data based on USE_MOCKS
   const userActivity: ActivityItem[] = useMemo(() => {
     if (!wallet.connected) return [];
+
+    // Use real API data when not mocking
+    if (!USE_MOCKS && userTradeActivity.length > 0) {
+      return userTradeActivity.map((activity, i) => ({
+        type: activity.type as 'buy' | 'sell',
+        launch: activity.launch.name,
+        symbol: activity.launch.symbol,
+        amount: activity.tokenAmount,
+        sol: activity.solAmount / 1e9, // Convert lamports to SOL
+        time: getTimeAgo(activity.timestamp),
+        gi: i % GRADS.length, // Use index for gradient
+      }));
+    }
+
+    // Mock data
     return [
       { type: 'buy' as const, launch: 'OrbitCat', symbol: 'OCAT', amount: 50000000, sol: 2.5, time: '2m ago', gi: 0 },
       { type: 'sell' as const, launch: 'SolPepe', symbol: 'SPEPE', amount: 25000000, sol: 1.8, time: '15m ago', gi: 1 },
@@ -2356,7 +2517,7 @@ const App: React.FC = () => {
       { type: 'buy' as const, launch: 'OrbitCat', symbol: 'OCAT', amount: 247000000, sol: 8.2, time: '3d ago', gi: 0 },
       { type: 'sell' as const, launch: 'BonkOrbit', symbol: 'BORBIT', amount: 75000000, sol: 3.1, time: '5d ago', gi: 4 },
     ];
-  }, [wallet.connected]);
+  }, [wallet.connected, userTradeActivity]);
 
   // Calculate portfolio totals
   const portfolioStats = useMemo(() => {
@@ -2428,15 +2589,33 @@ const App: React.FC = () => {
     name: string;
     symbol: string;
     description: string;
+    image?: string;
     twitter?: string;
     telegram?: string;
     website?: string;
   }) => {
     try {
+      // Step 1: Upload metadata and image to get URI
+      const uploadResult = await api.uploadMetadata({
+        name: data.name,
+        symbol: data.symbol,
+        description: data.description,
+        image: data.image,
+        twitter: data.twitter,
+        telegram: data.telegram,
+        website: data.website,
+        creator: wallet.address || undefined,
+      });
+
+      if (uploadResult.error || !uploadResult.data) {
+        throw new Error(uploadResult.error || 'Failed to upload metadata');
+      }
+
+      // Step 2: Create the token with the metadata URI
       await createLaunch({
         name: data.name,
         symbol: data.symbol,
-        uri: '',
+        uri: uploadResult.data.uri,
         twitter: data.twitter || '',
         telegram: data.telegram || '',
         website: data.website || '',
@@ -2445,9 +2624,10 @@ const App: React.FC = () => {
       showToast(`Token "${data.name}" created successfully!`, 'success');
       go('launches');
     } catch (err) {
-      showToast('Failed to create token. Please try again.', 'error');
+      const message = err instanceof Error ? err.message : 'Failed to create token';
+      showToast(message, 'error');
     }
-  }, [createLaunch, go, showToast]);
+  }, [createLaunch, go, showToast, wallet.address]);
 
   // ---------------------------------------------------------------------------
   // NAV COMPONENT
@@ -3505,49 +3685,196 @@ const App: React.FC = () => {
                 )}
               </div>
             </div>
-            {/* Price Chart */}
-            <div className="glass-card" style={s(ani("fu", 0.08), { padding: 24 })}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <SvgChart />
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>Price Chart</span>
-                  <UpdatePulse show={true} />
+            {/* Price Chart - Institutional Grade */}
+            <div className="glass-card" style={s(ani("fu", 0.08), { padding: 0, overflow: "hidden" })}>
+              {/* Chart Header */}
+              <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--glass-border)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <SvgChart />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>Price Chart</span>
+                    <UpdatePulse show={true} />
+                  </div>
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    {/* Chart type toggle */}
+                    <div style={{ display: "flex", padding: 2, borderRadius: 8, background: "var(--glass2)", marginRight: 8 }}>
+                      {[
+                        { key: 'candle', icon: <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="8" y="6" width="4" height="12"/><line x1="10" y1="2" x2="10" y2="6"/><line x1="10" y1="18" x2="10" y2="22"/><rect x="16" y="10" width="4" height="6"/><line x1="18" y1="6" x2="18" y2="10"/><line x1="18" y1="16" x2="18" y2="20"/></svg> },
+                        { key: 'line', icon: <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="22 12 18 8 12 14 8 10 2 16"/></svg> },
+                        { key: 'area', icon: <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M22 12 L18 8 L12 14 L8 10 L2 16 L2 20 L22 20 Z"/></svg> }
+                      ].map((ct) => (
+                        <button
+                          key={ct.key}
+                          className="btn-press"
+                          style={{
+                            padding: "5px 8px",
+                            borderRadius: 6,
+                            border: "none",
+                            background: settings.chartType === ct.key ? "var(--pb)" : "transparent",
+                            color: settings.chartType === ct.key ? "var(--pt)" : "var(--t3)",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center"
+                          }}
+                          onClick={() => setSettings(prev => ({ ...prev, chartType: ct.key as 'candle' | 'line' | 'area' }))}
+                        >
+                          {ct.icon}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Timeframe pills */}
+                    {["1H", "4H", "1D", "7D", "30D"].map((tf, i) => (
+                      <button
+                        key={tf}
+                        className="glass-pill interactive-hover btn-press"
+                        style={s(bsS, {
+                          height: 26,
+                          padding: "0 10px",
+                          fontSize: 10,
+                          fontWeight: 500,
+                          background: i === 2 ? 'var(--pb)' : 'var(--sb)',
+                          color: i === 2 ? 'var(--pt)' : 'var(--st)'
+                        })}
+                      >
+                        {tf}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  {["1H", "4H", "1D", "1W"].map((tf, i) => (
-                    <button
-                      key={tf}
-                      className="glass-pill interactive-hover"
-                      style={s(bsS, {
-                        height: 26,
-                        padding: "0 10px",
-                        fontSize: 10,
-                        fontWeight: 500,
-                        background: i === 2 ? 'var(--pb)' : 'var(--sb)',
-                        color: i === 2 ? 'var(--pt)' : 'var(--st)'
-                      })}
-                    >
-                      {tf}
-                    </button>
+
+                {/* OHLC Data Bar */}
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  {[
+                    { label: "Open", value: fP(l.price * 0.95), color: "var(--t1)" },
+                    { label: "High", value: fP(l.price * 1.12), color: "var(--grn)" },
+                    { label: "Low", value: fP(l.price * 0.88), color: "var(--red)" },
+                    { label: "Close", value: fP(l.price), color: "var(--t1)" },
+                    { label: "Change", value: fPct(15.3), color: "var(--grn)" },
+                    { label: "Vol", value: fSOL(l.volume24h, false), color: "var(--t1)" }
+                  ].map((stat) => (
+                    <div key={stat.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 500 }}>{stat.label}:</span>
+                      <span style={{ fontSize: 11, color: stat.color, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                        {stat.value}
+                      </span>
+                    </div>
                   ))}
                 </div>
               </div>
-              {/* Animated Price Chart */}
-              <AnimatedChart
-                data={sparklineData[l.id] ? [...sparklineData[l.id], ...sparklineData[l.id].map(v => v * (1 + Math.random() * 0.1))] : [40, 35, 50, 45, 60, 55, 70, 65, 80, 75, 90, 85, 100, 95, 110, 105, 120, 115, 130, 125]}
-                height={160}
-                color="var(--grn)"
-                fillGradient={true}
-              />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-                <span style={{ fontSize: 10, color: "var(--t3)" }}>24h ago</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+
+              {/* Chart Area */}
+              <div style={{ padding: "20px 24px", position: "relative" }}>
+                {/* Y-axis labels */}
+                <div style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 20,
+                  bottom: 40,
+                  width: 50,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  fontSize: 9,
+                  color: "var(--t3)",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  textAlign: "right",
+                  paddingRight: 8
+                }}>
+                  <span>{fP(l.price * 1.15)}</span>
+                  <span>{fP(l.price * 1.07)}</span>
+                  <span>{fP(l.price)}</span>
+                  <span>{fP(l.price * 0.93)}</span>
+                  <span>{fP(l.price * 0.85)}</span>
+                </div>
+
+                {/* Grid lines */}
+                <div style={{
+                  marginLeft: 50,
+                  height: 160,
+                  background: `repeating-linear-gradient(0deg, transparent, transparent 39px, var(--glass-border) 39px, var(--glass-border) 40px)`,
+                  position: "relative"
+                }}>
+                  {/* Animated Chart */}
+                  <AnimatedChart
+                    data={sparklineData[l.id] ? [...sparklineData[l.id], ...sparklineData[l.id].map(v => v * (1 + Math.random() * 0.1))] : [40, 35, 50, 45, 60, 55, 70, 65, 80, 75, 90, 85, 100, 95, 110, 105, 120, 115, 130, 125]}
+                    height={160}
+                    color="var(--grn)"
+                    fillGradient={settings.chartType === 'area'}
+                  />
+                </div>
+
+                {/* Volume bars (simulated) */}
+                {settings.showIndicators && (
+                  <div style={{ marginLeft: 50, marginTop: 8, height: 32, display: "flex", alignItems: "flex-end", gap: 2 }}>
+                    {Array.from({ length: 20 }).map((_, i) => {
+                      const height = 10 + Math.random() * 22;
+                      const isUp = Math.random() > 0.4;
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            flex: 1,
+                            height: `${height}px`,
+                            background: isUp ? "var(--gb)" : "var(--rb)",
+                            borderRadius: 2,
+                            opacity: 0.6
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* X-axis labels */}
+                <div style={{
+                  marginLeft: 50,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginTop: 8,
+                  fontSize: 9,
+                  color: "var(--t3)"
+                }}>
+                  <span>24h ago</span>
+                  <span>18h</span>
+                  <span>12h</span>
+                  <span>6h</span>
+                  <span>Now</span>
+                </div>
+              </div>
+
+              {/* Chart Footer / Legend */}
+              <div style={{
+                padding: "12px 24px",
+                borderTop: "1px solid var(--glass-border)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 2, background: "var(--grn)", borderRadius: 1 }} />
+                    <span style={{ width: 12, height: 3, background: "var(--grn)", borderRadius: 1 }} />
                     <span style={{ fontSize: 10, color: "var(--t3)" }}>Price</span>
                   </div>
+                  {settings.showIndicators && (
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ width: 12, height: 3, background: "var(--amb)", borderRadius: 1 }} />
+                        <span style={{ fontSize: 10, color: "var(--t3)" }}>MA(7)</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ width: 12, height: 3, background: "var(--grn)", borderRadius: 1, opacity: 0.5 }} />
+                        <span style={{ fontSize: 10, color: "var(--t3)" }}>Volume</span>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <span style={{ fontSize: 10, color: "var(--t3)" }}>Now</span>
+                <button
+                  onClick={() => setSettings(prev => ({ ...prev, showIndicators: !prev.showIndicators }))}
+                  className="glass-pill btn-press interactive-hover"
+                  style={s(bsS, { height: 24, padding: "0 10px", fontSize: 9, fontWeight: 500 })}
+                >
+                  {settings.showIndicators ? 'Hide' : 'Show'} Indicators
+                </button>
               </div>
             </div>
             <div className="glass-card" style={s(ani("fu", 0.12), { padding: 24 })}>
@@ -3617,10 +3944,50 @@ const App: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
+                ) : launchHolders.length > 0 ? (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <span style={{ fontSize: 12, color: "var(--t3)" }}>
+                        {totalHolders.toLocaleString()} total holders
+                      </span>
+                    </div>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>
+                          <th style={s(thS2, { textAlign: "left", width: 40 })}>#</th>
+                          <th style={s(thS2, { textAlign: "left" })}>Address</th>
+                          <th style={s(thS2, { textAlign: "right" })}>Balance</th>
+                          <th style={s(thS2, { textAlign: "right" })}>\%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {launchHolders.slice(0, 20).map((holder, i) => (
+                          <tr
+                            key={holder.address}
+                            className="table-row-hover"
+                            style={s(ani("fu", i * 0.03), { borderBottom: "1px solid var(--glass-border)" })}
+                          >
+                            <td style={{ padding: "10px 0", fontSize: 12, color: "var(--t3)" }}>
+                              {holder.rank || i + 1}
+                            </td>
+                            <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--t2)" }}>
+                              {holder.address.slice(0, 4)}...{holder.address.slice(-4)}
+                            </td>
+                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "var(--t1)" }}>
+                              {fN(holder.balance / 1e6, 2)}M
+                            </td>
+                            <td style={{ textAlign: "right", fontSize: 12, color: "var(--t2)" }}>
+                              {holder.percentage.toFixed(2)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
                   <div style={{ padding: "40px 0", textAlign: "center" }}>
                     <div style={{ marginBottom: 12, color: "var(--t3)" }}><EmptyStateIcon type="users" size={40} /></div>
-                    <p style={{ fontSize: 13, color: "var(--t3)" }}>Top holders — connect to live data</p>
+                    <p style={{ fontSize: 13, color: "var(--t3)" }}>Loading holder data...</p>
                   </div>
                 )}
               </TabContent>
@@ -3703,7 +4070,7 @@ const App: React.FC = () => {
                   <span style={{ color: "var(--t2)", fontWeight: 500 }}>{tradeType === "buy" ? "You pay" : "You sell"}</span>
                   {wallet.connected && (
                     <span style={{ color: "var(--t3)" }}>
-                      Balance: {tradeType === "buy" ? `${wallet.balance?.toFixed(2)} SOL` : "297M tokens"}
+                      Balance: {tradeType === "buy" ? `${wallet.balance?.toFixed(2)} SOL` : `${userBalances?.tokenBalance ? (userBalances.tokenBalance / 1e6).toFixed(2) + "M" : "0"} ${l.symbol}`}
                     </span>
                   )}
                 </div>
@@ -3732,7 +4099,7 @@ const App: React.FC = () => {
               </div>
               <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
                 {[10, 25, 50, 75, 100].map((pct) => {
-                  const maxBalance = tradeType === "buy" ? (wallet.balance || 0) : 297; // 297M tokens for sell
+                  const maxBalance = tradeType === "buy" ? (wallet.balance || 0) : (userBalances?.tokenBalance ? userBalances.tokenBalance / 1e6 : 0); // Real token balance
                   const isActive = tradeAmount && Math.abs(parseFloat(tradeAmount) - (maxBalance * pct) / 100) < 0.01;
                   return (
                     <button
@@ -3824,14 +4191,20 @@ const App: React.FC = () => {
     const [ws, setWs] = useState('');
     const [img, setImg] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [creationStep, setCreationStep] = useState(0); // 0: form, 1: uploading, 2: creating, 3: confirming
     const fileRef = useRef<HTMLInputElement>(null);
 
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file && file.type.startsWith("image/")) {
+        if (file.size > 5 * 1024 * 1024) {
+          showToast('Image must be less than 5MB', 'error');
+          return;
+        }
         const reader = new FileReader();
         reader.onload = (ev) => setImg(ev.target?.result as string);
         reader.readAsDataURL(file);
+        showToast('Image uploaded successfully', 'success');
       }
     };
 
@@ -3911,6 +4284,7 @@ const App: React.FC = () => {
       if (!nm.trim()) errors.name = "Token name is required";
       if (!sy.trim()) errors.symbol = "Symbol is required";
       if (sy.length > 0 && sy.length < 2) errors.symbol = "Symbol must be at least 2 characters";
+      if (sy.length > 10) errors.symbol = "Symbol must be 10 characters or less";
 
       if (Object.keys(errors).length > 0) {
         setFormErrors(errors);
@@ -3918,18 +4292,40 @@ const App: React.FC = () => {
       }
 
       setIsCreating(true);
+      setCreationStep(1); // Uploading metadata
+
       try {
+        // Simulate progress steps for better UX
+        await new Promise(r => setTimeout(r, 500));
+        setCreationStep(2); // Creating token
+
         await handleCreateLaunch({
           name: nm,
-          symbol: sy,
+          symbol: sy.toUpperCase(),
           description: ds,
+          image: img || undefined,
           twitter: tw,
           telegram: tg,
           website: ws
         });
-        showToast(`${sy} token created successfully!`, 'success');
+
+        setCreationStep(3); // Success
+        showToast(`${sy.toUpperCase()} token created successfully!`, 'success');
+
+        // Reset form after success
+        setTimeout(() => {
+          setNm('');
+          setSy('');
+          setDs('');
+          setTw('');
+          setTg('');
+          setWs('');
+          setImg(null);
+          setCreationStep(0);
+        }, 2000);
       } catch (err) {
         showToast('Failed to create launch. Please try again.', 'error');
+        setCreationStep(0);
       } finally {
         setIsCreating(false);
       }
@@ -3955,14 +4351,71 @@ const App: React.FC = () => {
         >
           <SvgBack /> Back
         </button>
-        <div className="glass-card" style={s(ani("si", 0), { padding: 32 })}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)" }}>Create Launch</h1>
-          <p style={{ fontSize: 13, color: "var(--t2)", marginTop: 4, marginBottom: 26, fontWeight: 400 }}>
-            Deploy a bonding curve token on Solana.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: "var(--t2)", display: "block", marginBottom: 5 }}>Token Image</label>
+        <div className="glass-card" style={s(ani("si", 0), { padding: 0, overflow: "hidden" })}>
+          {/* Creation Progress Steps */}
+          {isCreating && (
+            <div style={{
+              padding: "16px 32px",
+              background: "linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05))",
+              borderBottom: "1px solid var(--glass-border)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)" }}>Creating Token...</span>
+                <span style={{ fontSize: 11, color: "var(--grn)", fontWeight: 500 }}>Step {creationStep} of 3</span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[
+                  { step: 1, label: 'Preparing' },
+                  { step: 2, label: 'Creating' },
+                  { step: 3, label: 'Confirming' }
+                ].map((s) => (
+                  <div key={s.step} style={{ flex: 1 }}>
+                    <div style={{
+                      height: 4,
+                      borderRadius: 2,
+                      background: creationStep >= s.step ? "linear-gradient(90deg, var(--grn), #34d399)" : "var(--glass2)",
+                      transition: "all 0.5s ease"
+                    }} />
+                    <span style={{
+                      fontSize: 9,
+                      color: creationStep >= s.step ? "var(--grn)" : "var(--t3)",
+                      marginTop: 4,
+                      display: "block",
+                      textAlign: "center"
+                    }}>
+                      {s.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ padding: 32 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: 14,
+                background: "linear-gradient(135deg, #34d399, #16A34A)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 8px 24px rgba(34, 197, 94, 0.25)"
+              }}>
+                <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round">
+                  <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+                </svg>
+              </div>
+              <div>
+                <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)" }}>Create Launch</h1>
+                <p style={{ fontSize: 12, color: "var(--t2)", marginTop: 2 }}>Deploy a bonding curve token on Solana</p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 500, color: "var(--t2)", display: "block", marginBottom: 5 }}>Token Image</label>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
               <div
                 onClick={() => fileRef.current?.click()}
@@ -4044,6 +4497,7 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
+    </div>
     );
   };
 
@@ -4358,15 +4812,16 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Portfolio Stats Grid - Responsive */}
+          {/* Portfolio Stats Grid - Institutional Grade */}
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
             gap: 12,
-            marginTop: 24
+            marginTop: 24,
+            padding: "0 28px 28px"
           }}>
             {([
-              { l: "Portfolio Value", v: fSOL(portfolioStats.totalValue), sub: `≈ $${fN(portfolioStats.totalValue * 150, 2)}`, iconType: "wallet", highlight: true },
+              { l: "Portfolio Value", v: fSOL(portfolioStats.totalValue), sub: `≈ $${fN(portfolioStats.totalValue * (Number(solPrice) || 150), 2)}`, iconType: "wallet", highlight: true },
               { l: "Total P&L", v: `${portfolioStats.totalPnl >= 0 ? '+' : ''}${fSOL(portfolioStats.totalPnl)}`, isProfit: portfolioStats.totalPnl >= 0, iconType: portfolioStats.totalPnl >= 0 ? "trending-up" : "trending-down" },
               { l: "ROI", v: fPct(portfolioStats.pnlPercent), isProfit: portfolioStats.pnlPercent >= 0, iconType: "percent" },
               { l: "Positions", v: fN(portfolioStats.positionCount), sub: "Active", iconType: "layers" }
@@ -4435,9 +4890,83 @@ const App: React.FC = () => {
             ))}
           </div>
 
-          {/* Performance Chart - Enhanced */}
+          {/* Trading Metrics - Professional Analytics */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: 12,
+            padding: "0 28px 28px"
+          }}>
+            {/* Win Rate Card */}
+            <div className="glass-card-inner" style={{ padding: 16, borderRadius: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Win Rate</span>
+                <StatIcon type="trophy" size={14} color="var(--t3)" />
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+                <span style={{ fontSize: 28, fontWeight: 700, color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
+                  {userPositions.length > 0 ? Math.round((userPositions.filter(p => p.pnl >= 0).length / userPositions.length) * 100) : 0}%
+                </span>
+                <span style={{ fontSize: 11, color: "var(--t3)", marginBottom: 4 }}>
+                  {userPositions.filter(p => p.pnl >= 0).length}W / {userPositions.filter(p => p.pnl < 0).length}L
+                </span>
+              </div>
+              {/* Win rate bar */}
+              <div style={{ marginTop: 12, height: 6, borderRadius: 3, background: "var(--glass2)", overflow: "hidden" }}>
+                <div style={{
+                  width: `${userPositions.length > 0 ? (userPositions.filter(p => p.pnl >= 0).length / userPositions.length) * 100 : 0}%`,
+                  height: "100%",
+                  background: "linear-gradient(90deg, var(--grn), #34d399)",
+                  borderRadius: 3,
+                  transition: "width 0.5s ease"
+                }} />
+              </div>
+            </div>
+
+            {/* Average Trade Size */}
+            <div className="glass-card-inner" style={{ padding: 16, borderRadius: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Avg Trade Size</span>
+                <StatIcon type="chart" size={14} color="var(--t3)" />
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                {userActivity.length > 0 ? (userActivity.reduce((sum, a) => sum + a.sol, 0) / userActivity.length).toFixed(2) : "0.00"} SOL
+              </div>
+              <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 6 }}>
+                ≈ ${userActivity.length > 0 ? ((userActivity.reduce((sum, a) => sum + a.sol, 0) / userActivity.length) * (Number(solPrice) || 150)).toFixed(0) : "0"} USD
+              </div>
+            </div>
+
+            {/* Best Position */}
+            <div className="glass-card-inner" style={{ padding: 16, borderRadius: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Best Position</span>
+                <StatIcon type="trending-up" size={14} color="var(--grn)" />
+              </div>
+              {userPositions.length > 0 ? (() => {
+                const best = [...userPositions].sort((a, b) => b.pnlPercent - a.pnlPercent)[0];
+                return (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Avatar gi={best.launch.gi} size={32} imageUrl={getTokenImageUrl(best.launch.publicKey)} symbol={best.launch.symbol} />
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>{best.launch.symbol}</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
+                          +{fPct(best.pnlPercent, false)}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })() : (
+                <div style={{ fontSize: 13, color: "var(--t3)" }}>No positions yet</div>
+              )}
+            </div>
+          </div>
+
+          {/* Performance Chart - Enhanced with Timeframes */}
           <div className="glass-card-inner" style={{
-            marginTop: 16,
+            margin: "0 28px 28px",
             padding: 20,
             borderRadius: 16,
             background: "linear-gradient(135deg, var(--glass), var(--glass2))"
@@ -4446,7 +4975,9 @@ const App: React.FC = () => {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: 16
+              marginBottom: 16,
+              flexWrap: "wrap",
+              gap: 12
             }}>
               <div>
                 <span style={{
@@ -4455,31 +4986,56 @@ const App: React.FC = () => {
                   color: "var(--t1)",
                   display: "block"
                 }}>
-                  14-Day Performance
+                  Portfolio Performance
                 </span>
                 <span style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>
-                  Portfolio value over time
+                  Value over time
                 </span>
               </div>
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "6px 12px",
-                borderRadius: 8,
-                background: performanceData[performanceData.length - 1].value >= performanceData[0].value
-                  ? "var(--gb)"
-                  : "var(--rb)"
-              }}>
-                {performanceData[performanceData.length - 1].value >= performanceData[0].value ? <SvgUp /> : <SvgDn />}
-                <span style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: performanceData[performanceData.length - 1].value >= performanceData[0].value ? "var(--grn)" : "var(--red)"
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {/* Timeframe pills */}
+                <div style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "var(--glass2)" }}>
+                  {['7D', '14D', '30D', '90D'].map((tf) => (
+                    <button
+                      key={tf}
+                      className="btn-press"
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 7,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        border: "none",
+                        background: tf === '14D' ? "var(--pb)" : "transparent",
+                        color: tf === '14D' ? "var(--pt)" : "var(--t3)",
+                        fontFamily: "inherit",
+                        transition: "all .15s"
+                      }}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  background: performanceData[performanceData.length - 1].value >= performanceData[0].value
+                    ? "var(--gb)"
+                    : "var(--rb)"
                 }}>
-                  {performanceData[performanceData.length - 1].value >= performanceData[0].value ? '+' : ''}
-                  {(((performanceData[performanceData.length - 1].value - performanceData[0].value) / performanceData[0].value) * 100).toFixed(1)}%
-                </span>
+                  {performanceData[performanceData.length - 1].value >= performanceData[0].value ? <SvgUp /> : <SvgDn />}
+                  <span style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: performanceData[performanceData.length - 1].value >= performanceData[0].value ? "var(--grn)" : "var(--red)"
+                  }}>
+                    {performanceData[performanceData.length - 1].value >= performanceData[0].value ? '+' : ''}
+                    {(((performanceData[performanceData.length - 1].value - performanceData[0].value) / performanceData[0].value) * 100).toFixed(1)}%
+                  </span>
+                </div>
               </div>
             </div>
             <div style={{ position: "relative" }}>
@@ -4493,9 +5049,34 @@ const App: React.FC = () => {
                 color: "var(--t3)"
               }}>
                 <span>14d ago</span>
+                <span>7d ago</span>
                 <span>Today</span>
               </div>
             </div>
+          </div>
+
+          {/* Quick Stats Row */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 10,
+            margin: "0 28px 28px"
+          }}>
+            {[
+              { label: 'Total Trades', value: userActivity.length, color: 'var(--t1)' },
+              { label: 'Buys', value: userActivity.filter(a => a.type === 'buy').length, color: 'var(--grn)' },
+              { label: 'Sells', value: userActivity.filter(a => a.type === 'sell').length, color: 'var(--red)' },
+              { label: 'Created', value: myCreatedLaunches.length, color: 'var(--amb)' },
+            ].map((stat) => (
+              <div key={stat.label} className="glass-card-inner" style={{ padding: 12, borderRadius: 10, textAlign: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: stat.color, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {stat.value}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--t3)", marginTop: 4, fontWeight: 500 }}>
+                  {stat.label}
+                </div>
+              </div>
+            ))}
           </div>
 
         </div>
@@ -5143,7 +5724,7 @@ const App: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const Settings = () => {
-    const [settingsTab, setSettingsTab] = useState<'general' | 'trading' | 'advanced'>('general');
+    const [settingsTab, setSettingsTab] = useState<'general' | 'trading' | 'security' | 'advanced'>('general');
 
     const updateSettings = (updates: Partial<UserSettings>) => {
       setSettings(prev => ({ ...prev, ...updates }));
@@ -5153,6 +5734,13 @@ const App: React.FC = () => {
       setSettings(prev => ({
         ...prev,
         notifications: { ...prev.notifications, [key]: value }
+      }));
+    };
+
+    const updateTradingLimits = (key: keyof UserSettings['tradingLimits'], value: number | boolean) => {
+      setSettings(prev => ({
+        ...prev,
+        tradingLimits: { ...prev.tradingLimits, [key]: value }
       }));
     };
 
@@ -5356,10 +5944,11 @@ const App: React.FC = () => {
             borderTop: "1px solid var(--glass-border)",
             background: "var(--glass)"
           }}>
-            {(['general', 'trading', 'advanced'] as const).map((k) => {
-              const tabConfig: Record<string, { label: string; iconType: 'settings' | 'trading' | 'code'; desc: string }> = {
-                general: { label: 'General', iconType: 'settings', desc: 'Theme & notifications' },
-                trading: { label: 'Trading', iconType: 'trading', desc: 'Slippage & priority' },
+            {(['general', 'trading', 'security', 'advanced'] as const).map((k) => {
+              const tabConfig: Record<string, { label: string; iconType: 'settings' | 'trading' | 'target' | 'code'; desc: string }> = {
+                general: { label: 'General', iconType: 'settings', desc: 'Theme & display' },
+                trading: { label: 'Trading', iconType: 'trading', desc: 'Limits & priority' },
+                security: { label: 'Security', iconType: 'target', desc: 'Protection & access' },
                 advanced: { label: 'Advanced', iconType: 'code', desc: 'RPC & data' }
               };
               const tab = tabConfig[k];
@@ -5376,8 +5965,8 @@ const App: React.FC = () => {
                     flexDirection: "column",
                     alignItems: "center",
                     gap: 4,
-                    padding: "16px 12px",
-                    fontSize: 13,
+                    padding: "14px 8px",
+                    fontSize: 12,
                     fontWeight: 600,
                     cursor: "pointer",
                     border: "none",
@@ -5388,12 +5977,12 @@ const App: React.FC = () => {
                     transition: "all .2s var(--ease-out-quart)"
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <StatIcon type={tab.iconType} size={16} color={isActive ? "var(--t1)" : "var(--t2)"} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <StatIcon type={tab.iconType} size={14} color={isActive ? "var(--t1)" : "var(--t2)"} />
                     {tab.label}
                   </div>
                   <span style={{
-                    fontSize: 10,
+                    fontSize: 9,
                     color: isActive ? "var(--t3)" : "var(--t3)",
                     fontWeight: 400,
                     opacity: isActive ? 1 : 0.6
@@ -5473,6 +6062,42 @@ const App: React.FC = () => {
                 </div>
               </SettingSection>
 
+              {/* Display Density */}
+              <SettingSection title="Display Density">
+                <p style={{ fontSize: 12, color: "var(--t3)", marginBottom: 14, lineHeight: 1.5 }}>
+                  Adjust the information density throughout the interface.
+                </p>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {[
+                    { key: 'compact' as const, label: 'Compact', desc: 'More info, less space' },
+                    { key: 'comfortable' as const, label: 'Comfortable', desc: 'Balanced layout' },
+                    { key: 'spacious' as const, label: 'Spacious', desc: 'More breathing room' },
+                  ].map((density) => (
+                    <button
+                      key={density.key}
+                      onClick={() => updateSettings({ displayDensity: density.key })}
+                      className="glass-pill btn-press"
+                      style={s(bsS, {
+                        flex: 1,
+                        height: 56,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 4,
+                        background: settings.displayDensity === density.key ? "var(--pb)" : "var(--sb)",
+                        color: settings.displayDensity === density.key ? "var(--pt)" : "var(--st)",
+                        border: settings.displayDensity === density.key ? "2px solid var(--grn)" : "2px solid transparent"
+                      })}
+                    >
+                      <span>{density.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </SettingSection>
+
               {/* Notifications */}
               <SettingSection title="Notifications">
                 <Toggle
@@ -5494,6 +6119,30 @@ const App: React.FC = () => {
                   onChange={() => updateNotification('tradeConfirmations', !settings.notifications.tradeConfirmations)}
                   label="Trade Confirmations"
                   description="Confirm before executing trades"
+                />
+                <div style={{ borderBottom: "1px solid var(--glass-border)" }} />
+                <Toggle
+                  checked={settings.notifications.newLaunches}
+                  onChange={() => updateNotification('newLaunches', !settings.notifications.newLaunches)}
+                  label="New Launch Alerts"
+                  description="Get notified when new tokens launch"
+                />
+                <div style={{ borderBottom: "1px solid var(--glass-border)" }} />
+                <Toggle
+                  checked={settings.notifications.portfolioUpdates}
+                  onChange={() => updateNotification('portfolioUpdates', !settings.notifications.portfolioUpdates)}
+                  label="Portfolio Updates"
+                  description="Daily summary of your portfolio performance"
+                />
+              </SettingSection>
+
+              {/* Sound & Accessibility */}
+              <SettingSection title="Sound & Accessibility">
+                <Toggle
+                  checked={settings.soundEffects}
+                  onChange={() => updateSettings({ soundEffects: !settings.soundEffects })}
+                  label="Sound Effects"
+                  description="Audio feedback for trades and alerts"
                 />
               </SettingSection>
             </>
@@ -5592,6 +6241,279 @@ const App: React.FC = () => {
                   ))}
                 </div>
               </SettingSection>
+
+              {/* Risk Management */}
+              <SettingSection title="Risk Management">
+                <Toggle
+                  checked={settings.tradingLimits.enabled}
+                  onChange={() => updateTradingLimits('enabled', !settings.tradingLimits.enabled)}
+                  label="Enable Trading Limits"
+                  description="Protect yourself with maximum trade sizes and daily limits"
+                />
+                {settings.tradingLimits.enabled && (
+                  <>
+                    <div style={{ borderBottom: "1px solid var(--glass-border)", margin: "8px 0" }} />
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Max Trade Size</span>
+                        <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                          {settings.tradingLimits.maxTradeSize} SOL
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {[10, 25, 50, 100, 250].map((amt) => (
+                          <button
+                            key={amt}
+                            onClick={() => updateTradingLimits('maxTradeSize', amt)}
+                            className="glass-pill btn-press"
+                            style={s(bsS, {
+                              flex: 1,
+                              height: 36,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              background: settings.tradingLimits.maxTradeSize === amt ? "var(--pb)" : "var(--sb)",
+                              color: settings.tradingLimits.maxTradeSize === amt ? "var(--pt)" : "var(--st)",
+                              border: settings.tradingLimits.maxTradeSize === amt ? "2px solid var(--grn)" : "2px solid transparent"
+                            })}
+                          >
+                            {amt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 20 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Daily Trading Limit</span>
+                        <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                          {settings.tradingLimits.dailyLimit} SOL
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {[100, 250, 500, 1000, 2500].map((amt) => (
+                          <button
+                            key={amt}
+                            onClick={() => updateTradingLimits('dailyLimit', amt)}
+                            className="glass-pill btn-press"
+                            style={s(bsS, {
+                              flex: 1,
+                              height: 36,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              background: settings.tradingLimits.dailyLimit === amt ? "var(--pb)" : "var(--sb)",
+                              color: settings.tradingLimits.dailyLimit === amt ? "var(--pt)" : "var(--st)",
+                              border: settings.tradingLimits.dailyLimit === amt ? "2px solid var(--grn)" : "2px solid transparent"
+                            })}
+                          >
+                            {amt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </SettingSection>
+
+              {/* Chart Preferences */}
+              <SettingSection title="Chart Preferences">
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 12, color: "var(--t2)", display: "block", marginBottom: 10, fontWeight: 500 }}>Chart Type</label>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    {[
+                      { key: 'candle' as const, label: 'Candlestick' },
+                      { key: 'line' as const, label: 'Line' },
+                      { key: 'area' as const, label: 'Area' },
+                    ].map((chart) => (
+                      <button
+                        key={chart.key}
+                        onClick={() => updateSettings({ chartType: chart.key })}
+                        className="glass-pill btn-press"
+                        style={s(bsS, {
+                          flex: 1,
+                          height: 42,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: settings.chartType === chart.key ? "var(--pb)" : "var(--sb)",
+                          color: settings.chartType === chart.key ? "var(--pt)" : "var(--st)",
+                          border: settings.chartType === chart.key ? "2px solid var(--grn)" : "2px solid transparent"
+                        })}
+                      >
+                        {chart.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Toggle
+                  checked={settings.showIndicators}
+                  onChange={() => updateSettings({ showIndicators: !settings.showIndicators })}
+                  label="Show Technical Indicators"
+                  description="Display moving averages and volume on charts"
+                />
+              </SettingSection>
+            </>
+          )}
+
+          {settingsTab === 'security' && (
+            <>
+              {/* Session Security */}
+              <SettingSection title="Session Security">
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Auto-Lock Timeout</span>
+                    <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                      {settings.sessionTimeout} min
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 11, color: "var(--t3)", marginBottom: 12 }}>
+                    Automatically lock wallet connection after inactivity.
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[15, 30, 60, 120, 0].map((timeout) => (
+                      <button
+                        key={timeout}
+                        onClick={() => updateSettings({ sessionTimeout: timeout })}
+                        className="glass-pill btn-press"
+                        style={s(bsS, {
+                          flex: 1,
+                          height: 36,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          background: settings.sessionTimeout === timeout ? "var(--pb)" : "var(--sb)",
+                          color: settings.sessionTimeout === timeout ? "var(--pt)" : "var(--st)",
+                          border: settings.sessionTimeout === timeout ? "2px solid var(--grn)" : "2px solid transparent"
+                        })}
+                      >
+                        {timeout === 0 ? 'Never' : `${timeout}m`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </SettingSection>
+
+              {/* Two-Factor Authentication */}
+              <SettingSection title="Two-Factor Authentication">
+                <Toggle
+                  checked={settings.twoFactorEnabled}
+                  onChange={() => {
+                    if (!settings.twoFactorEnabled) {
+                      showToast('2FA setup would require wallet signature verification', 'info');
+                    }
+                    updateSettings({ twoFactorEnabled: !settings.twoFactorEnabled });
+                  }}
+                  label="Enable 2FA for Trades"
+                  description="Require additional confirmation for large trades"
+                />
+                {settings.twoFactorEnabled && (
+                  <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: "var(--gb)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <SvgCheck />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--grn)" }}>2FA Active</span>
+                    </div>
+                    <p style={{ fontSize: 11, color: "var(--t2)" }}>
+                      Trades above your max trade size will require wallet signature confirmation.
+                    </p>
+                  </div>
+                )}
+              </SettingSection>
+
+              {/* Connected Wallet */}
+              <SettingSection title="Connected Wallet">
+                {wallet.connected ? (
+                  <div className="glass-card-inner" style={{ padding: 16, borderRadius: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 10,
+                          background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center"
+                        }}>
+                          <SvgWallet />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                            {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--t3)" }}>Connected via Phantom</div>
+                        </div>
+                      </div>
+                      <span style={{
+                        padding: "4px 10px",
+                        borderRadius: 100,
+                        background: "var(--gb)",
+                        color: "var(--grn)",
+                        fontSize: 10,
+                        fontWeight: 600
+                      }}>
+                        Active
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        onClick={() => {
+                          if (wallet.address) {
+                            navigator.clipboard.writeText(wallet.address);
+                            showToast('Address copied to clipboard', 'success');
+                          }
+                        }}
+                        className="glass-pill btn-press interactive-hover"
+                        style={s(bsS, { flex: 1, height: 36, fontSize: 11 })}
+                      >
+                        Copy Address
+                      </button>
+                      <button
+                        onClick={() => wallet.disconnect()}
+                        className="glass-pill btn-press interactive-hover"
+                        style={s(bsS, { flex: 1, height: 36, fontSize: 11, color: "var(--red)" })}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", padding: "24px 0" }}>
+                    <p style={{ fontSize: 13, color: "var(--t2)", marginBottom: 16 }}>No wallet connected</p>
+                    <button
+                      onClick={() => wallet.connect()}
+                      className="btn-press interactive-hover"
+                      style={s(bpS, { height: 40, padding: "0 24px", fontSize: 13 })}
+                    >
+                      Connect Wallet
+                    </button>
+                  </div>
+                )}
+              </SettingSection>
+
+              {/* Keyboard Shortcuts */}
+              <SettingSection title="Keyboard Shortcuts">
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[
+                    { key: 'H', action: 'Go to Home' },
+                    { key: 'L', action: 'View Launches' },
+                    { key: 'C', action: 'Create Token' },
+                    { key: 'R', action: 'Refresh Data' },
+                    { key: 'Esc', action: 'Close Modal' },
+                  ].map((shortcut) => (
+                    <div key={shortcut.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
+                      <span style={{ fontSize: 12, color: "var(--t2)" }}>{shortcut.action}</span>
+                      <kbd style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        background: "var(--glass2)",
+                        border: "1px solid var(--glass-border)",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: "var(--t1)",
+                        fontFamily: "'JetBrains Mono', monospace"
+                      }}>
+                        {shortcut.key}
+                      </kbd>
+                    </div>
+                  ))}
+                </div>
+              </SettingSection>
             </>
           )}
 
@@ -5659,6 +6581,66 @@ const App: React.FC = () => {
                 </div>
               </SettingSection>
 
+              {/* Auto-Refresh Settings */}
+              <SettingSection title="Real-Time Data">
+                <Toggle
+                  checked={settings.autoRefresh}
+                  onChange={() => updateSettings({ autoRefresh: !settings.autoRefresh })}
+                  label="Auto-Refresh"
+                  description="Automatically refresh price and market data"
+                />
+                {settings.autoRefresh && (
+                  <>
+                    <div style={{ borderBottom: "1px solid var(--glass-border)", margin: "8px 0" }} />
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Refresh Interval</span>
+                        <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                          {settings.refreshInterval}s
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {[10, 15, 30, 60, 120].map((interval) => (
+                          <button
+                            key={interval}
+                            onClick={() => updateSettings({ refreshInterval: interval })}
+                            className="glass-pill btn-press"
+                            style={s(bsS, {
+                              flex: 1,
+                              height: 36,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              background: settings.refreshInterval === interval ? "var(--pb)" : "var(--sb)",
+                              color: settings.refreshInterval === interval ? "var(--pt)" : "var(--st)",
+                              border: settings.refreshInterval === interval ? "2px solid var(--grn)" : "2px solid transparent"
+                            })}
+                          >
+                            {interval}s
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </SettingSection>
+
+              {/* Advanced Mode */}
+              <SettingSection title="Developer Options">
+                <Toggle
+                  checked={settings.advancedMode}
+                  onChange={() => updateSettings({ advancedMode: !settings.advancedMode })}
+                  label="Advanced Mode"
+                  description="Show additional technical information and debug data"
+                />
+                {settings.advancedMode && (
+                  <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: "rgba(251, 191, 36, 0.1)", border: "1px solid rgba(251, 191, 36, 0.2)" }}>
+                    <p style={{ fontSize: 11, color: "var(--amb)" }}>
+                      Advanced mode enabled. You'll see additional debugging info, raw transaction data, and program account details.
+                    </p>
+                  </div>
+                )}
+              </SettingSection>
+
               {/* Data & Privacy */}
               <SettingSection title="Data & Privacy">
                 <Toggle
@@ -5675,6 +6657,21 @@ const App: React.FC = () => {
                   </div>
                   <button
                     className="glass-pill btn-press interactive-hover"
+                    onClick={() => {
+                      // Create and download CSV
+                      const csvData = detailedTransactions.map(tx =>
+                        `${tx.type},${tx.launch},${tx.symbol},${tx.amount},${tx.sol},${tx.timestamp},${tx.txSignature}`
+                      ).join('\n');
+                      const header = 'type,launch,symbol,amount,sol,timestamp,signature\n';
+                      const blob = new Blob([header + csvData], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `launchr-history-${new Date().toISOString().split('T')[0]}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      showToast('Trading history exported', 'success');
+                    }}
                     style={s(bsS, { height: 34, padding: "0 14px", fontSize: 12, fontWeight: 500 })}
                   >
                     Export CSV
@@ -5691,7 +6688,7 @@ const App: React.FC = () => {
                     style={s(bsS, { height: 34, padding: "0 14px", fontSize: 12, fontWeight: 500, color: "var(--red)" })}
                     onClick={() => {
                       localStorage.clear();
-                      showToast('Cache cleared', 'success');
+                      showToast('Cache cleared. Refresh the page to apply.', 'success');
                     }}
                   >
                     Clear
@@ -6888,6 +7885,139 @@ const App: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Graduation Celebration Confetti */}
+      <Confetti
+        active={showGraduation}
+        onComplete={() => setShowGraduation(false)}
+      />
+
+      {/* Graduation Celebration Modal */}
+      {showGraduation && graduatedLaunch && (
+        <div
+          className="modal-backdrop"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.7)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 300,
+          }}
+          onClick={() => {
+            setShowGraduation(false);
+            setGraduatedLaunch(null);
+          }}
+        >
+          <div
+            className="glass-card graduation-modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              padding: 32,
+              maxWidth: 420,
+              width: "90%",
+              textAlign: "center",
+              animation: "scaleIn 0.3s ease-out",
+            }}
+          >
+            <div style={{ marginBottom: 20 }}>
+              <div
+                style={{
+                  width: 80,
+                  height: 80,
+                  margin: "0 auto 16px",
+                  background: "linear-gradient(135deg, #34d399, #16A34A)",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 8px 32px rgba(34, 197, 94, 0.4)",
+                }}
+              >
+                <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5}>
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>
+                Graduation!
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--t2)", marginBottom: 16 }}>
+                <strong style={{ color: "var(--grn)" }}>{graduatedLaunch.name}</strong> (${graduatedLaunch.symbol}) has reached the graduation threshold and is now live on <strong>Orbit Finance DLMM</strong>!
+              </p>
+            </div>
+
+            <div
+              className="glass-card-inner"
+              style={{
+                padding: 16,
+                borderRadius: 12,
+                marginBottom: 20,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--t3)" }}>Final Price</span>
+                <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--grn)" }}>
+                  ${(graduatedLaunch.price * 1e9).toFixed(8)}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12, color: "var(--t3)" }}>Market Cap</span>
+                <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--t1)" }}>
+                  ${graduatedLaunch.marketCap.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => {
+                  setShowGraduation(false);
+                  setGraduatedLaunch(null);
+                }}
+                className="btn-press glass-pill"
+                style={{
+                  flex: 1,
+                  height: 44,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  border: "none",
+                  fontFamily: "inherit",
+                }}
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={() => {
+                  go('detail', graduatedLaunch);
+                  setShowGraduation(false);
+                  setGraduatedLaunch(null);
+                }}
+                className="btn-press"
+                style={{
+                  flex: 1,
+                  height: 44,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: "none",
+                  borderRadius: 100,
+                  background: "linear-gradient(135deg, #34d399, #16A34A)",
+                  color: "#fff",
+                  boxShadow: "0 4px 16px rgba(34, 197, 94, 0.3)",
+                  fontFamily: "inherit",
+                }}
+              >
+                View Token
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -181,6 +181,46 @@ class ApiClient {
     return this.request<TradesResponse>(`/api/launches/${publicKey}/trades?limit=${limit}`);
   }
 
+  async getLaunchHolders(publicKey: string): Promise<ApiResponse<{
+    totalHolders: number;
+    topHolders: Array<{
+      rank: number;
+      address: string;
+      balance: number;
+      percentage: number;
+    }>;
+    distribution: {
+      top10Percentage: number;
+      top20Percentage: number;
+      averageHolding: number;
+    };
+  }>> {
+    return this.request(`/api/launches/${publicKey}/holders`);
+  }
+
+  async getLaunchChart(publicKey: string, timeframe: '1H' | '4H' | '1D' | '7D' | '30D' = '1D'): Promise<ApiResponse<{
+    symbol: string;
+    timeframe: string;
+    candles: Array<{
+      time: number;
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+      volume: number;
+    }>;
+    summary: {
+      high: number;
+      low: number;
+      open: number;
+      close: number;
+      changePercent: number;
+      volume: number;
+    };
+  }>> {
+    return this.request(`/api/launches/${publicKey}/chart?timeframe=${timeframe}`);
+  }
+
   // ---------------------------------------------------------------------------
   // USERS
   // ---------------------------------------------------------------------------
@@ -189,12 +229,56 @@ class ApiClient {
     return this.request<{ launches: LaunchData[] }>(`/api/users/${address}/launches`);
   }
 
-  async getUserPositions(address: string): Promise<ApiResponse<{ positions: any[] }>> {
-    return this.request<{ positions: any[] }>(`/api/users/${address}/positions`);
+  async getUserPositions(address: string): Promise<ApiResponse<{ positions: any[]; totalValue: number; totalPnl: number; positionCount: number }>> {
+    return this.request<{ positions: any[]; totalValue: number; totalPnl: number; positionCount: number }>(`/api/users/${address}/positions`);
   }
 
   async getUserTrades(address: string): Promise<ApiResponse<{ trades: TradeData[] }>> {
     return this.request<{ trades: TradeData[] }>(`/api/users/${address}/trades`);
+  }
+
+  async getUserActivity(address: string, limit = 50): Promise<ApiResponse<{
+    activity: Array<{
+      type: 'buy' | 'sell';
+      launch: {
+        publicKey: string;
+        name: string;
+        symbol: string;
+        mint: string;
+      };
+      solAmount: number;
+      tokenAmount: number;
+      price: number;
+      timestamp: number;
+      signature: string;
+    }>;
+    total: number;
+  }>> {
+    return this.request(`/api/users/${address}/activity?limit=${limit}`);
+  }
+
+  async getUserBalances(address: string, launchPk: string): Promise<ApiResponse<{
+    solBalance: number;
+    tokenBalance: number;
+    tokenSymbol: string;
+    position: any | null;
+    tokenValue: number;
+  }>> {
+    return this.request(`/api/users/${address}/balances/${launchPk}`);
+  }
+
+  async getUserStats(address: string): Promise<ApiResponse<{
+    address: string;
+    positionsCount: number;
+    launchesCreated: number;
+    totalTrades: number;
+    totalBuys: number;
+    totalSells: number;
+    totalSolSpent: number;
+    totalSolReceived: number;
+    netSol: number;
+  }>> {
+    return this.request(`/api/users/${address}/stats`);
   }
 
   // ---------------------------------------------------------------------------
@@ -230,6 +314,26 @@ class ApiClient {
     return this.request<MultiTokenMetadataResponse>('/api/launches/metadata', {
       method: 'POST',
       body: JSON.stringify({ mints: mintAddresses }),
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // UPLOAD / METADATA
+  // ---------------------------------------------------------------------------
+
+  async uploadMetadata(params: {
+    name: string;
+    symbol: string;
+    description?: string;
+    image?: string;
+    twitter?: string;
+    telegram?: string;
+    website?: string;
+    creator?: string;
+  }): Promise<ApiResponse<{ success: boolean; uri: string; imageUrl: string; uploadId: string }>> {
+    return this.request('/api/upload/metadata', {
+      method: 'POST',
+      body: JSON.stringify(params),
     });
   }
 
