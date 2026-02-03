@@ -1,5 +1,5 @@
 [toolchain]
-anchor_version = "0.29.0"
+anchor_version = "0.32.1"
 
 [features]
 seeds = false
@@ -26,7 +26,7 @@ url = "https://api.devnet.solana.com"
 
 # Clone Orbit Finance program for testing graduation
 [[test.validator.clone]]
-address = "STAKEvGqQTtzJZH6BWDcbpzXXn2BBerPAgQ3EGLN2GH"
+address = "Fn3fA3fjsmpULNL7E9U79jKTe1KHxPtQeWdURCbJXCnM"
 
 # Clone Token Program
 [[test.validator.clone]]

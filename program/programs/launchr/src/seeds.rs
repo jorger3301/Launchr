@@ -113,7 +113,7 @@ pub fn derive_graduation_vault(launch: &Pubkey, program_id: &Pubkey) -> (Pubkey,
 // ============================================================================
 
 /// Orbit Finance Program ID
-pub const ORBIT_PROGRAM_ID: &str = "STAKEvGqQTtzJZH6BWDcbpzXXn2BBerPAgQ3EGLN2GH";
+pub const ORBIT_PROGRAM_ID: &str = "Fn3fA3fjsmpULNL7E9U79jKTe1KHxPtQeWdURCbJXCnM";
 
 /// Get the Orbit Finance program ID
 pub fn orbit_program_id() -> Pubkey {
