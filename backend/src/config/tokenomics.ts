@@ -34,8 +34,22 @@ export const VIRTUAL_TOKEN_RESERVE = BONDING_CURVE_SUPPLY;
 // PLATFORM FEES
 // =============================================================================
 
-/** Platform fee on all trades: 1% (100 basis points) */
+/**
+ * Trading fee structure (1% total):
+ * - Creator receives 0.2% (20 bps) - fixed, from the 1%
+ * - Treasury receives 0.8% (80 bps) - fixed, from the 1%
+ *
+ * Note: Creator fee comes FROM platform fee, not added to it!
+ */
+
+/** Total platform fee on all trades: 1% (100 basis points) */
 export const PLATFORM_FEE_BPS = 100;
+
+/** Creator's share of platform fee: 0.2% (20 basis points) - FIXED */
+export const CREATOR_FEE_BPS = 20;
+
+/** Treasury's share of platform fee: 0.8% (80 basis points) - FIXED */
+export const TREASURY_FEE_BPS = 80;
 
 /** Platform fee as decimal for calculations */
 export const PLATFORM_FEE_RATE = 0.01;

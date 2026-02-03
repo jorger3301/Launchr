@@ -29,35 +29,47 @@ pub struct BinDeposit {
     pub sol_amount: u64,
 }
 
-/// Orbit fee configuration for graduated pools
+/// Orbit fee configuration for Launchr graduated pools
+///
+/// Fee structure:
+/// - Base fee: 1% (100 bps)
+/// - Creator cut: 0.2% (20 bps) - fixed, from the 1% base fee
+/// - Treasury: 0.8% (80 bps) - remainder
+/// - Max dynamic fee: 5% (500 bps) during high volatility
+///
+/// Note: Launchr does NOT use Orbit's CIPHER/NFT holder fee splits.
 #[derive(Debug, Clone, Copy)]
 pub struct OrbitFeeConfig {
-    /// Split to CIPHER holders (microbps, 300000 = 30%)
+    /// Split to holders (microbps) - NOT USED by Launchr, always 0
     pub split_holders_microbps: u32,
-    /// Split to NFT holders (microbps, 200000 = 20%)
+    /// Split to NFT holders (microbps) - NOT USED by Launchr, always 0
     pub split_nft_microbps: u32,
     /// Extra split to creator (microbps)
     pub split_creator_extra_microbps: u32,
-    /// Base fee in basis points
+    /// Base fee in basis points (100 = 1%)
     pub base_fee_bps: u16,
-    /// Creator cut in basis points
+    /// Creator cut in basis points (20 = 0.2%)
     pub creator_cut_bps: u16,
     /// Dynamic fee enabled
     pub dynamic_fee_enabled: bool,
-    /// Max dynamic fee in basis points
+    /// Max dynamic fee in basis points (500 = 5%)
     pub max_dynamic_fee_bps: u16,
 }
 
 impl Default for OrbitFeeConfig {
+    /// Default fee config for Launchr graduated pools:
+    /// - 1% base fee (split: 0.2% creator, 0.8% treasury)
+    /// - 5% max dynamic fee during high volatility
+    /// - No CIPHER/NFT holder fee splits (Launchr doesn't use these)
     fn default() -> Self {
         Self {
-            split_holders_microbps: 300_000,   // 30% to CIPHER holders
-            split_nft_microbps: 200_000,       // 20% to NFT holders
+            split_holders_microbps: 0,         // 0% to holders (not used by Launchr)
+            split_nft_microbps: 0,             // 0% to NFT holders (not used by Launchr)
             split_creator_extra_microbps: 0,
-            base_fee_bps: 30,                  // 0.30% base fee
-            creator_cut_bps: 0,
+            base_fee_bps: 100,                 // 1.0% base fee
+            creator_cut_bps: 20,               // 0.2% to creator
             dynamic_fee_enabled: true,
-            max_dynamic_fee_bps: 100,          // Max 1% dynamic fee
+            max_dynamic_fee_bps: 500,          // Max 5% dynamic fee
         }
     }
 }
@@ -224,15 +236,20 @@ pub fn calculate_seed_distribution(params: SeedDistributionParams) -> Vec<BinDep
 }
 
 /// Create fee configuration for graduated pool
-pub fn create_graduation_fee_config(creator_fee_bps: u16) -> OrbitFeeConfig {
+///
+/// Post-graduation fee structure (1% total):
+/// - Creator: 0.2% (20 bps)
+/// - Treasury: 0.8% (80 bps) - Launchr protocol revenue
+/// - Max dynamic fee: 5% during high volatility
+pub fn create_graduation_fee_config(_creator_fee_bps: u16) -> OrbitFeeConfig {
     OrbitFeeConfig {
-        split_holders_microbps: 300_000,   // 30% to CIPHER holders
-        split_nft_microbps: 200_000,       // 20% to NFT holders
+        split_holders_microbps: 0,         // 0% to holders
+        split_nft_microbps: 0,             // 0% to NFT holders
         split_creator_extra_microbps: 0,
-        base_fee_bps: 30,                  // 0.30% base fee
-        creator_cut_bps: creator_fee_bps,
+        base_fee_bps: 100,                 // 1.0% base fee
+        creator_cut_bps: 20,               // 0.2% to creator
         dynamic_fee_enabled: true,
-        max_dynamic_fee_bps: 100,
+        max_dynamic_fee_bps: 500,          // 5% max during high volatility
     }
 }
 

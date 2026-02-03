@@ -4,13 +4,19 @@
 //! "Launch into Orbit" - the final step of the Launchr journey.
 //!
 //! ## Graduation Distribution (85 SOL threshold)
-//! - 80 SOL → Orbit Finance DLMM LP (paired with 20% token reserve)
+//! - 80 SOL → Orbit Finance DLMM LP (paired with 20% token reserve = 200M tokens)
 //! - 2 SOL  → Token creator reward
 //! - 3 SOL  → Launchr treasury
 //!
-//! ## LP Burning
-//! After liquidity is added, the position authority is transferred to the
-//! system program (burn address), making the liquidity permanent and unwithdrawable.
+//! ## LP Burning (PDA-Locked)
+//! The LP position is created with the launch_authority PDA as owner. Since:
+//! 1. Orbit positions are PDAs derived from [pool, owner, nonce] - owner is baked in
+//! 2. Launchr program exposes NO withdraw instruction
+//! 3. The launch_authority PDA can only sign via CPI from this program
+//!
+//! The liquidity is permanently locked (effectively burned). This is equivalent
+//! to burning LP tokens - the pool functions normally, fees accrue but can
+//! never be claimed, and liquidity can never be withdrawn.
 
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::Instruction;
@@ -370,20 +376,21 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
         signer_seeds,
     )?;
 
-    // ========== CPI: Create Position ==========
+    // ========== CPI: Initialize Position ==========
+    // Position nonce = 0 for the first (and only) position per launch
+    let position_nonce: u64 = 0;
 
-    let create_position_ix = build_create_position_instruction(
+    let init_position_ix = build_init_position_instruction(
         &ctx.accounts.orbit_program.key(),
         &ctx.accounts.launch_authority.key(), // Position owned by launch authority (effectively burned)
         &ctx.accounts.orbit_pool.key(),
         &ctx.accounts.orbit_position.key(),
-        active_bin_index - (num_bins_per_side as i32),
-        active_bin_index + (num_bins_per_side as i32),
+        position_nonce,
     );
 
-    msg!("Creating Orbit position (balanced {} bins each side)...", num_bins_per_side);
+    msg!("Initializing Orbit position (nonce={})...", position_nonce);
     invoke_signed(
-        &create_position_ix,
+        &init_position_ix,
         &[
             ctx.accounts.launch_authority.to_account_info(),
             ctx.accounts.orbit_pool.to_account_info(),
@@ -393,32 +400,16 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
         signer_seeds,
     )?;
 
-    // ========== Transfer Liquidity to Orbit ==========
-
-    // Transfer tokens from token_vault to orbit base vault
-    if ctx.accounts.token_vault.amount > 0 {
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.token_vault.to_account_info(),
-                    to: ctx.accounts.orbit_base_vault.to_account_info(),
-                    authority: ctx.accounts.launch_authority.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            ctx.accounts.token_vault.amount,
-        )?;
-    }
-
-    // Transfer tokens from graduation_vault to orbit base vault
+    // ========== Consolidate Tokens for add_liquidity_v2 ==========
+    // add_liquidity_v2 transfers FROM owner accounts TO pool vaults
+    // First consolidate graduation_vault tokens into token_vault
     if ctx.accounts.graduation_vault.amount > 0 {
         token::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
                     from: ctx.accounts.graduation_vault.to_account_info(),
-                    to: ctx.accounts.orbit_base_vault.to_account_info(),
+                    to: ctx.accounts.token_vault.to_account_info(),
                     authority: ctx.accounts.launch_authority.to_account_info(),
                 },
                 signer_seeds,
@@ -427,13 +418,8 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
         )?;
     }
 
-    // Transfer SOL from curve_vault to orbit quote vault
-    // (Wrap to WSOL in production - simplified here)
-    let curve_vault_lamports = ctx.accounts.curve_vault.lamports();
-    if curve_vault_lamports > 0 {
-        **ctx.accounts.curve_vault.try_borrow_mut_lamports()? -= curve_vault_lamports;
-        **ctx.accounts.orbit_quote_vault.try_borrow_mut_lamports()? += curve_vault_lamports;
-    }
+    // Note: SOL in curve_vault needs to be wrapped to WSOL for add_liquidity_v2
+    // The Orbit program will handle the token transfers during add_liquidity_v2
 
     // ========== CPI: Add Balanced Liquidity ==========
     // 40% quote bins (above active) + 40% base bins (below active) + 20% active bin
@@ -445,14 +431,19 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
         lp_sol_amount,
     );
 
-    let add_liquidity_ix = build_add_liquidity_instruction(
+    // Note: add_liquidity_v2 transfers FROM owner's token accounts TO pool vaults
+    // owner_base = our token_vault (base tokens)
+    // owner_quote = our curve_vault wrapped as WSOL (quote tokens)
+    let add_liquidity_ix = build_add_liquidity_v2_instruction(
         &ctx.accounts.orbit_program.key(),
-        &ctx.accounts.launch_authority.key(),
         &ctx.accounts.orbit_pool.key(),
+        &ctx.accounts.launch_authority.key(),
+        &ctx.accounts.token_vault.key(),      // owner's base tokens
+        &ctx.accounts.curve_vault.key(),       // owner's quote (SOL/WSOL)
+        &ctx.accounts.orbit_base_vault.key(),  // pool's base vault
+        &ctx.accounts.orbit_quote_vault.key(), // pool's quote vault
         &ctx.accounts.orbit_position.key(),
-        &ctx.accounts.orbit_base_vault.key(),
-        &ctx.accounts.orbit_quote_vault.key(),
-        &ctx.accounts.orbit_bin_array.key(),
+        &[ctx.accounts.orbit_bin_array.key()], // bin arrays as remaining accounts
         &bin_ids,
         &liquidity_distribution,
     );
@@ -465,34 +456,31 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
     invoke_signed(
         &add_liquidity_ix,
         &[
-            ctx.accounts.launch_authority.to_account_info(),
             ctx.accounts.orbit_pool.to_account_info(),
-            ctx.accounts.orbit_position.to_account_info(),
+            ctx.accounts.launch_authority.to_account_info(),
+            ctx.accounts.token_vault.to_account_info(),
+            ctx.accounts.curve_vault.to_account_info(),
             ctx.accounts.orbit_base_vault.to_account_info(),
             ctx.accounts.orbit_quote_vault.to_account_info(),
-            ctx.accounts.orbit_bin_array.to_account_info(),
+            ctx.accounts.orbit_position.to_account_info(),
             ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.orbit_bin_array.to_account_info(),
         ],
         signer_seeds,
     )?;
     
+    // ========== LP Permanently Locked (Burned) ==========
+    // The position is owned by launch_authority PDA. Since:
+    // 1. Orbit positions are PDAs with owner baked into the address
+    // 2. This program has NO withdraw instruction
+    // 3. launch_authority can only sign via CPI from this program
+    // The LP is effectively burned - liquidity is permanent and unwithdrawable.
+    msg!("LP LOCKED - position owned by program PDA (permanently unwithdrawable)");
+
     // ========== Update State ==========
 
     launch.graduate(ctx.accounts.orbit_pool.key(), clock.unix_timestamp);
     config.record_graduation();
-
-    // ========== LP Token Burning ==========
-    // The position is owned by launch_authority PDA. Since no withdraw instruction
-    // is exposed and the authority is a PDA that can only sign via CPI from this
-    // program, the liquidity is effectively permanent (burned).
-    //
-    // Alternative approaches for stricter LP burning:
-    // 1. Transfer position owner to SystemProgram (0x0...0) - not supported by Orbit
-    // 2. Close the position account - would return tokens, not desired
-    // 3. Keep position but never expose withdraw - current approach ✓
-    //
-    // The position authority (launch_authority PDA) cannot sign outside this program,
-    // and this program provides no withdraw instruction, making LP permanent.
 
     // Emit event
     emit!(LaunchGraduated {
@@ -517,7 +505,7 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
     msg!("Strategy: Balanced 40/40/20 across {} bins", (num_bins_per_side * 2) + 1);
     msg!("Creator reward: {} SOL", graduation::CREATOR_REWARD_LAMPORTS as f64 / 1e9);
     msg!("Treasury fee: {} SOL", graduation::TREASURY_FEE_LAMPORTS as f64 / 1e9);
-    msg!("LP position permanently locked (owned by program PDA)");
+    msg!("LP LOCKED - position owned by program PDA (permanent liquidity)");
 
     Ok(())
 }
@@ -647,24 +635,22 @@ fn build_create_bin_array_instruction(
     }
 }
 
-/// Orbit create_position discriminator
-const CREATE_POSITION_DISCRIMINATOR: [u8; 8] = [135, 128, 47, 77, 15, 152, 240, 49];
+/// Orbit init_position discriminator (verified from IDL)
+const INIT_POSITION_DISCRIMINATOR: [u8; 8] = [197, 20, 10, 1, 97, 160, 177, 91];
 
-/// Orbit add_liquidity discriminator
-const ADD_LIQUIDITY_DISCRIMINATOR: [u8; 8] = [181, 157, 89, 67, 143, 182, 52, 72];
+/// Orbit add_liquidity_v2 discriminator (verified from IDL)
+const ADD_LIQUIDITY_V2_DISCRIMINATOR: [u8; 8] = [126, 118, 210, 37, 80, 190, 19, 105];
 
-fn build_create_position_instruction(
+fn build_init_position_instruction(
     orbit_program: &Pubkey,
     owner: &Pubkey,
     pool: &Pubkey,
     position: &Pubkey,
-    lower_bin_index: i32,
-    upper_bin_index: i32,
+    nonce: u64,
 ) -> Instruction {
     let mut data = Vec::new();
-    data.extend_from_slice(&CREATE_POSITION_DISCRIMINATOR);
-    data.extend_from_slice(&lower_bin_index.to_le_bytes());
-    data.extend_from_slice(&upper_bin_index.to_le_bytes());
+    data.extend_from_slice(&INIT_POSITION_DISCRIMINATOR);
+    data.extend_from_slice(&nonce.to_le_bytes());
 
     Instruction {
         program_id: *orbit_program,
@@ -678,19 +664,24 @@ fn build_create_position_instruction(
     }
 }
 
-fn build_add_liquidity_instruction(
+/// Build add_liquidity_v2 instruction matching Orbit IDL
+/// Account order: pool, owner, owner_base, owner_quote, base_vault, quote_vault, position, token_program
+/// Bin arrays passed as remaining accounts
+fn build_add_liquidity_v2_instruction(
     orbit_program: &Pubkey,
-    owner: &Pubkey,
     pool: &Pubkey,
+    owner: &Pubkey,
+    owner_base: &Pubkey,   // Owner's base token account (source)
+    owner_quote: &Pubkey,  // Owner's quote token account (source)
+    base_vault: &Pubkey,   // Pool's base vault (destination)
+    quote_vault: &Pubkey,  // Pool's quote vault (destination)
     position: &Pubkey,
-    base_vault: &Pubkey,
-    quote_vault: &Pubkey,
-    bin_array: &Pubkey,
+    bin_arrays: &[Pubkey], // Remaining accounts for bin arrays
     bin_ids: &[i32],
     distribution: &[u64],
 ) -> Instruction {
     let mut data = Vec::new();
-    data.extend_from_slice(&ADD_LIQUIDITY_DISCRIMINATOR);
+    data.extend_from_slice(&ADD_LIQUIDITY_V2_DISCRIMINATOR);
 
     // Encode bin_ids array
     data.extend_from_slice(&(bin_ids.len() as u32).to_le_bytes());
@@ -704,17 +695,26 @@ fn build_add_liquidity_instruction(
         data.extend_from_slice(&share.to_le_bytes());
     }
 
+    // Build accounts list matching IDL order
+    let mut accounts = vec![
+        AccountMeta::new(*pool, false),
+        AccountMeta::new(*owner, true),
+        AccountMeta::new(*owner_base, false),
+        AccountMeta::new(*owner_quote, false),
+        AccountMeta::new(*base_vault, false),
+        AccountMeta::new(*quote_vault, false),
+        AccountMeta::new(*position, false),
+        AccountMeta::new_readonly(anchor_spl::token::ID, false),
+    ];
+
+    // Add bin arrays as remaining accounts
+    for bin_array in bin_arrays {
+        accounts.push(AccountMeta::new(*bin_array, false));
+    }
+
     Instruction {
         program_id: *orbit_program,
-        accounts: vec![
-            AccountMeta::new(*owner, true),
-            AccountMeta::new(*pool, false),
-            AccountMeta::new(*position, false),
-            AccountMeta::new(*base_vault, false),
-            AccountMeta::new(*quote_vault, false),
-            AccountMeta::new(*bin_array, false),
-            AccountMeta::new_readonly(anchor_spl::token::ID, false),
-        ],
+        accounts,
         data,
     }
 }

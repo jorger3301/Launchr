@@ -29,6 +29,7 @@ import {
   CreateLaunchParams,
   BuyParams,
   SellParams,
+  GraduateParams,
   LaunchAccount,
   ConfigAccount,
   CONSTANTS,
@@ -133,6 +134,7 @@ const DISCRIMINATORS = {
   createLaunch: Buffer.from([137, 42, 226, 107, 34, 208, 200, 252]),
   buy: Buffer.from([102, 6, 61, 18, 1, 218, 235, 234]),
   sell: Buffer.from([51, 230, 133, 164, 1, 127, 131, 173]),
+  graduate: Buffer.from([159, 232, 138, 211, 178, 120, 60, 129]), // sha256("global:graduate")[0:8]
 };
 
 /**
@@ -248,6 +250,44 @@ function serializeSellParams(params: SellParams): Buffer {
   params.tokenAmount.toArrayLike(Buffer, 'le', 8).copy(buffer, 8);
   params.minSolOut.toArrayLike(Buffer, 'le', 8).copy(buffer, 16);
   return buffer;
+}
+
+/**
+ * Serialize GraduateParams
+ * Options encoded as: 1 byte (0=None, 1=Some) + value if Some
+ */
+function serializeGraduateParams(params: GraduateParams): Buffer {
+  // discriminator (8) + Option<u16> (1 + 2) + Option<u8> (1 + 1) = max 13 bytes
+  const buffer = Buffer.alloc(13);
+  let offset = 0;
+
+  // Discriminator
+  DISCRIMINATORS.graduate.copy(buffer, offset);
+  offset += 8;
+
+  // bin_step_bps: Option<u16>
+  if (params.binStepBps !== null) {
+    buffer.writeUInt8(1, offset); // Some
+    offset += 1;
+    buffer.writeUInt16LE(params.binStepBps, offset);
+    offset += 2;
+  } else {
+    buffer.writeUInt8(0, offset); // None
+    offset += 1;
+  }
+
+  // num_liquidity_bins: Option<u8>
+  if (params.numLiquidityBins !== null) {
+    buffer.writeUInt8(1, offset); // Some
+    offset += 1;
+    buffer.writeUInt8(params.numLiquidityBins, offset);
+    offset += 1;
+  } else {
+    buffer.writeUInt8(0, offset); // None
+    offset += 1;
+  }
+
+  return buffer.slice(0, offset);
 }
 
 // =============================================================================
@@ -443,6 +483,155 @@ export class LaunchrClient {
     return new Transaction().add(sellInstruction);
   }
 
+  /**
+   * Build graduate transaction
+   * Graduates a launch from bonding curve to Orbit Finance DLMM
+   *
+   * Distribution when graduation threshold (85 SOL) is reached:
+   * - 80 SOL → Orbit Finance DLMM LP
+   * - 2 SOL  → Token creator reward
+   * - 3 SOL  → Launchr treasury
+   */
+  async buildGraduateTx(
+    payer: PublicKey,
+    launchPk: PublicKey,
+    mint: PublicKey,
+    creator: PublicKey,
+    treasury: PublicKey,
+    quoteMint: PublicKey,
+    orbitProgramId: PublicKey,
+    params: GraduateParams = { binStepBps: null, numLiquidityBins: null }
+  ): Promise<Transaction> {
+    // Derive Launchr PDAs
+    const [configPda] = this.pdas.config();
+    const [launchAuthority] = this.pdas.launchAuthority(launchPk);
+    const [tokenVault] = this.pdas.tokenVault(launchPk);
+    const [graduationVault] = this.pdas.graduationVault(launchPk);
+    const [curveVault] = this.pdas.curveVault(launchPk);
+
+    // Derive Orbit Finance PDAs
+    // Pool PDA: [pool, base_mint, quote_mint] from Orbit program
+    // IMPORTANT: Mints must be in canonical order (smaller pubkey first)
+    const mintBytes = mint.toBuffer();
+    const quoteMintBytes = quoteMint.toBuffer();
+    const [canonicalBase, canonicalQuote] = mintBytes.compare(quoteMintBytes) < 0
+      ? [mintBytes, quoteMintBytes]
+      : [quoteMintBytes, mintBytes];
+
+    const [orbitPool] = PublicKey.findProgramAddressSync(
+      [Buffer.from('pool'), canonicalBase, canonicalQuote],
+      orbitProgramId
+    );
+
+    // Registry PDA: [registry] from Orbit program
+    const [orbitRegistry] = PublicKey.findProgramAddressSync(
+      [Buffer.from('registry')],
+      orbitProgramId
+    );
+
+    // Base vault PDA: [pool, "base_vault"]
+    const [orbitBaseVault] = PublicKey.findProgramAddressSync(
+      [orbitPool.toBuffer(), Buffer.from('base_vault')],
+      orbitProgramId
+    );
+
+    // Quote vault PDA: [pool, "quote_vault"]
+    const [orbitQuoteVault] = PublicKey.findProgramAddressSync(
+      [orbitPool.toBuffer(), Buffer.from('quote_vault')],
+      orbitProgramId
+    );
+
+    // Creator fee vault PDA: [pool, "creator_fee_vault"]
+    const [orbitCreatorFeeVault] = PublicKey.findProgramAddressSync(
+      [orbitPool.toBuffer(), Buffer.from('creator_fee_vault')],
+      orbitProgramId
+    );
+
+    // Holders fee vault PDA: [pool, "holders_fee_vault"]
+    const [orbitHoldersFeeVault] = PublicKey.findProgramAddressSync(
+      [orbitPool.toBuffer(), Buffer.from('holders_fee_vault')],
+      orbitProgramId
+    );
+
+    // NFT fee vault PDA: [pool, "nft_fee_vault"]
+    const [orbitNftFeeVault] = PublicKey.findProgramAddressSync(
+      [orbitPool.toBuffer(), Buffer.from('nft_fee_vault')],
+      orbitProgramId
+    );
+
+    // Protocol fee vault PDA: [pool, "protocol_fee_vault"]
+    const [orbitProtocolFeeVault] = PublicKey.findProgramAddressSync(
+      [orbitPool.toBuffer(), Buffer.from('protocol_fee_vault')],
+      orbitProgramId
+    );
+
+    // Bin array PDA: [pool, "bin_array", bin_array_index]
+    // For initial graduation, we use bin_array_index = 0
+    const binArrayIndex = Buffer.alloc(4);
+    binArrayIndex.writeInt32LE(0, 0);
+    const [orbitBinArray] = PublicKey.findProgramAddressSync(
+      [orbitPool.toBuffer(), Buffer.from('bin_array'), binArrayIndex],
+      orbitProgramId
+    );
+
+    // Position PDA: [pool, owner, nonce]
+    // For graduation, owner is launch_authority and nonce is 0
+    const positionNonce = Buffer.alloc(8);
+    positionNonce.writeBigUInt64LE(BigInt(0), 0);
+    const [orbitPosition] = PublicKey.findProgramAddressSync(
+      [orbitPool.toBuffer(), launchAuthority.toBuffer(), positionNonce],
+      orbitProgramId
+    );
+
+    // Build graduate instruction
+    const graduateInstruction = new TransactionInstruction({
+      programId: this.programId,
+      keys: [
+        // Payer (anyone can trigger graduation once threshold is reached)
+        { pubkey: payer, isSigner: true, isWritable: true },
+        // Global config
+        { pubkey: configPda, isSigner: false, isWritable: true },
+        // Launch account
+        { pubkey: launchPk, isSigner: false, isWritable: true },
+        // Launch authority PDA
+        { pubkey: launchAuthority, isSigner: false, isWritable: false },
+        // Token creator - receives 2 SOL reward
+        { pubkey: creator, isSigner: false, isWritable: true },
+        // Treasury - receives 3 SOL fee
+        { pubkey: treasury, isSigner: false, isWritable: true },
+        // Token mint
+        { pubkey: mint, isSigner: false, isWritable: true },
+        // Quote mint (WSOL)
+        { pubkey: quoteMint, isSigner: false, isWritable: false },
+        // Token vault (bonding curve tokens)
+        { pubkey: tokenVault, isSigner: false, isWritable: true },
+        // LP reserve token vault (20% for DLMM migration)
+        { pubkey: graduationVault, isSigner: false, isWritable: true },
+        // SOL curve vault
+        { pubkey: curveVault, isSigner: false, isWritable: true },
+        // Orbit Finance accounts
+        { pubkey: orbitProgramId, isSigner: false, isWritable: false },
+        { pubkey: orbitPool, isSigner: false, isWritable: true },
+        { pubkey: orbitRegistry, isSigner: false, isWritable: true },
+        { pubkey: orbitBaseVault, isSigner: false, isWritable: true },
+        { pubkey: orbitQuoteVault, isSigner: false, isWritable: true },
+        { pubkey: orbitCreatorFeeVault, isSigner: false, isWritable: true },
+        { pubkey: orbitHoldersFeeVault, isSigner: false, isWritable: true },
+        { pubkey: orbitNftFeeVault, isSigner: false, isWritable: true },
+        { pubkey: orbitProtocolFeeVault, isSigner: false, isWritable: true },
+        { pubkey: orbitBinArray, isSigner: false, isWritable: true },
+        { pubkey: orbitPosition, isSigner: false, isWritable: true },
+        // System programs
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      ],
+      data: serializeGraduateParams(params),
+    });
+
+    return new Transaction().add(graduateInstruction);
+  }
+
   // ---------------------------------------------------------------------------
   // HELPER METHODS
   // ---------------------------------------------------------------------------
@@ -450,17 +639,24 @@ export class LaunchrClient {
   /**
    * Calculate tokens out for a buy
    * Uses constant product formula: x * y = k
+   *
+   * Fee structure (on-chain):
+   * - Total fee = protocolFeeBps (1% = 100 bps)
+   * - Creator gets creatorFeeBps (0.2% = 20 bps) FROM the protocol fee
+   * - Treasury gets the remainder (0.8% = 80 bps)
+   *
+   * Note: creatorFeeBps is part of protocolFeeBps, not added to it!
    */
   calculateBuyOutput(
     solAmount: BN,
     virtualSolReserve: BN,
     virtualTokenReserve: BN,
     protocolFeeBps: number = 100,
-    creatorFeeBps: number = 0
+    _creatorFeeBps: number = 20 // Unused in calculation - it's part of protocolFeeBps
   ): { tokensOut: BN; priceImpact: number } {
-    // Calculate fees
-    const totalFeeBps = protocolFeeBps + creatorFeeBps;
-    const feeAmount = solAmount.muln(totalFeeBps).divn(10000);
+    // Calculate fees - creator fee comes FROM protocol fee, not added to it
+    // Total fee is just protocolFeeBps (1%)
+    const feeAmount = solAmount.muln(protocolFeeBps).divn(10000);
     const solIn = solAmount.sub(feeAmount);
 
     // Constant product: (x + dx) * (y - dy) = x * y
@@ -480,13 +676,20 @@ export class LaunchrClient {
 
   /**
    * Calculate SOL out for a sell
+   *
+   * Fee structure (on-chain):
+   * - Total fee = protocolFeeBps (1% = 100 bps)
+   * - Creator gets creatorFeeBps (0.2% = 20 bps) FROM the protocol fee
+   * - Treasury gets the remainder (0.8% = 80 bps)
+   *
+   * Note: creatorFeeBps is part of protocolFeeBps, not added to it!
    */
   calculateSellOutput(
     tokenAmount: BN,
     virtualSolReserve: BN,
     virtualTokenReserve: BN,
     protocolFeeBps: number = 100,
-    creatorFeeBps: number = 0
+    _creatorFeeBps: number = 20 // Unused in calculation - it's part of protocolFeeBps
   ): { solOut: BN; priceImpact: number } {
     // Constant product: (x - dx) * (y + dy) = x * y
     // dx = x * dy / (y + dy)
@@ -494,9 +697,9 @@ export class LaunchrClient {
       .mul(tokenAmount)
       .div(virtualTokenReserve.add(tokenAmount));
 
-    // Calculate fees
-    const totalFeeBps = protocolFeeBps + creatorFeeBps;
-    const feeAmount = grossSolOut.muln(totalFeeBps).divn(10000);
+    // Calculate fees - creator fee comes FROM protocol fee, not added to it
+    // Total fee is just protocolFeeBps (1%)
+    const feeAmount = grossSolOut.muln(protocolFeeBps).divn(10000);
     const solOut = grossSolOut.sub(feeAmount);
 
     // Price impact

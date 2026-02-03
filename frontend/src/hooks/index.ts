@@ -14,7 +14,7 @@ import BN from 'bn.js';
 import { LaunchData, TradeData, UserPositionData } from '../components/molecules';
 import { api, wsClient, NormalizedMessage } from '../services/api';
 import { LaunchrClient, initLaunchrClient, getLaunchrClient } from '../program/client';
-import { BuyParams, SellParams, CreateLaunchParams as ProgramCreateLaunchParams } from '../program/idl';
+import { BuyParams, SellParams, GraduateParams as ProgramGraduateParams, CreateLaunchParams as ProgramCreateLaunchParams } from '../program/idl';
 import { validateTransaction, isTransactionSafe } from '../lib/transaction-validator';
 
 // =============================================================================
@@ -1257,6 +1257,150 @@ export function useCreateLaunch(wallet: UseWalletResult) {
 }
 
 // =============================================================================
+// GRADUATE HOOK
+// =============================================================================
+
+export interface GraduateContext {
+  mint: string;
+  creator: string;
+  treasury: string;
+  quoteMint: string;
+  orbitProgramId: string;
+}
+
+export interface GraduateResult {
+  signature: string;
+  orbitPool: string;
+}
+
+export function useGraduate(wallet: UseWalletResult) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const connection = useConnection();
+  const clientRef = useRef<LaunchrClient | null>(null);
+
+  // Initialize client
+  useEffect(() => {
+    if (!clientRef.current) {
+      clientRef.current = getLaunchrClient() || initLaunchrClient(connection);
+    }
+  }, [connection]);
+
+  /**
+   * Graduate a launch from bonding curve to Orbit Finance DLMM
+   *
+   * When threshold is reached (85 SOL):
+   * - 80 SOL → Orbit Finance DLMM LP (paired with 20% token reserve)
+   * - 2 SOL  → Token creator reward
+   * - 3 SOL  → Launchr treasury
+   *
+   * LP tokens are permanently locked (burned) as the position
+   * is owned by the launch_authority PDA.
+   */
+  const graduate = useCallback(async (
+    launchPk: string,
+    context: GraduateContext,
+    params?: { binStepBps?: number; numLiquidityBins?: number }
+  ): Promise<string> => {
+    if (!wallet.connected || !wallet.address) {
+      throw new Error('Wallet not connected');
+    }
+
+    const client = clientRef.current;
+    if (!client) {
+      throw new Error('Program client not initialized');
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const payer = new PublicKey(wallet.address);
+      const launchPubkey = new PublicKey(launchPk);
+      const mint = new PublicKey(context.mint);
+      const creator = new PublicKey(context.creator);
+      const treasury = new PublicKey(context.treasury);
+      const quoteMint = new PublicKey(context.quoteMint);
+      const orbitProgramId = new PublicKey(context.orbitProgramId);
+
+      const graduateParams: ProgramGraduateParams = {
+        binStepBps: params?.binStepBps ?? null,
+        numLiquidityBins: params?.numLiquidityBins ?? null,
+      };
+
+      // Step 1: Build transaction using LaunchrClient
+      const tx = await client.buildGraduateTx(
+        payer,
+        launchPubkey,
+        mint,
+        creator,
+        treasury,
+        quoteMint,
+        orbitProgramId,
+        graduateParams
+      );
+
+      // Step 2: Prepare transaction with compute budget and simulate
+      // Use higher compute units for graduation (very complex operation with multiple CPIs)
+      const { transaction: preparedTx, blockhash, lastValidBlockHeight } =
+        await prepareAndSimulateTransaction(connection, tx, payer, 600_000, 100_000);
+
+      // Step 3: Sign with wallet
+      const signedTx = await wallet.signTransaction(preparedTx);
+
+      // Step 4: Send transaction with retry logic and confirmation
+      const signature = await sendAndConfirmTransactionWithRetry(
+        connection,
+        signedTx,
+        blockhash,
+        lastValidBlockHeight
+      );
+
+      // Step 5: Verify transaction success
+      const verified = await verifyTransactionSuccess(connection, signature);
+      if (!verified) {
+        console.warn('Transaction verification returned false, but transaction was confirmed');
+      }
+
+      await wallet.refreshBalance();
+
+      return signature;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Graduation failed';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [wallet, connection]);
+
+  /**
+   * Check if a launch can be graduated (threshold reached and not already graduated)
+   */
+  const canGraduate = useCallback((launch: { status: string; realSolReserve?: number }) => {
+    // Check status is PendingGraduation
+    if (launch.status !== 'PendingGraduation') {
+      return false;
+    }
+
+    // If realSolReserve is provided, also verify threshold is met
+    if (launch.realSolReserve !== undefined) {
+      const GRADUATION_THRESHOLD = 85 * LAMPORTS_PER_SOL;
+      return launch.realSolReserve >= GRADUATION_THRESHOLD;
+    }
+
+    return true;
+  }, []);
+
+  return {
+    graduate,
+    canGraduate,
+    loading,
+    error,
+  };
+}
+
+// =============================================================================
 // GLOBAL STATS HOOK (Uses Backend API)
 // =============================================================================
 
@@ -2051,4 +2195,52 @@ export function useUserPositions(userAddress: string | undefined): {
   }, [userAddress, fetchPositions]);
 
   return { positions, totalValue, totalPnl, loading, error, refetch: fetchPositions };
+}
+
+// =============================================================================
+// useOnlineStatus - Network connectivity monitoring
+// =============================================================================
+
+/**
+ * Hook to monitor browser online/offline status.
+ * Returns true when online, false when offline.
+ */
+export function useOnlineStatus(): boolean {
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  return isOnline;
+}
+
+// =============================================================================
+// useWebSocketStatus - WebSocket connection monitoring
+// =============================================================================
+
+/**
+ * Hook to monitor WebSocket connection status.
+ * Returns true when connected, false when disconnected.
+ */
+export function useWebSocketStatus(): boolean {
+  const [isConnected, setIsConnected] = useState(wsClient.isConnected());
+
+  useEffect(() => {
+    const unsubscribe = wsClient.onConnectionChange(setIsConnected);
+    return unsubscribe;
+  }, []);
+
+  return isConnected;
 }

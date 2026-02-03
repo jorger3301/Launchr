@@ -16,9 +16,11 @@
     "@solana/spl-token": "^0.3.8",
     "@solana/web3.js": "^1.87.0",
     "ajv": "^8.17.1",
+    "bs58": "^5.0.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "https-browserify": "^1.0.0",
+    "lightweight-charts": "^5.1.0",
     "os-browserify": "^0.3.0",
     "process": "^0.11.10",
     "react": "^18.2.0",
@@ -28,8 +30,7 @@
     "stream-browserify": "^3.0.0",
     "stream-http": "^3.2.0",
     "typescript": "^5.0.0",
-    "url": "^0.11.4",
-    "bs58": "^5.0.0"
+    "url": "^0.11.4"
   },
   "devDependencies": {
     "@types/bn.js": "^5.2.0",

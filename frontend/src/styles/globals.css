@@ -960,25 +960,25 @@ select:focus-visible {
   animation: fade-in 0.3s ease-out;
 }
 
-/* Enhanced hover effect for interactive elements */
+/* Enhanced hover effect for interactive elements - Refined for institutional grade */
 .interactive-hover {
-  transition: all 0.2s var(--ease-out-quart);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
 }
 
 .interactive-hover:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-0.5px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   color: var(--t1);
 }
 
 .interactive-hover:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.995);
 }
 
 /* Brand accent on focus */
 .interactive-hover:focus-visible {
-  outline: 2px solid rgba(34, 197, 94, 0.5);
+  outline: 2px solid rgba(34, 197, 94, 0.4);
   outline-offset: 2px;
 }
 
@@ -1326,11 +1326,11 @@ select:focus-visible {
 }
 
 .glass-card {
-  background: var(--glass);
-  backdrop-filter: blur(40px) saturate(1.6);
-  -webkit-backdrop-filter: blur(40px) saturate(1.6);
-  border: 1px solid var(--glass-border);
-  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(60px) saturate(1.3);
+  -webkit-backdrop-filter: blur(60px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
   position: relative;
   overflow: hidden;
 }
@@ -1342,15 +1342,15 @@ select:focus-visible {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--glass-highlight), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
 }
 
 .glass-card-inner {
-  background: var(--glass2);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
   position: relative;
   overflow: hidden;
 }
@@ -2112,28 +2112,28 @@ textarea:focus-visible {
   }
 }
 
-/* Enhanced card shadows on hover for depth */
+/* Enhanced card shadows on hover - Subtle institutional grade */
 .glass-card {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.3s ease;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.35s ease;
 }
 
 .glass-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(34, 197, 94, 0.1);
-  border-color: rgba(34, 197, 94, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.1);
 }
 
 .glass-card-inner {
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.2s ease;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.25s ease;
 }
 
 .glass-card-inner:hover {
-  border-color: rgba(34, 197, 94, 0.2);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border-color: rgba(34, 197, 94, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 /* Subtle loading pulse */
@@ -3330,15 +3330,13 @@ textarea,
   animation: morph-orb 15s ease-in-out infinite;
 }
 
-/* Pulse ring for live indicators */
-@keyframes pulse-ring-premium {
-  0% {
-    transform: scale(1);
-    opacity: 1;
+/* Glow effect for live indicators */
+@keyframes glow-pulse-premium {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.3), 0 0 40px rgba(34, 197, 94, 0.15);
   }
-  100% {
-    transform: scale(2.5);
-    opacity: 0;
+  50% {
+    box-shadow: 0 0 30px rgba(34, 197, 94, 0.5), 0 0 60px rgba(34, 197, 94, 0.25);
   }
 }
 
@@ -3346,18 +3344,27 @@ textarea,
   position: relative;
 }
 
-.pulse-ring-live::before,
-.pulse-ring-live::after {
+.pulse-ring-live::before {
   content: '';
   position: absolute;
   inset: -4px;
-  border: 2px solid var(--grn);
-  border-radius: 50%;
-  animation: pulse-ring-premium 2s ease-out infinite;
+  border: 2px solid rgba(34, 197, 94, 0.3);
+  border-radius: inherit;
+  animation: glow-pulse-premium 2s ease-in-out infinite;
 }
 
-.pulse-ring-live::after {
-  animation-delay: 1s;
+/* Header icon glow animation */
+@keyframes header-icon-glow {
+  0%, 100% {
+    box-shadow: 0 8px 24px rgba(34, 197, 94, 0.3);
+  }
+  50% {
+    box-shadow: 0 12px 36px rgba(34, 197, 94, 0.5), 0 0 24px rgba(34, 197, 94, 0.2);
+  }
+}
+
+.create-header-icon-glow {
+  animation: header-icon-glow 2.5s ease-in-out infinite;
 }
 
 /* Card entrance with spring */
@@ -5272,4 +5279,339 @@ textarea:focus {
 @keyframes typing-bounce {
   0%, 60%, 100% { transform: translateY(0); }
   30% { transform: translateY(-4px); }
+}
+
+/* ============================================================================
+   CREATE LAUNCH FORM ANIMATIONS - GLOW STYLE
+   ============================================================================ */
+
+.form-field-animate {
+  opacity: 0;
+  animation: form-field-glow-in 0.4s ease-out forwards;
+}
+
+@keyframes form-field-glow-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Image upload hover animation - glow style */
+.image-upload-zone {
+  transition: all 0.3s ease;
+}
+
+.image-upload-zone:hover {
+  border-color: var(--grn) !important;
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.2), 0 0 40px rgba(34, 197, 94, 0.1);
+}
+
+/* Uploaded image reveal */
+.image-uploaded {
+  animation: image-glow-in 0.3s ease-out;
+}
+
+@keyframes image-glow-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Tokenomics card - simple fade */
+.tokenomics-card {
+  animation: fade-glow-in 0.4s ease-out forwards;
+  animation-delay: 0.2s;
+  opacity: 0;
+}
+
+@keyframes fade-glow-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Create button - glow on hover */
+.create-btn-animate {
+  animation: fade-glow-in 0.4s ease-out forwards;
+  animation-delay: 0.3s;
+  opacity: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.create-btn-animate:hover {
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.4), 0 0 60px rgba(34, 197, 94, 0.2) !important;
+}
+
+/* Input shake for validation */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+/* Header - simple fade */
+.create-header-animate {
+  animation: fade-glow-in 0.4s ease-out;
+}
+
+/* =============================================================================
+   INSTITUTIONAL GRADE REFINEMENTS
+   ============================================================================= */
+
+/* Staggered fade-in animations for page content */
+@keyframes stagger-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-fade-in {
+  animation: stagger-fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.stagger-fade-in:nth-child(1) { animation-delay: 0s; }
+.stagger-fade-in:nth-child(2) { animation-delay: 0.05s; }
+.stagger-fade-in:nth-child(3) { animation-delay: 0.1s; }
+.stagger-fade-in:nth-child(4) { animation-delay: 0.15s; }
+.stagger-fade-in:nth-child(5) { animation-delay: 0.2s; }
+.stagger-fade-in:nth-child(6) { animation-delay: 0.25s; }
+.stagger-fade-in:nth-child(7) { animation-delay: 0.3s; }
+.stagger-fade-in:nth-child(8) { animation-delay: 0.35s; }
+
+/* Page transition fade */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter {
+  animation: page-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Refined glass effects - softer, more institutional */
+.glass-refined {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(60px) saturate(1.4);
+  -webkit-backdrop-filter: blur(60px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+}
+
+/* Subtle button press effect */
+.btn-subtle-press {
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-subtle-press:active {
+  transform: scale(0.98);
+}
+
+/* Smooth number counter animation */
+@keyframes count-up {
+  from {
+    opacity: 0.5;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.count-animate {
+  animation: count-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Refined glow effects - more subtle */
+.glow-subtle {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.15);
+  transition: box-shadow 0.3s ease;
+}
+
+.glow-subtle:hover {
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.25);
+}
+
+/* Smooth scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ============================================================================
+   NAVBAR POLISH - Institutional Grade Animations
+   ============================================================================ */
+
+/* Logo hover with subtle glow */
+.nav-logo {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-logo:hover {
+  filter: drop-shadow(0 4px 16px rgba(34, 197, 94, 0.4));
+  transform: scale(1.02);
+}
+
+/* Nav icon buttons with smooth interactions */
+.nav-icon-btn {
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-icon-btn::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.nav-icon-btn:hover::before {
+  opacity: 1;
+}
+
+.nav-icon-btn:hover {
+  transform: translateY(-1px);
+  color: var(--t1);
+}
+
+.nav-icon-btn:active {
+  transform: translateY(0) scale(0.96);
+}
+
+/* Nav enter animation */
+@keyframes nav-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nav-animated {
+  animation: nav-slide-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Staggered nav item entrance */
+.nav-item-stagger {
+  animation: nav-slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nav-item-stagger:nth-child(1) { animation-delay: 0.05s; }
+.nav-item-stagger:nth-child(2) { animation-delay: 0.1s; }
+.nav-item-stagger:nth-child(3) { animation-delay: 0.15s; }
+.nav-item-stagger:nth-child(4) { animation-delay: 0.2s; }
+.nav-item-stagger:nth-child(5) { animation-delay: 0.25s; }
+.nav-item-stagger:nth-child(6) { animation-delay: 0.3s; }
+
+/* Active nav indicator */
+.nav-active-indicator {
+  position: relative;
+}
+
+.nav-active-indicator::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--grn);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-active-indicator.active::after {
+  width: 16px;
+}
+
+/* Connect button premium pulse */
+.nav-connect-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-connect-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+}
+
+.nav-connect-btn:hover::before {
+  transform: translateX(100%);
+}
+
+/* SOL price ticker refined */
+.sol-price-nav {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sol-price-nav:hover {
+  background: var(--glass) !important;
+  border-color: rgba(34, 197, 94, 0.2) !important;
+}
+
+/* Live indicator pulse */
+.live-indicator {
+  animation: live-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
 }

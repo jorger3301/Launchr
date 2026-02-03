@@ -432,8 +432,11 @@ router.get(
           const candleStart = startTime + i * interval;
           const candleEnd = candleStart + interval;
 
+          // Trade timestamps are in seconds, convert candleStart/End to seconds for comparison
+          const candleStartSec = Math.floor(candleStart / 1000);
+          const candleEndSec = Math.floor(candleEnd / 1000);
           const candleTrades = trades.filter(
-            (t: TradeEvent) => t.timestamp >= candleStart && t.timestamp < candleEnd
+            (t: TradeEvent) => t.timestamp >= candleStartSec && t.timestamp < candleEndSec
           );
 
           if (candleTrades.length > 0) {

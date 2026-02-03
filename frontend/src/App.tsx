@@ -31,7 +31,7 @@ import {
   WalletType,
 } from './hooks';
 
-import { WalletSelector } from './components/molecules';
+import { WalletSelector, PriceChart } from './components/molecules';
 import { api, wsClient, NormalizedMessage } from './services/api';
 
 import {
@@ -1872,49 +1872,94 @@ interface OrbsProps {
   isDark: boolean;
 }
 
-const Orbs: React.FC<OrbsProps> = ({ isDark }) => (
-  <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
-    <div style={{
-      position: "absolute",
-      top: "10%",
-      left: "15%",
-      width: 500,
-      height: 500,
-      borderRadius: "50%",
-      background: isDark
-        ? "radial-gradient(circle,rgba(34,197,94,0.08) 0%,transparent 70%)"
-        : "radial-gradient(circle,rgba(34,197,94,0.15) 0%,transparent 70%)",
-      animation: "orb1 25s ease-in-out infinite",
-      filter: "blur(60px)"
-    }} />
-    <div style={{
-      position: "absolute",
-      top: "50%",
-      right: "10%",
-      width: 450,
-      height: 450,
-      borderRadius: "50%",
-      background: isDark
-        ? "radial-gradient(circle,rgba(99,102,241,0.06) 0%,transparent 70%)"
-        : "radial-gradient(circle,rgba(99,102,241,0.1) 0%,transparent 70%)",
-      animation: "orb2 30s ease-in-out infinite",
-      filter: "blur(60px)"
-    }} />
-    <div style={{
-      position: "absolute",
-      bottom: "10%",
-      left: "40%",
-      width: 400,
-      height: 400,
-      borderRadius: "50%",
-      background: isDark
-        ? "radial-gradient(circle,rgba(236,72,153,0.05) 0%,transparent 70%)"
-        : "radial-gradient(circle,rgba(236,72,153,0.08) 0%,transparent 70%)",
-      animation: "orb3 20s ease-in-out infinite",
-      filter: "blur(60px)"
-    }} />
-  </div>
-);
+const Orbs: React.FC<OrbsProps> = ({ isDark }) => {
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    let rafId: number;
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Normalize mouse position to -1 to 1 range
+      targetX = (e.clientX / window.innerWidth - 0.5) * 2;
+      targetY = (e.clientY / window.innerHeight - 0.5) * 2;
+    };
+
+    const animate = () => {
+      // Smooth interpolation (0.02 = very subtle, slow follow)
+      currentX += (targetX - currentX) * 0.02;
+      currentY += (targetY - currentY) * 0.02;
+      setMousePos({ x: currentX, y: currentY });
+      rafId = requestAnimationFrame(animate);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    rafId = requestAnimationFrame(animate);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  // Parallax multipliers for each orb (different depths)
+  const orb1Offset = { x: mousePos.x * 30, y: mousePos.y * 20 };
+  const orb2Offset = { x: mousePos.x * -20, y: mousePos.y * 25 };
+  const orb3Offset = { x: mousePos.x * 15, y: mousePos.y * -15 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
+      <div style={{
+        position: "absolute",
+        top: "10%",
+        left: "15%",
+        width: 500,
+        height: 500,
+        borderRadius: "50%",
+        background: isDark
+          ? "radial-gradient(circle,rgba(34,197,94,0.06) 0%,transparent 70%)"
+          : "radial-gradient(circle,rgba(34,197,94,0.12) 0%,transparent 70%)",
+        animation: "orb1 25s ease-in-out infinite",
+        filter: "blur(80px)",
+        transform: `translate(${orb1Offset.x}px, ${orb1Offset.y}px)`,
+        willChange: "transform"
+      }} />
+      <div style={{
+        position: "absolute",
+        top: "50%",
+        right: "10%",
+        width: 450,
+        height: 450,
+        borderRadius: "50%",
+        background: isDark
+          ? "radial-gradient(circle,rgba(99,102,241,0.04) 0%,transparent 70%)"
+          : "radial-gradient(circle,rgba(99,102,241,0.08) 0%,transparent 70%)",
+        animation: "orb2 30s ease-in-out infinite",
+        filter: "blur(80px)",
+        transform: `translate(${orb2Offset.x}px, ${orb2Offset.y}px)`,
+        willChange: "transform"
+      }} />
+      <div style={{
+        position: "absolute",
+        bottom: "10%",
+        left: "40%",
+        width: 400,
+        height: 400,
+        borderRadius: "50%",
+        background: isDark
+          ? "radial-gradient(circle,rgba(236,72,153,0.03) 0%,transparent 70%)"
+          : "radial-gradient(circle,rgba(236,72,153,0.06) 0%,transparent 70%)",
+        animation: "orb3 20s ease-in-out infinite",
+        filter: "blur(80px)",
+        transform: `translate(${orb3Offset.x}px, ${orb3Offset.y}px)`,
+        willChange: "transform"
+      }} />
+    </div>
+  );
+};
 
 // =============================================================================
 // MAIN APP COMPONENT
@@ -2114,6 +2159,7 @@ const App: React.FC = () => {
 
   // SOL Price from Pyth Oracle
   const { solPrice } = useSolPrice(15000); // Refresh every 15 seconds
+
 
   // Available wallets for selector
   const availableWallets = useAvailableWallets();
@@ -2634,7 +2680,7 @@ const App: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const Nav = () => (
-    <nav style={{
+    <nav className="nav-animated" style={{
       position: "sticky",
       top: 0,
       zIndex: 50,
@@ -2653,6 +2699,7 @@ const App: React.FC = () => {
         justifyContent: "space-between"
       }}>
         <div
+          className="nav-logo"
           style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
           onClick={() => go('home')}
         >
@@ -2685,17 +2732,16 @@ const App: React.FC = () => {
               }}
             >
               {/* Solana Logo */}
-              <svg width={16} height={16} viewBox="0 0 128 128" fill="none" style={{ flexShrink: 0 }}>
+              <svg width={16} height={16} viewBox="0 0 397.7 311.7" fill="none" style={{ flexShrink: 0 }}>
                 <defs>
-                  <linearGradient id="sol-nav-gradient" x1="0" y1="0" x2="1" y2="1">
+                  <linearGradient id="sol-nav-gradient" x1="0" y1="0" x2="397.7" y2="311.7" gradientUnits="userSpaceOnUse">
                     <stop offset="0%" stopColor="#00FFA3" />
                     <stop offset="100%" stopColor="#DC1FFF" />
                   </linearGradient>
                 </defs>
-                <circle cx="64" cy="64" r="60" fill="url(#sol-nav-gradient)" />
-                <path d="M40 80l14-14h34l-14 14H40z" fill="white" />
-                <path d="M40 62l14 14h34l-14-14H40z" fill="white" />
-                <path d="M40 44l14 14h34l-14-14H40z" fill="white" />
+                <path d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z" fill="url(#sol-nav-gradient)"/>
+                <path d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z" fill="url(#sol-nav-gradient)"/>
+                <path d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z" fill="url(#sol-nav-gradient)"/>
               </svg>
               <span
                 className={solPrice.change24h > 0 ? 'price-up-animate' : solPrice.change24h < 0 ? 'price-down-animate' : ''}
@@ -2746,7 +2792,7 @@ const App: React.FC = () => {
           <Tooltip content="Leaderboard" position="bottom">
             <button
               onClick={() => go('leaderboard')}
-              className="glass-pill interactive-hover btn-press"
+              className={`glass-pill nav-icon-btn btn-press ${route.type === 'leaderboard' ? 'nav-active-indicator active' : ''}`}
               style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, color: route.type === 'leaderboard' ? "var(--amb)" : "var(--t2)" })}
             >
               <SvgTrophy />
@@ -2757,7 +2803,7 @@ const App: React.FC = () => {
               href="https://t.me/launchrcommunity"
               target="_blank"
               rel="noopener noreferrer"
-              className="glass-pill interactive-hover btn-press"
+              className="glass-pill nav-icon-btn btn-press"
               style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, textDecoration: "none" })}
             >
               <SvgTg />
@@ -2768,7 +2814,7 @@ const App: React.FC = () => {
               href="https://x.com/launchrapp"
               target="_blank"
               rel="noopener noreferrer"
-              className="glass-pill interactive-hover btn-press"
+              className="glass-pill nav-icon-btn btn-press"
               style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, textDecoration: "none" })}
             >
               <SvgTw />
@@ -2776,7 +2822,7 @@ const App: React.FC = () => {
           </Tooltip>
           <Tooltip content={isDark ? "Light mode" : "Dark mode"} position="bottom">
             <button
-              className="glass-pill interactive-hover btn-press"
+              className="glass-pill nav-icon-btn btn-press"
               onClick={() => {
                 const newTheme = isDark ? 'light' : 'dark';
                 setIsDark(!isDark);
@@ -2790,7 +2836,7 @@ const App: React.FC = () => {
           <Tooltip content="Settings" position="bottom">
             <button
               onClick={() => go('settings')}
-              className="glass-pill interactive-hover btn-press"
+              className={`glass-pill nav-icon-btn btn-press ${route.type === 'settings' ? 'nav-active-indicator active' : ''}`}
               style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, color: route.type === 'settings' ? "var(--grn)" : "var(--t2)" })}
             >
               <SvgSettings />
@@ -2807,12 +2853,12 @@ const App: React.FC = () => {
           )}
           <button
             onClick={() => wallet.connected ? go('profile') : setShowWalletSelector(true)}
-            className={wallet.connected ? "" : "btn-premium-glow"}
+            className={wallet.connected ? "nav-icon-btn" : "btn-premium-glow nav-connect-btn"}
             style={s(bpS, { height: 34, padding: "0 18px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 })}
           >
             {wallet.connected ? (
               <>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--grn)" }} />
+                <span className="live-indicator" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--grn)" }} />
                 {wallet.address?.slice(0, 4) + "..." + wallet.address?.slice(-4)}
               </>
             ) : (
@@ -3524,6 +3570,10 @@ const App: React.FC = () => {
     if (route.type !== 'detail') return null;
     const l = route.launch;
 
+    // Fetch real chart data
+    const [chartTimeframe, setChartTimeframe] = useState<'1H' | '4H' | '1D' | '7D' | '30D'>('1D');
+    const { candles, loading: chartLoading } = useLaunchChart(l?.publicKey, chartTimeframe);
+
     const thS2: React.CSSProperties = {
       fontWeight: 600,
       padding: "7px 0",
@@ -3723,17 +3773,18 @@ const App: React.FC = () => {
                       ))}
                     </div>
                     {/* Timeframe pills */}
-                    {["1H", "4H", "1D", "7D", "30D"].map((tf, i) => (
+                    {(["1H", "4H", "1D", "7D", "30D"] as const).map((tf) => (
                       <button
                         key={tf}
+                        onClick={() => setChartTimeframe(tf)}
                         className="glass-pill interactive-hover btn-press"
                         style={s(bsS, {
                           height: 26,
                           padding: "0 10px",
                           fontSize: 10,
                           fontWeight: 500,
-                          background: i === 2 ? 'var(--pb)' : 'var(--sb)',
-                          color: i === 2 ? 'var(--pt)' : 'var(--st)'
+                          background: chartTimeframe === tf ? 'var(--pb)' : 'var(--sb)',
+                          color: chartTimeframe === tf ? 'var(--pt)' : 'var(--st)'
                         })}
                       >
                         {tf}
@@ -3763,83 +3814,13 @@ const App: React.FC = () => {
               </div>
 
               {/* Chart Area */}
-              <div style={{ padding: "20px 24px", position: "relative" }}>
-                {/* Y-axis labels */}
-                <div style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 20,
-                  bottom: 40,
-                  width: 50,
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  fontSize: 9,
-                  color: "var(--t3)",
-                  fontFamily: "'JetBrains Mono', monospace",
-                  textAlign: "right",
-                  paddingRight: 8
-                }}>
-                  <span>{fP(l.price * 1.15)}</span>
-                  <span>{fP(l.price * 1.07)}</span>
-                  <span>{fP(l.price)}</span>
-                  <span>{fP(l.price * 0.93)}</span>
-                  <span>{fP(l.price * 0.85)}</span>
-                </div>
-
-                {/* Grid lines */}
-                <div style={{
-                  marginLeft: 50,
-                  height: 160,
-                  background: `repeating-linear-gradient(0deg, transparent, transparent 39px, var(--glass-border) 39px, var(--glass-border) 40px)`,
-                  position: "relative"
-                }}>
-                  {/* Animated Chart */}
-                  <AnimatedChart
-                    data={sparklineData[l.id] ? [...sparklineData[l.id], ...sparklineData[l.id].map(v => v * (1 + Math.random() * 0.1))] : [40, 35, 50, 45, 60, 55, 70, 65, 80, 75, 90, 85, 100, 95, 110, 105, 120, 115, 130, 125]}
-                    height={160}
-                    color="var(--grn)"
-                    fillGradient={settings.chartType === 'area'}
-                  />
-                </div>
-
-                {/* Volume bars (simulated) */}
-                {settings.showIndicators && (
-                  <div style={{ marginLeft: 50, marginTop: 8, height: 32, display: "flex", alignItems: "flex-end", gap: 2 }}>
-                    {Array.from({ length: 20 }).map((_, i) => {
-                      const height = 10 + Math.random() * 22;
-                      const isUp = Math.random() > 0.4;
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            flex: 1,
-                            height: `${height}px`,
-                            background: isUp ? "var(--gb)" : "var(--rb)",
-                            borderRadius: 2,
-                            opacity: 0.6
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* X-axis labels */}
-                <div style={{
-                  marginLeft: 50,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginTop: 8,
-                  fontSize: 9,
-                  color: "var(--t3)"
-                }}>
-                  <span>24h ago</span>
-                  <span>18h</span>
-                  <span>12h</span>
-                  <span>6h</span>
-                  <span>Now</span>
-                </div>
+              <div style={{ padding: "20px 24px" }}>
+                <PriceChart
+                  data={candles}
+                  chartType={settings.chartType}
+                  height={280}
+                  loading={chartLoading}
+                />
               </div>
 
               {/* Chart Footer / Legend */}
@@ -4137,40 +4118,62 @@ const App: React.FC = () => {
                   </span>
                 </div>
               </div>
-              <button
-                onClick={wallet.connected ? initiateTransaction : () => wallet.connect()}
-                className={`btn-press ${tradeLoading ? 'btn-loading' : ''}`}
-                disabled={tradeLoading}
-                style={{
-                  width: "100%",
-                  height: 48,
-                  borderRadius: 100,
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: tradeLoading ? "wait" : "pointer",
-                  border: "none",
-                  transition: "all .2s var(--ease-out-quart)",
-                  fontFamily: "inherit",
-                  background: wallet.connected
-                    ? (tradeType === "buy" ? "linear-gradient(135deg,#34d399,#16A34A)" : "linear-gradient(135deg,#fca5a5,#ef4444)")
-                    : "var(--pb)",
-                  color: wallet.connected ? "#fff" : "var(--pt)",
-                  boxShadow: wallet.connected
-                    ? (tradeType === "buy" ? "0 6px 24px rgba(34,197,94,0.3)" : "0 6px 24px rgba(239,68,68,0.25)")
-                    : "none",
-                  position: "relative",
-                  opacity: tradeLoading ? 0.8 : 1
-                }}
-              >
-                {tradeLoading ? (
-                  <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                    <span className="loading-spinner loading-spinner-small" />
-                    Processing...
-                  </span>
-                ) : (
-                  wallet.connected ? (tradeType === "buy" ? "Buy" : "Sell") : "Connect Wallet"
-                )}
-              </button>
+              {(() => {
+                const currentBalance = tradeType === "buy"
+                  ? (wallet.balance || 0)
+                  : (userBalances?.tokenBalance ? userBalances.tokenBalance / 1e6 : 0);
+                const parsedAmount = parseFloat(tradeAmount) || 0;
+                const isAmountValid = parsedAmount > 0 && parsedAmount <= currentBalance;
+                const insufficientBalance = parsedAmount > currentBalance && parsedAmount > 0;
+                const isDisabled = tradeLoading || (wallet.connected && !isAmountValid);
+
+                const getButtonText = () => {
+                  if (!wallet.connected) return "Connect Wallet";
+                  if (tradeLoading) return null; // Uses loading spinner below
+                  if (!tradeAmount || parsedAmount <= 0) return "Enter amount";
+                  if (insufficientBalance) return "Insufficient balance";
+                  return tradeType === "buy" ? "Buy" : "Sell";
+                };
+
+                return (
+                  <button
+                    onClick={wallet.connected ? initiateTransaction : () => wallet.connect()}
+                    className={`btn-press ${tradeLoading ? 'btn-loading' : ''}`}
+                    disabled={isDisabled}
+                    style={{
+                      width: "100%",
+                      height: 48,
+                      borderRadius: 100,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: isDisabled ? (tradeLoading ? "wait" : "not-allowed") : "pointer",
+                      border: "none",
+                      transition: "all .2s var(--ease-out-quart)",
+                      fontFamily: "inherit",
+                      background: !wallet.connected
+                        ? "var(--pb)"
+                        : insufficientBalance
+                          ? "linear-gradient(135deg, rgba(239,68,68,0.3), rgba(220,38,38,0.3))"
+                          : (tradeType === "buy" ? "linear-gradient(135deg,#34d399,#16A34A)" : "linear-gradient(135deg,#fca5a5,#ef4444)"),
+                      color: !wallet.connected ? "var(--pt)" : "#fff",
+                      boxShadow: wallet.connected && isAmountValid
+                        ? (tradeType === "buy" ? "0 6px 24px rgba(34,197,94,0.3)" : "0 6px 24px rgba(239,68,68,0.25)")
+                        : "none",
+                      position: "relative",
+                      opacity: isDisabled ? 0.7 : 1
+                    }}
+                  >
+                    {tradeLoading ? (
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                        <span className="loading-spinner loading-spinner-small" />
+                        Processing...
+                      </span>
+                    ) : (
+                      getButtonText()
+                    )}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -4183,6 +4186,7 @@ const App: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const Create = () => {
+    // Form state
     const [nm, setNm] = useState('');
     const [sy, setSy] = useState('');
     const [ds, setDs] = useState('');
@@ -4191,125 +4195,211 @@ const App: React.FC = () => {
     const [ws, setWs] = useState('');
     const [img, setImg] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
-    const [creationStep, setCreationStep] = useState(0); // 0: form, 1: uploading, 2: creating, 3: confirming
-    const fileRef = useRef<HTMLInputElement>(null);
+    const [creationStep, setCreationStep] = useState(0);
+    const [formErrors, setFormErrors] = useState<{
+      name?: string;
+      symbol?: string;
+      image?: string;
+      twitter?: string;
+      telegram?: string;
+      website?: string;
+    }>({});
+    const [focusedField, setFocusedField] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && file.type.startsWith("image/")) {
-        if (file.size > 5 * 1024 * 1024) {
-          showToast('Image must be less than 5MB', 'error');
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = (ev) => setImg(ev.target?.result as string);
-        reader.readAsDataURL(file);
-        showToast('Image uploaded successfully', 'success');
-      }
+    // File picker
+    const openFilePicker = () => {
+      fileInputRef.current?.click();
     };
 
-    const [formErrors, setFormErrors] = useState<{ name?: string; symbol?: string }>({});
+    // Handle file selection
+    const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    const Field = ({ label, val, set, ph, area, max, required, error }: {
-      label: string;
-      val: string;
-      set: (v: string) => void;
-      ph: string;
-      area?: boolean;
-      max?: number;
-      required?: boolean;
-      error?: string;
-    }) => (
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-          <label style={{ fontSize: 12, fontWeight: 500, color: error ? "var(--red)" : "var(--t2)" }}>
-            {label}
-            {required && <span style={{ color: "var(--red)", marginLeft: 2 }}>*</span>}
-          </label>
-          {max && (
-            <span style={{
-              fontSize: 10,
-              color: val.length >= max ? "var(--amb)" : "var(--t3)",
-              fontFamily: "'JetBrains Mono', monospace"
-            }}>
-              {val.length}/{max}
-            </span>
-          )}
-        </div>
-        {area ? (
-          <textarea
-            value={val}
-            onChange={(e) => set(e.target.value)}
-            placeholder={ph}
-            rows={3}
-            className={`focus-ring ${error ? 'input-error' : ''}`}
-            style={s(inpS, {
-              width: "100%",
-              padding: "10px 14px",
-              resize: "none",
-              fontFamily: "inherit",
-              borderRadius: 16,
-              transition: "border-color 0.2s ease, box-shadow 0.2s ease"
-            })}
-          />
-        ) : (
-          <input
-            value={val}
-            onChange={(e) => {
-              set(max ? e.target.value.slice(0, max) : e.target.value);
-              if (error) setFormErrors(prev => ({ ...prev, [label.toLowerCase()]: undefined }));
-            }}
-            placeholder={ph}
-            className={`focus-ring ${error ? 'input-error validation-shake' : ''}`}
-            style={s(inpS, {
-              width: "100%",
-              height: 44,
-              padding: "0 14px",
-              fontFamily: "inherit",
-              borderRadius: 14,
-              transition: "border-color 0.2s ease, box-shadow 0.2s ease"
-            })}
-          />
-        )}
-        {error && (
-          <div className="validation-message" style={{ marginTop: 4 }}>
-            {error}
-          </div>
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        showToast('Please upload an image file (PNG, JPG, etc.)', 'error');
+        e.target.value = '';
+        return;
+      }
+
+      // Validate file size (5MB max)
+      if (file.size > 5 * 1024 * 1024) {
+        showToast('Image must be less than 5MB', 'error');
+        e.target.value = '';
+        return;
+      }
+
+      // Read file as data URL
+      const reader = new FileReader();
+      const inputElement = e.target;
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        if (dataUrl) {
+          setImg(dataUrl);
+          setFormErrors(prev => ({ ...prev, image: undefined }));
+          showToast('Image uploaded', 'success');
+        }
+        // Reset input after successful read to allow same file selection
+        inputElement.value = '';
+      };
+      reader.onerror = () => {
+        showToast('Failed to read image', 'error');
+        // Reset input on error too
+        inputElement.value = '';
+      };
+      reader.readAsDataURL(file);
+    };
+
+    // Minimum SOL required for token creation (accounts + rent)
+    const MIN_SOL_FOR_CREATION = 0.05;
+
+    // Input field styles with glow effect
+    const getInputStyle = (fieldName: string, hasError?: boolean) => ({
+      ...inpS,
+      width: "100%",
+      height: 48,
+      padding: "0 16px",
+      fontFamily: "inherit",
+      borderRadius: 14,
+      fontSize: 14,
+      transition: "all 0.2s ease",
+      boxShadow: focusedField === fieldName
+        ? "0 0 0 2px var(--grn), 0 0 20px rgba(34,197,94,0.15)"
+        : hasError
+          ? "0 0 0 2px var(--red)"
+          : "none",
+      borderColor: hasError ? "var(--red)" : focusedField === fieldName ? "var(--grn)" : "var(--glass-border)",
+    });
+
+    const getTextareaStyle = (fieldName: string) => ({
+      ...inpS,
+      width: "100%",
+      padding: "12px 16px",
+      resize: "none" as const,
+      fontFamily: "inherit",
+      borderRadius: 16,
+      fontSize: 14,
+      transition: "all 0.2s ease",
+      boxShadow: focusedField === fieldName
+        ? "0 0 0 2px var(--grn), 0 0 20px rgba(34,197,94,0.15)"
+        : "none",
+      borderColor: focusedField === fieldName ? "var(--grn)" : "var(--glass-border)",
+    });
+
+    // Label component for consistent styling
+    const renderLabel = (label: string, required?: boolean, error?: string, max?: number, currentLength?: number) => (
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 8
+      }}>
+        <label style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: error ? "var(--red)" : "var(--t1)",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          transition: "color 0.2s ease"
+        }}>
+          {label}
+          {required && <span style={{ color: "var(--grn)", fontSize: 14 }}>*</span>}
+        </label>
+        {max !== undefined && (
+          <span style={{
+            fontSize: 11,
+            color: currentLength !== undefined && currentLength >= max * 0.9
+              ? currentLength >= max ? "var(--red)" : "var(--amb)"
+              : "var(--t3)",
+            fontFamily: "'JetBrains Mono', monospace",
+            fontWeight: 500,
+            transition: "color 0.2s ease"
+          }}>
+            {currentLength || 0}/{max}
+          </span>
         )}
       </div>
     );
 
+    const renderError = (error?: string) => error && (
+      <div
+        className="validation-message"
+        style={{
+          marginTop: 6,
+          fontSize: 12,
+          color: "var(--red)",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          animation: "shake 0.4s ease-in-out"
+        }}
+      >
+        <svg width={12} height={12} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+        </svg>
+        {error}
+      </div>
+    );
+
     const handleSubmit = async () => {
-      const errors: { name?: string; symbol?: string } = {};
+      const errors: typeof formErrors = {};
+
+      // Required field validation
+      if (!img) errors.image = "Token image is required";
+
       if (!nm.trim()) errors.name = "Token name is required";
+      if (nm.length > 32) errors.name = "Name must be 32 characters or less";
+
       if (!sy.trim()) errors.symbol = "Symbol is required";
       if (sy.length > 0 && sy.length < 2) errors.symbol = "Symbol must be at least 2 characters";
       if (sy.length > 10) errors.symbol = "Symbol must be 10 characters or less";
+
+      // Social link validation (max 64 chars per program constraints)
+      if (tw.length > 64) errors.twitter = "Twitter handle must be 64 characters or less";
+      if (tg.length > 64) errors.telegram = "Telegram link must be 64 characters or less";
+      if (ws.length > 64) errors.website = "Website URL must be 64 characters or less";
+
+      // URL format validation for website
+      if (ws && !ws.match(/^https?:\/\/.+/) && ws.length > 0) {
+        errors.website = "Website must start with http:// or https://";
+      }
 
       if (Object.keys(errors).length > 0) {
         setFormErrors(errors);
         return;
       }
 
+      // Balance check
+      if (wallet.connected && (wallet.balance || 0) < MIN_SOL_FOR_CREATION) {
+        showToast(`Insufficient SOL. You need at least ${MIN_SOL_FOR_CREATION} SOL to create a token.`, 'error');
+        return;
+      }
+
       setIsCreating(true);
-      setCreationStep(1); // Uploading metadata
 
       try {
-        // Simulate progress steps for better UX
-        await new Promise(r => setTimeout(r, 500));
-        setCreationStep(2); // Creating token
+        // Step 1: Upload metadata
+        setCreationStep(1);
+        await new Promise(r => setTimeout(r, 300));
+
+        // Step 2: Create token on-chain
+        setCreationStep(2);
 
         await handleCreateLaunch({
-          name: nm,
-          symbol: sy.toUpperCase(),
-          description: ds,
+          name: nm.trim(),
+          symbol: sy.toUpperCase().trim(),
+          description: ds.trim(),
           image: img || undefined,
-          twitter: tw,
-          telegram: tg,
-          website: ws
+          twitter: tw.trim() || undefined,
+          telegram: tg.trim() || undefined,
+          website: ws.trim() || undefined
         });
 
-        setCreationStep(3); // Success
+        // Step 3: Success
+        setCreationStep(3);
         showToast(`${sy.toUpperCase()} token created successfully!`, 'success');
 
         // Reset form after success
@@ -4324,7 +4414,19 @@ const App: React.FC = () => {
           setCreationStep(0);
         }, 2000);
       } catch (err) {
-        showToast('Failed to create launch. Please try again.', 'error');
+        // Provide specific error context
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        if (errorMessage.includes('upload') || errorMessage.includes('metadata')) {
+          showToast('Failed to upload token metadata. Please try again.', 'error');
+        } else if (errorMessage.includes('insufficient') || errorMessage.includes('balance')) {
+          showToast('Insufficient SOL balance for transaction fees.', 'error');
+        } else if (errorMessage.includes('simulation') || errorMessage.includes('rejected')) {
+          showToast('Transaction simulation failed. Please check your inputs.', 'error');
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
+          showToast('Network error. Please check your connection and try again.', 'error');
+        } else {
+          showToast(`Failed to create token: ${errorMessage}`, 'error');
+        }
         setCreationStep(0);
       } finally {
         setIsCreating(false);
@@ -4391,107 +4493,372 @@ const App: React.FC = () => {
             </div>
           )}
 
-          <div style={{ padding: 32 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-              <div style={{
-                width: 44,
-                height: 44,
-                borderRadius: 14,
-                background: "linear-gradient(135deg, #34d399, #16A34A)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 8px 24px rgba(34, 197, 94, 0.25)"
-              }}>
-                <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round">
-                  <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
-                </svg>
-              </div>
-              <div>
-                <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)" }}>Create Launch</h1>
-                <p style={{ fontSize: 12, color: "var(--t2)", marginTop: 2 }}>Deploy a bonding curve token on Solana</p>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 500, color: "var(--t2)", display: "block", marginBottom: 5 }}>Token Image</label>
-              <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+          <div style={{ padding: "36px 32px" }}>
+            {/* Header */}
+            <div className="create-header-animate" style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              marginBottom: 32
+            }}>
               <div
-                onClick={() => fileRef.current?.click()}
-                className="glass-card-inner"
                 style={{
-                  width: 90,
-                  height: 90,
-                  borderRadius: 22,
+                  width: 48,
+                  height: 48,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  cursor: "pointer",
-                  overflow: "hidden",
-                  borderStyle: img ? "solid" : "dashed",
-                  borderWidth: img ? 1 : 2
+                  filter: "drop-shadow(0 6px 20px rgba(34,197,94,0.4))"
                 }}
               >
-                {img ? (
-                  <img src={img} alt="Token" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: "var(--t3)" }}>
-                    <SvgImg />
-                    <span style={{ fontSize: 10, fontWeight: 500 }}>Upload</span>
-                  </div>
-                )}
+                <SvgLogo size={48} variant="badge" />
               </div>
-              <p style={{ fontSize: 11, color: "var(--t3)", marginTop: 7 }}>Recommended: 512×512px, PNG or JPG</p>
+              <div>
+                <h1 style={{
+                  fontSize: 26,
+                  fontWeight: 800,
+                  color: "var(--t1)",
+                  letterSpacing: "-0.02em"
+                }}>
+                  Create Launch
+                </h1>
+                <p style={{
+                  fontSize: 14,
+                  color: "var(--t2)",
+                  marginTop: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6
+                }}>
+                  <span style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "var(--grn)",
+                    boxShadow: "0 0 8px var(--grn)"
+                  }} />
+                  Launch your token into Orbit
+                </p>
+              </div>
             </div>
-            <Field label="Token Name" val={nm} set={setNm} ph="e.g. OrbitCat" max={32} required error={formErrors.name} />
-            <Field label="Symbol" val={sy} set={setSy} ph="e.g. OCAT" max={10} required error={formErrors.symbol} />
-            <Field label="Description" val={ds} set={setDs} ph="What is this token about?" area max={280} />
-            <div style={{ height: 1, background: "var(--glass-border)" }} />
-            <p style={{ fontSize: 12, fontWeight: 500, color: "var(--t3)" }}>Social Links (optional)</p>
-            <Field label="Twitter" val={tw} set={setTw} ph="@yourtoken" />
-            <Field label="Telegram" val={tg} set={setTg} ph="t.me/yourtoken" />
-            <Field label="Website" val={ws} set={setWs} ph="https://yourtoken.xyz" />
-            <div className="glass-card-inner" style={{ borderRadius: 16, padding: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)", marginBottom: 10 }}>Tokenomics</div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Token Image Upload */}
+              <div className="form-field-animate" style={{ animationDelay: '0s' }}>
+                {renderLabel("Token Image", true, formErrors.image)}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={onFileSelect}
+                  style={{ display: "none" }}
+                />
+                <div
+                  onClick={openFilePicker}
+                  className="glass-card-inner image-upload-zone"
+                  style={{
+                    width: 100,
+                    height: 100,
+                    borderRadius: 24,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    overflow: "hidden",
+                    borderStyle: img ? "solid" : "dashed",
+                    borderWidth: img ? 1 : 2,
+                    borderColor: formErrors.image ? "var(--red)" : img ? "var(--grn)" : "var(--glass-border)",
+                    background: img ? "transparent" : formErrors.image ? "rgba(239, 68, 68, 0.03)" : "rgba(34, 197, 94, 0.03)",
+                    boxShadow: formErrors.image ? "0 0 0 2px var(--red)" : "none",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  {img ? (
+                    <img
+                      src={img}
+                      alt="Token"
+                      className="image-uploaded"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        borderRadius: 22
+                      }}
+                    />
+                  ) : (
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 6,
+                      color: formErrors.image ? "var(--red)" : "var(--t3)"
+                    }}>
+                      <div style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: formErrors.image ? "rgba(239, 68, 68, 0.1)" : "var(--glass2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}>
+                        <SvgImg />
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 500 }}>Upload</span>
+                    </div>
+                  )}
+                </div>
+                {renderError(formErrors.image)}
+                <p style={{
+                  fontSize: 11,
+                  color: "var(--t3)",
+                  marginTop: 8,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4
+                }}>
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <circle cx={12} cy={12} r={10}/>
+                    <path d="M12 16v-4M12 8h.01"/>
+                  </svg>
+                  512×512px recommended, PNG or JPG, max 5MB
+                </p>
+              </div>
+            {/* Token Name */}
+            <div className="form-field-animate" style={{ animationDelay: '0.05s' }}>
+              {renderLabel("Token Name", true, formErrors.name, 32, nm.length)}
+              <input
+                value={nm}
+                onChange={(e) => {
+                  setNm(e.target.value.slice(0, 32));
+                  if (formErrors.name) setFormErrors(prev => ({ ...prev, name: undefined }));
+                }}
+                onFocus={() => setFocusedField('name')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="Token name"
+                className={`focus-ring ${formErrors.name ? 'input-error' : ''}`}
+                style={getInputStyle('name', !!formErrors.name)}
+              />
+              {renderError(formErrors.name)}
+            </div>
+
+            {/* Symbol */}
+            <div className="form-field-animate" style={{ animationDelay: '0.1s' }}>
+              {renderLabel("Symbol", true, formErrors.symbol, 10, sy.length)}
+              <input
+                value={sy}
+                onChange={(e) => {
+                  setSy(e.target.value.toUpperCase().slice(0, 10));
+                  if (formErrors.symbol) setFormErrors(prev => ({ ...prev, symbol: undefined }));
+                }}
+                onFocus={() => setFocusedField('symbol')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="TOKEN"
+                className={`focus-ring ${formErrors.symbol ? 'input-error' : ''}`}
+                style={getInputStyle('symbol', !!formErrors.symbol)}
+              />
+              {renderError(formErrors.symbol)}
+            </div>
+
+            {/* Description */}
+            <div className="form-field-animate" style={{ animationDelay: '0.15s' }}>
+              {renderLabel("Description", false, undefined, 500, ds.length)}
+              <textarea
+                value={ds}
+                onChange={(e) => setDs(e.target.value.slice(0, 500))}
+                onFocus={() => setFocusedField('description')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="Describe your token's purpose and vision..."
+                rows={3}
+                className="focus-ring"
+                style={getTextareaStyle('description')}
+              />
+            </div>
+
+            {/* Divider with animation */}
+            <div className="form-field-animate" style={{ animationDelay: '0.2s' }}>
+              <div style={{
+                height: 1,
+                background: "linear-gradient(90deg, transparent, var(--glass-border), transparent)",
+                margin: "8px 0"
+              }} />
+              <p style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--t2)",
+                marginTop: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 8
+              }}>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                </svg>
+                Social Links
+                <span style={{ fontSize: 11, fontWeight: 400, color: "var(--t3)" }}>(optional)</span>
+              </p>
+            </div>
+
+            {/* Twitter */}
+            <div className="form-field-animate" style={{ animationDelay: '0.25s' }}>
+              {renderLabel("Twitter", false, formErrors.twitter, 64, tw.length)}
+              <input
+                value={tw}
+                onChange={(e) => {
+                  setTw(e.target.value.slice(0, 64));
+                  if (formErrors.twitter) setFormErrors(prev => ({ ...prev, twitter: undefined }));
+                }}
+                onFocus={() => setFocusedField('twitter')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="@yourtoken"
+                className={`focus-ring ${formErrors.twitter ? 'input-error' : ''}`}
+                style={getInputStyle('twitter', !!formErrors.twitter)}
+              />
+              {renderError(formErrors.twitter)}
+            </div>
+
+            {/* Telegram */}
+            <div className="form-field-animate" style={{ animationDelay: '0.3s' }}>
+              {renderLabel("Telegram", false, formErrors.telegram, 64, tg.length)}
+              <input
+                value={tg}
+                onChange={(e) => {
+                  setTg(e.target.value.slice(0, 64));
+                  if (formErrors.telegram) setFormErrors(prev => ({ ...prev, telegram: undefined }));
+                }}
+                onFocus={() => setFocusedField('telegram')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="t.me/yourtoken"
+                className={`focus-ring ${formErrors.telegram ? 'input-error' : ''}`}
+                style={getInputStyle('telegram', !!formErrors.telegram)}
+              />
+              {renderError(formErrors.telegram)}
+            </div>
+
+            {/* Website */}
+            <div className="form-field-animate" style={{ animationDelay: '0.35s' }}>
+              {renderLabel("Website", false, formErrors.website, 64, ws.length)}
+              <input
+                value={ws}
+                onChange={(e) => {
+                  setWs(e.target.value.slice(0, 64));
+                  if (formErrors.website) setFormErrors(prev => ({ ...prev, website: undefined }));
+                }}
+                onFocus={() => setFocusedField('website')}
+                onBlur={() => setFocusedField(null)}
+                placeholder="https://yourtoken.xyz"
+                className={`focus-ring ${formErrors.website ? 'input-error' : ''}`}
+                style={getInputStyle('website', !!formErrors.website)}
+              />
+              {renderError(formErrors.website)}
+            </div>
+            {/* Tokenomics Card */}
+            <div className="glass-card-inner tokenomics-card" style={{
+              borderRadius: 18,
+              padding: 20,
+              background: "linear-gradient(135deg, rgba(34, 197, 94, 0.03), transparent)",
+              border: "1px solid rgba(34, 197, 94, 0.1)"
+            }}>
+              <div style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: "var(--t1)",
+                marginBottom: 14,
+                display: "flex",
+                alignItems: "center",
+                gap: 8
+              }}>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="var(--grn)" strokeWidth={2}>
+                  <circle cx={12} cy={12} r={10}/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                Tokenomics
+              </div>
               {[
-                ["Total Supply", "1,000,000,000"],
-                ["Bonding Curve", "80%"],
-                ["LP Reserve", "20%"],
-                ["Graduation Threshold", "85 SOL"]
-              ].map((pair) => (
-                <div key={pair[0]} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-                  <span style={{ fontSize: 12, color: "var(--t3)" }}>{pair[0]}</span>
-                  <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>{pair[1]}</span>
+                { label: "Total Supply", value: "1,000,000,000", icon: "M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" },
+                { label: "Bonding Curve", value: "80%", icon: "M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.519l2.74-1.22" },
+                { label: "LP Reserve", value: "20%", icon: "M4.5 12a7.5 7.5 0 0 0 15 0m-15 0a7.5 7.5 0 1 1 15 0m-15 0H3m16.5 0H21m-1.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" },
+                { label: "Graduation", value: "85 SOL", icon: "M4.26 10.147a60.436 60.436 0 0 0-.491 6.347A48.627 48.627 0 0 1 12 20.904a48.627 48.627 0 0 1 8.232-4.41" }
+              ].map((item, i) => (
+                <div
+                  key={item.label}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 0",
+                    borderBottom: i < 3 ? "1px solid var(--glass-border)" : "none"
+                  }}
+                >
+                  <span style={{
+                    fontSize: 13,
+                    color: "var(--t2)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8
+                  }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--t3)" strokeWidth={1.5}>
+                      <path d={item.icon}/>
+                    </svg>
+                    {item.label}
+                  </span>
+                  <span style={{
+                    fontSize: 13,
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontWeight: 600,
+                    color: "var(--grn)"
+                  }}>
+                    {item.value}
+                  </span>
                 </div>
               ))}
             </div>
+
+            {/* Create Button */}
             <button
               onClick={wallet.connected ? handleSubmit : () => wallet.connect()}
               disabled={isCreating}
-              className={`btn-press btn-glow ${isCreating ? 'btn-loading' : ''}`}
+              className={`btn-press btn-glow create-btn-animate ${isCreating ? 'btn-loading' : ''}`}
               style={s(bpS, {
                 width: "100%",
-                height: 48,
-                fontSize: 14,
-                fontWeight: 600,
-                boxShadow: "0 6px 24px rgba(34,197,94,0.2)",
+                height: 54,
+                fontSize: 15,
+                fontWeight: 700,
+                borderRadius: 16,
+                boxShadow: wallet.connected
+                  ? "0 8px 32px rgba(34,197,94,0.25)"
+                  : "0 4px 16px rgba(0,0,0,0.1)",
                 position: "relative",
                 cursor: isCreating ? "wait" : "pointer",
-                opacity: isCreating ? 0.8 : 1,
+                opacity: isCreating ? 0.85 : 1,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 8
+                gap: 10,
+                transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                transform: isCreating ? "scale(0.98)" : "scale(1)"
               })}
             >
               {isCreating ? (
                 <>
                   <span className="loading-spinner loading-spinner-small" />
-                  Creating...
+                  <span>Creating Token...</span>
+                </>
+              ) : wallet.connected ? (
+                <>
+                  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+                  </svg>
+                  Launch Token
                 </>
               ) : (
-                wallet.connected ? "Create Launch" : "Connect Wallet"
+                <>
+                  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6"/>
+                  </svg>
+                  Connect Wallet
+                </>
               )}
             </button>
           </div>
@@ -7782,20 +8149,27 @@ const App: React.FC = () => {
       />
 
       {/* Toast Notifications */}
-      <div style={{
-        position: "fixed",
-        bottom: 24,
-        right: 24,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        zIndex: 200,
-        pointerEvents: "none"
-      }}>
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="false"
+        style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          zIndex: 200,
+          pointerEvents: "none"
+        }}
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className="toast-enter toast-premium"
+            role="alert"
+            aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
             style={{
               padding: 0,
               borderRadius: 14,

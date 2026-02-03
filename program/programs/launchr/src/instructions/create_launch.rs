@@ -103,9 +103,13 @@ pub struct CreateLaunchParams {
     pub telegram: Option<String>,
     /// Website URL (optional, max 64 chars)
     pub website: Option<String>,
-    /// Creator fee in basis points (max 500 = 5%)
+    /// Creator fee in basis points (ignored - fixed at 0.2%)
+    #[deprecated(note = "Creator fee is now fixed at 0.2%. This field is ignored.")]
     pub creator_fee_bps: u16,
 }
+
+/// Creator fee: 0.2% (20 bps) - fixed, taken from the 1% protocol fee
+pub const CREATOR_FEE_BPS: u16 = 20;
 
 /// Create a new token launch
 pub fn create_launch(ctx: Context<CreateLaunch>, params: CreateLaunchParams) -> Result<()> {
@@ -113,7 +117,7 @@ pub fn create_launch(ctx: Context<CreateLaunch>, params: CreateLaunchParams) -> 
     require!(params.name.len() <= 32, LaunchrError::InvalidConfig);
     require!(params.symbol.len() <= 10, LaunchrError::InvalidConfig);
     require!(params.uri.len() <= 200, LaunchrError::InvalidConfig);
-    require!(params.creator_fee_bps <= 500, LaunchrError::InvalidConfig); // Max 5%
+    // creator_fee_bps is ignored - always fixed at 0.2%
     
     let launch = &mut ctx.accounts.launch;
     let config = &mut ctx.accounts.config;
@@ -150,8 +154,8 @@ pub fn create_launch(ctx: Context<CreateLaunch>, params: CreateLaunchParams) -> 
     launch.trade_count = 0;
     launch.holder_count = 1; // Creator
     
-    // Fees
-    launch.creator_fee_bps = params.creator_fee_bps;
+    // Fees - fixed at 0.2% (creator_fee_bps param is ignored)
+    launch.creator_fee_bps = CREATOR_FEE_BPS;
     
     // Store metadata
     let mut name_bytes = [0u8; 32];

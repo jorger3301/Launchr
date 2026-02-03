@@ -35,15 +35,19 @@ pub struct SwapResult {
 }
 
 /// Calculate tokens received for SOL input (buy)
-/// 
+///
 /// Formula: tokens_out = token_reserve - k / (sol_reserve + sol_in_after_fee)
-/// 
+///
 /// # Arguments
 /// * `sol_in` - Amount of SOL being spent (lamports)
 /// * `sol_reserve` - Current virtual SOL reserve
 /// * `token_reserve` - Current virtual token reserve
-/// * `protocol_fee_bps` - Protocol fee in basis points
-/// * `creator_fee_bps` - Creator fee in basis points
+/// * `protocol_fee_bps` - Total protocol fee in basis points (1% = 100 bps)
+/// * `creator_fee_bps` - Creator's share of protocol fee (fixed at 0.2% = 20 bps)
+///
+/// # Fee Structure
+/// Total fee is always `protocol_fee_bps` (1%). Creator receives 0.2%,
+/// with the remaining 0.8% going to the Launchr treasury.
 pub fn calculate_buy(
     sol_in: u64,
     sol_reserve: u64,
@@ -53,12 +57,14 @@ pub fn calculate_buy(
 ) -> Result<SwapResult> {
     require!(sol_in >= MIN_TRADE_AMOUNT, LaunchrError::TradeTooSmall);
     require!(sol_reserve > 0 && token_reserve > 0, LaunchrError::InvalidReserves);
-    
-    // Calculate fees
-    let total_fee_bps = protocol_fee_bps as u64 + creator_fee_bps as u64;
-    let total_fee = (sol_in as u128 * total_fee_bps as u128 / BPS_DENOMINATOR as u128) as u64;
-    let protocol_fee = (sol_in as u128 * protocol_fee_bps as u128 / BPS_DENOMINATOR as u128) as u64;
-    let creator_fee = total_fee.saturating_sub(protocol_fee);
+
+    // Calculate fees - creator fee comes FROM protocol fee, not added to it
+    // Total fee = protocol_fee_bps (1% = 100 bps)
+    // Creator gets 0.2% (20 bps) - fixed
+    // Treasury gets 0.8% (80 bps)
+    let total_fee = (sol_in as u128 * protocol_fee_bps as u128 / BPS_DENOMINATOR as u128) as u64;
+    let creator_fee = (sol_in as u128 * creator_fee_bps as u128 / BPS_DENOMINATOR as u128) as u64;
+    let protocol_fee = total_fee.saturating_sub(creator_fee); // Treasury portion
     
     // SOL after fee deduction
     let sol_in_after_fee = sol_in.saturating_sub(total_fee);
@@ -135,11 +141,13 @@ pub fn calculate_sell(
     require!(sol_out_before_fee > 0, LaunchrError::InsufficientOutput);
     require!(sol_out_before_fee <= sol_reserve, LaunchrError::InsufficientLiquidity);
     
-    // Calculate fees (taken from output)
-    let total_fee_bps = protocol_fee_bps as u64 + creator_fee_bps as u64;
-    let total_fee = (sol_out_before_fee as u128 * total_fee_bps as u128 / BPS_DENOMINATOR as u128) as u64;
-    let protocol_fee = (sol_out_before_fee as u128 * protocol_fee_bps as u128 / BPS_DENOMINATOR as u128) as u64;
-    let creator_fee = total_fee.saturating_sub(protocol_fee);
+    // Calculate fees - creator fee comes FROM protocol fee, not added to it
+    // Total fee = protocol_fee_bps (1% = 100 bps)
+    // Creator gets 0.2% (20 bps) - fixed
+    // Treasury gets 0.8% (80 bps)
+    let total_fee = (sol_out_before_fee as u128 * protocol_fee_bps as u128 / BPS_DENOMINATOR as u128) as u64;
+    let creator_fee = (sol_out_before_fee as u128 * creator_fee_bps as u128 / BPS_DENOMINATOR as u128) as u64;
+    let protocol_fee = total_fee.saturating_sub(creator_fee); // Treasury portion
     
     // SOL out after fees
     let sol_out = sol_out_before_fee.saturating_sub(total_fee);
@@ -201,8 +209,8 @@ pub fn calculate_sol_for_tokens(
     let sol_in_after_fee = new_sol_reserve.saturating_sub(sol_reserve);
     
     // sol_in = sol_in_after_fee / (1 - fee_rate)
-    let total_fee_bps = protocol_fee_bps as u64 + creator_fee_bps as u64;
-    let sol_in = (sol_in_after_fee as u128 * BPS_DENOMINATOR as u128 / (BPS_DENOMINATOR - total_fee_bps) as u128) as u64;
+    // Total fee is just protocol_fee_bps (creator fee comes from it, not added)
+    let sol_in = (sol_in_after_fee as u128 * BPS_DENOMINATOR as u128 / (BPS_DENOMINATOR - protocol_fee_bps as u64) as u128) as u64;
     
     Ok(sol_in.saturating_add(1)) // Add 1 for rounding
 }

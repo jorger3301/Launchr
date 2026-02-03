@@ -17,11 +17,10 @@
 //! - **Automatic Graduation**: Launches migrate to Orbit DLMM when threshold reached
 //! - **Fee Distribution**: Protocol + creator fees with Orbit holder rewards
 //! 
-//! ## Token Allocation
-//! 
-//! - 2% to Creator (immediate)
+//! ## Tokenomics
+//!
 //! - 80% to Bonding Curve (for trading)
-//! - 18% Reserved for Graduation Liquidity
+//! - 20% Reserved for Graduation Liquidity
 //! 
 //! ## Program Flow
 //! 
@@ -102,7 +101,7 @@ pub mod launchr {
 
     /// Create a new token launch on the bonding curve
     /// 
-    /// Creates a new SPL token, allocates supply (2% creator, 80% curve, 18% graduation),
+    /// Creates a new SPL token, allocates supply (80% curve, 20% graduation liquidity),
     /// and initializes the bonding curve for trading.
     /// 
     /// # Arguments

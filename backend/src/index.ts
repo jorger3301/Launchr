@@ -79,7 +79,7 @@ app.use(cors({
   origin: CORS_ORIGIN.split(','),
   credentials: true,
 }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '10mb' })); // Increased for base64 image uploads
 app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting

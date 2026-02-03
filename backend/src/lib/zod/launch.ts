@@ -43,7 +43,9 @@ export const CreateLaunchRequestSchema = z.object({
   twitter: OptionalUrlSchema,
   telegram: OptionalUrlSchema,
   website: OptionalUrlSchema,
-  creatorFeeBps: BasisPointsSchema.max(500).default(0), // Max 5% creator fee
+  // Note: creatorFeeBps is FIXED at 20 bps (0.2%) on-chain
+  // This field is accepted for API compatibility but ignored
+  creatorFeeBps: BasisPointsSchema.default(20), // Fixed at 0.2% on-chain
 });
 
 export type CreateLaunchRequest = z.infer<typeof CreateLaunchRequestSchema>;

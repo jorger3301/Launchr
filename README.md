@@ -50,18 +50,21 @@ launchr/
 └── docker-compose.yml
 ```
 
-## Token Economics
+## Tokenomics
 
 | Allocation | Percentage | Description |
 |------------|------------|-------------|
 | Bonding Curve | 80% | Available for trading |
 | LP Reserve | 20% | Reserved for Orbit DLMM migration |
 
-### Graduation Rewards
+### Graduation Distribution
 
-| Reward | Amount | Description |
-|--------|--------|-------------|
+| Item | Amount | Description |
+|------|--------|-------------|
+| LP Liquidity | 80 SOL + 200M tokens | Deposited into Orbit DLMM pool |
 | Creator Reward | 2 SOL | Paid to creator on successful graduation |
+| Treasury Fee | 3 SOL | Launchr protocol revenue |
+| **LP Status** | **LOCKED** | Position owned by program PDA (permanent, unwithdrawable) |
 
 ### Bonding Curve Parameters
 
@@ -69,8 +72,9 @@ launchr/
 - **Virtual SOL Reserve**: 30 SOL
 - **Virtual Token Reserve**: 800M tokens
 - **Graduation Threshold**: 85 SOL real reserve
-- **Protocol Fee**: 1% (100 bps)
-- **Max Creator Fee**: 5% (500 bps)
+- **Protocol Fee**: 1% (100 bps) - split between treasury and creator
+- **Creator Fee**: 0.2% (20 bps) - fixed, taken from protocol fee
+- **Treasury Fee**: 0.8% (80 bps) - remainder of protocol fee
 
 ## Tech Stack
 
@@ -300,7 +304,7 @@ Create a new token with bonding curve.
 | `name` | string | Token name (max 32 chars) |
 | `symbol` | string | Token symbol (max 10 chars) |
 | `uri` | string | Metadata URI |
-| `creator_fee_bps` | u16 | Creator fee in basis points (max 500) |
+| `creator_fee_bps` | u16 | Deprecated - creator fee is fixed at 0.2% (20 bps) |
 
 ### `buy`
 Buy tokens from the bonding curve.
@@ -406,6 +410,8 @@ REACT_APP_PROGRAM_ID=AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK
 - Deterministic PDA derivation
 - Slippage protection on all trades
 - Authority-only admin functions
+- **LP locked on graduation** — Position owned by program PDA, liquidity is permanent
+- **No rug pulls** — Creator cannot withdraw LP or drain pool
 
 ## Brand Guidelines
 

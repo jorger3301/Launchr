@@ -133,6 +133,11 @@ export interface SellParams {
   minSolOut: BN;
 }
 
+export interface GraduateParams {
+  binStepBps: number | null;
+  numLiquidityBins: number | null;
+}
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -154,8 +159,9 @@ export const CONSTANTS = {
   TREASURY_FEE_LAMPORTS: new BN('3000000000'), // 3 SOL
 
   // Fees
-  DEFAULT_PROTOCOL_FEE_BPS: 100, // 1%
-  MAX_CREATOR_FEE_BPS: 500, // 5%
+  DEFAULT_PROTOCOL_FEE_BPS: 100, // 1% total fee
+  CREATOR_FEE_BPS: 20, // 0.2% - fixed creator earnings (from the 1% total)
+  TREASURY_FEE_BPS: 80, // 0.8% - treasury portion (from the 1% total)
 } as const;
 
 // =============================================================================

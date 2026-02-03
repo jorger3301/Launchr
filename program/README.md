@@ -15,7 +15,7 @@ Launchr is a fair token launch platform on Solana that combines bonding curve me
 - **🎯 Fair Launch** — Bonding curves ensure fair price discovery
 - **📈 Automatic Graduation** — Tokens graduate to Orbit DLMM when threshold is reached
 - **💧 Deep Liquidity** — Graduated tokens benefit from concentrated DLMM liquidity
-- **🛡️ Creator Protection** — 2% creator allocation with fee sharing
+- **🛡️ Creator Protection** — Fee sharing on all trades
 - **📊 Real-time Tracking** — Monitor your positions and P&L
 
 ## Architecture
@@ -37,13 +37,12 @@ Launchr is a fair token launch platform on Solana that combines bonding curve me
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Token Economics
+## Tokenomics
 
 | Allocation | Percentage | Amount |
 |------------|-----------|--------|
 | Bonding Curve | 80% | 800M tokens |
-| Graduation Liquidity | 18% | 180M tokens |
-| Creator | 2% | 20M tokens |
+| Graduation Liquidity | 20% | 200M tokens |
 | **Total Supply** | 100% | 1B tokens |
 
 ### Graduation Requirements
@@ -51,6 +50,7 @@ Launchr is a fair token launch platform on Solana that combines bonding curve me
 - **Threshold:** 85 SOL raised on bonding curve
 - **Trigger:** Permissionless — anyone can graduate once threshold is reached
 - **Result:** All liquidity migrates to Orbit Finance DLMM pool
+- **LP Locked:** Position owned by program PDA (permanent, unwithdrawable liquidity)
 
 ## Project Structure
 
@@ -237,19 +237,22 @@ const { createLaunch, loading, error } = useCreateLaunch(wallet);
 
 | Fee Type | Amount | Distribution |
 |----------|--------|--------------|
-| Protocol Fee | 1% | Protocol treasury |
-| Creator Fee | 0-3% | Launch creator |
-| **Post-Graduation** | | |
-| CIPHER Holders | 30% | Fee vault |
-| NFT Holders | 20% | Fee vault |
-| Creator | Variable | Creator address |
+| Protocol Fee | 1% | Split between treasury (0.8%) and creator (0.2%) |
+| Creator Fee | 0.2% | Fixed, taken from protocol fee |
+| Treasury Fee | 0.8% | Launchr protocol revenue |
+| **Post-Graduation (Orbit DLMM)** | | |
+| Base Fee | 1% | Split between creator and treasury |
+| Max Dynamic Fee | 5% | During high volatility periods |
+| Creator | 0.2% | Continues earning from pool trades |
+| Treasury | 0.8% | Launchr protocol revenue |
 
 ## Security
 
 - All smart contracts are open source
 - Bonding curve math uses checked arithmetic
 - PDAs ensure account security
-- Creator tokens are locked during bonding phase
+- **LP locked on graduation** — Position owned by program PDA, liquidity is permanent
+- No rug pulls — Creator cannot withdraw LP or drain pool
 
 ## Roadmap
 

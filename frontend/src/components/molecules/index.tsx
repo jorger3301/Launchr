@@ -34,6 +34,7 @@ import {
   IconSwap,
   IconChevronUp,
   IconChevronDown,
+  IconWarning,
   GradientAvatar,
   LaunchrLogo,
 } from '../atoms';
@@ -1590,6 +1591,37 @@ export const SlippageSelector: React.FC<SlippageSelectorProps> = ({
     }
   };
 
+  // Determine warning level based on slippage
+  const getSlippageWarning = () => {
+    if (value >= 10) {
+      return {
+        level: 'danger',
+        message: 'Very high slippage - you may lose significant value',
+        color: 'text-red-400',
+        bgColor: 'bg-red-500/10 border-red-500/30',
+      };
+    }
+    if (value >= 5) {
+      return {
+        level: 'warning',
+        message: 'High slippage may result in unfavorable execution',
+        color: 'text-amber-400',
+        bgColor: 'bg-amber-500/10 border-amber-500/30',
+      };
+    }
+    if (value < 0.5) {
+      return {
+        level: 'info',
+        message: 'Very low slippage - transaction may fail',
+        color: 'text-blue-400',
+        bgColor: 'bg-blue-500/10 border-blue-500/30',
+      };
+    }
+    return null;
+  };
+
+  const warning = getSlippageWarning();
+
   return (
     <div className={`space-y-2 ${className}`}>
       <Text variant="caption" color="muted">
@@ -1626,6 +1658,14 @@ export const SlippageSelector: React.FC<SlippageSelectorProps> = ({
           </span>
         </div>
       </div>
+      {/* Slippage Warning */}
+      {warning && (
+        <div className={`p-2 rounded-lg border ${warning.bgColor}`}>
+          <Text variant="caption" className={warning.color}>
+            {warning.message}
+          </Text>
+        </div>
+      )}
     </div>
   );
 };
@@ -2116,6 +2156,284 @@ export const TradeListSkeleton: React.FC<{ count?: number; className?: string }>
         <SkeletonCard key={i} variant="trade" />
       ))}
     </div>
+  );
+};
+
+// =============================================================================
+// CONNECTION STATUS INDICATOR
+// =============================================================================
+
+interface ConnectionStatusProps {
+  isOnline: boolean;
+  isWebSocketConnected?: boolean;
+  className?: string;
+}
+
+export const OfflineIndicator: React.FC<ConnectionStatusProps> = ({
+  isOnline,
+  isWebSocketConnected = true,
+  className = '',
+}) => {
+  // Show nothing if everything is connected
+  if (isOnline && isWebSocketConnected) return null;
+
+  const getMessage = () => {
+    if (!isOnline) {
+      return "You're offline. Some features may be unavailable.";
+    }
+    if (!isWebSocketConnected) {
+      return "Real-time updates disconnected. Reconnecting...";
+    }
+    return '';
+  };
+
+  const getBgColor = () => {
+    if (!isOnline) return 'bg-amber-500/95';
+    return 'bg-blue-500/95'; // WebSocket disconnected but online
+  };
+
+  const getTextColor = () => {
+    if (!isOnline) return 'text-amber-900';
+    return 'text-blue-100';
+  };
+
+  return (
+    <div
+      className={`fixed top-0 left-0 right-0 z-50 ${getBgColor()} backdrop-blur-sm py-2 px-4 ${className}`}
+      role="alert"
+      aria-live="polite"
+    >
+      <div className="max-w-7xl mx-auto flex items-center justify-center gap-2">
+        <IconWarning className={`w-4 h-4 ${getTextColor()}`} />
+        <span className={`text-sm font-medium ${getTextColor()}`}>
+          {getMessage()}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+export type { ConnectionStatusProps as OfflineIndicatorProps };
+
+// =============================================================================
+// TRADINGVIEW PRICE CHART
+// =============================================================================
+
+import {
+  createChart,
+  ColorType,
+  CandlestickSeries,
+  LineSeries,
+  AreaSeries,
+} from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, CandlestickData, LineData, AreaData, Time } from 'lightweight-charts';
+import { useRef } from 'react';
+
+export interface PriceChartProps {
+  data: Array<{
+    timestamp: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>;
+  chartType?: 'candle' | 'line' | 'area';
+  height?: number;
+  loading?: boolean;
+  className?: string;
+}
+
+type AnySeries = ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> | ISeriesApi<'Area'>;
+
+export const PriceChart: React.FC<PriceChartProps> = ({
+  data,
+  chartType = 'candle',
+  height = 300,
+  loading = false,
+  className = '',
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<AnySeries | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Create chart
+    const chart = createChart(containerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: 'rgba(255, 255, 255, 0.5)',
+        fontFamily: "'Inter', -apple-system, sans-serif",
+        fontSize: 11,
+      },
+      grid: {
+        vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+        horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
+      },
+      crosshair: {
+        mode: 1,
+        vertLine: {
+          color: 'rgba(34, 197, 94, 0.3)',
+          width: 1,
+          style: 2,
+          labelBackgroundColor: '#22c55e',
+        },
+        horzLine: {
+          color: 'rgba(34, 197, 94, 0.3)',
+          width: 1,
+          style: 2,
+          labelBackgroundColor: '#22c55e',
+        },
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        scaleMargins: { top: 0.1, bottom: 0.1 },
+      },
+      timeScale: {
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      handleScale: { mouseWheel: true, pinch: true },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+    });
+
+    chart.timeScale().fitContent();
+    chartRef.current = chart;
+
+    // Handle resize
+    const handleResize = () => {
+      if (containerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: containerRef.current.clientWidth,
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    };
+  }, []);
+
+  // Update chart type and data
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    // Remove existing series
+    if (seriesRef.current) {
+      chartRef.current.removeSeries(seriesRef.current);
+      seriesRef.current = null;
+    }
+
+    if (data.length === 0) return;
+
+    // Convert timestamps to seconds for TradingView (it expects Unix timestamp in seconds)
+    const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
+    const chart = chartRef.current;
+
+    if (chartType === 'candle') {
+      const candleSeries = chart.addSeries(CandlestickSeries, {
+        upColor: '#22c55e',
+        downColor: '#ef4444',
+        borderUpColor: '#22c55e',
+        borderDownColor: '#ef4444',
+        wickUpColor: '#22c55e',
+        wickDownColor: '#ef4444',
+      });
+
+      const candleData: CandlestickData<Time>[] = sortedData.map((d) => ({
+        time: Math.floor(d.timestamp / 1000) as Time,
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+      }));
+
+      candleSeries.setData(candleData);
+      seriesRef.current = candleSeries as AnySeries;
+    } else if (chartType === 'line') {
+      const lineSeries = chart.addSeries(LineSeries, {
+        color: '#22c55e',
+        lineWidth: 2,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 4,
+        crosshairMarkerBorderColor: '#22c55e',
+        crosshairMarkerBackgroundColor: '#0a0e17',
+      });
+
+      const lineData: LineData<Time>[] = sortedData.map((d) => ({
+        time: Math.floor(d.timestamp / 1000) as Time,
+        value: d.close,
+      }));
+
+      lineSeries.setData(lineData);
+      seriesRef.current = lineSeries as AnySeries;
+    } else if (chartType === 'area') {
+      const areaSeries = chart.addSeries(AreaSeries, {
+        topColor: 'rgba(34, 197, 94, 0.4)',
+        bottomColor: 'rgba(34, 197, 94, 0.0)',
+        lineColor: '#22c55e',
+        lineWidth: 2,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 4,
+        crosshairMarkerBorderColor: '#22c55e',
+        crosshairMarkerBackgroundColor: '#0a0e17',
+      });
+
+      const areaData: AreaData<Time>[] = sortedData.map((d) => ({
+        time: Math.floor(d.timestamp / 1000) as Time,
+        value: d.close,
+      }));
+
+      areaSeries.setData(areaData);
+      seriesRef.current = areaSeries as AnySeries;
+    }
+
+    chart.timeScale().fitContent();
+  }, [data, chartType]);
+
+  if (loading) {
+    return (
+      <div
+        className={`flex items-center justify-center ${className}`}
+        style={{ height, background: 'rgba(255, 255, 255, 0.02)', borderRadius: 12 }}
+      >
+        <Spinner size="md" />
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div
+        className={`flex flex-col items-center justify-center ${className}`}
+        style={{ height, background: 'rgba(255, 255, 255, 0.02)', borderRadius: 12 }}
+      >
+        <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.5}>
+          <line x1="12" y1="20" x2="12" y2="10"/>
+          <line x1="18" y1="20" x2="18" y2="4"/>
+          <line x1="6" y1="20" x2="6" y2="16"/>
+        </svg>
+        <span className="text-sm text-gray-500 mt-3">No trading data yet</span>
+        <span className="text-xs text-gray-600 mt-1">Chart will appear after first trade</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={className}
+      style={{ height, width: '100%' }}
+    />
   );
 };
 

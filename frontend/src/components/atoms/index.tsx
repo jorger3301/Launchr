@@ -328,32 +328,57 @@ interface SpinnerProps {
 
 export const Spinner: React.FC<SpinnerProps> = ({ size = "md", className = "" }) => {
   const sizes = {
-    sm: "w-4 h-4",
-    md: "w-6 h-6",
-    lg: "w-8 h-8",
+    sm: { box: "w-4 h-4", stroke: 2 },
+    md: { box: "w-6 h-6", stroke: 2.5 },
+    lg: { box: "w-8 h-8", stroke: 3 },
   };
 
+  const s = sizes[size];
+
   return (
-    <svg
-      className={`animate-spin text-green-400 ${sizes[size]} ${className}`}
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
+    <div className={`${s.box} ${className}`} style={{ position: 'relative' }}>
+      {/* Track */}
+      <svg
+        className={`${s.box} absolute inset-0`}
+        viewBox="0 0 24 24"
+        fill="none"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth={s.stroke}
+          className="text-white/10"
+        />
+      </svg>
+      {/* Spinner arc */}
+      <svg
+        className={`${s.box} absolute inset-0`}
+        viewBox="0 0 24 24"
+        fill="none"
+        style={{
+          animation: 'spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite',
+        }}
+      >
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="url(#spinner-gradient)"
+          strokeWidth={s.stroke}
+          strokeLinecap="round"
+          strokeDasharray="40 60"
+          fill="none"
+        />
+        <defs>
+          <linearGradient id="spinner-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#22c55e" stopOpacity="1" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.2" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
   );
 };
 
@@ -779,3 +804,153 @@ export const LaunchrLogo: React.FC<LogoProps> = ({
     </div>
   );
 };
+
+// ============================================================================
+// ANIMATED COUNTER
+// Smooth number animation for stats and metrics
+// ============================================================================
+
+interface AnimatedCounterProps {
+  value: number;
+  duration?: number;
+  decimals?: number;
+  prefix?: string;
+  suffix?: string;
+  className?: string;
+  formatter?: (value: number) => string;
+}
+
+export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
+  value,
+  duration = 1000,
+  decimals = 0,
+  prefix = '',
+  suffix = '',
+  className = '',
+  formatter,
+}) => {
+  const [displayValue, setDisplayValue] = React.useState(0);
+  const startValueRef = React.useRef(0);
+  const startTimeRef = React.useRef<number | null>(null);
+  const rafRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    startValueRef.current = displayValue;
+    startTimeRef.current = null;
+
+    const animate = (timestamp: number) => {
+      if (startTimeRef.current === null) {
+        startTimeRef.current = timestamp;
+      }
+
+      const elapsed = timestamp - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Easing: ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      const current = startValueRef.current + (value - startValueRef.current) * eased;
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, [value, duration]);
+
+  const formattedValue = formatter
+    ? formatter(displayValue)
+    : displayValue.toFixed(decimals);
+
+  return (
+    <span className={className}>
+      {prefix}{formattedValue}{suffix}
+    </span>
+  );
+};
+
+// ============================================================================
+// ERROR BOUNDARY
+// ============================================================================
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  handleReset = (): void => {
+    this.setState({ hasError: false, error: undefined });
+  };
+
+  render(): React.ReactNode {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
+      return (
+        <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8 text-center">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-red-500/20 flex items-center justify-center">
+              <svg className="w-8 h-8 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">Something went wrong</h2>
+            <p className="text-gray-400 mb-6">
+              An unexpected error occurred. Please try again or refresh the page.
+            </p>
+            {this.state.error && (
+              <p className="text-xs text-gray-500 mb-6 font-mono bg-white/5 p-3 rounded-lg overflow-auto max-h-24">
+                {this.state.error.message}
+              </p>
+            )}
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={this.handleReset}
+                className="px-4 py-2.5 bg-gradient-to-r from-green-400 to-green-600 text-gray-900 font-medium rounded-xl hover:from-green-300 hover:to-green-500 transition-all"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2.5 bg-white/10 text-white border border-white/20 font-medium rounded-xl hover:bg-white/20 transition-all"
+              >
+                Refresh Page
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}

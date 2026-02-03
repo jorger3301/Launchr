@@ -87,7 +87,7 @@ export const TradePanel: React.FC<TradePanelProps> = ({
     if (!amount || !launch.currentPrice) return null;
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount)) return null;
-    
+
     if (tradeType === 'buy') {
       // SOL -> tokens
       return numAmount / launch.currentPrice;
@@ -95,6 +95,60 @@ export const TradePanel: React.FC<TradePanelProps> = ({
     // tokens -> SOL
     return numAmount * launch.currentPrice;
   }, [amount, launch.currentPrice, tradeType]);
+
+  // Calculate price impact using constant product formula
+  const priceImpact = useMemo(() => {
+    if (!amount || !launch.virtualSolReserve || !launch.virtualTokenReserve) return 0;
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) return 0;
+
+    const solReserve = launch.virtualSolReserve;
+    const tokenReserve = launch.virtualTokenReserve;
+
+    if (tradeType === 'buy') {
+      // Buy: adding SOL, receiving tokens
+      // Price before: solReserve / tokenReserve
+      // After: (solReserve + dx) / (tokenReserve - dy) where dy = tokenReserve * dx / (solReserve + dx)
+      const dx = numAmount * 1e9; // Convert SOL to lamports for precision
+      const newSolReserve = solReserve + dx;
+      const tokensOut = tokenReserve * dx / newSolReserve;
+      const newTokenReserve = tokenReserve - tokensOut;
+
+      const priceBefore = solReserve / tokenReserve;
+      const priceAfter = newSolReserve / newTokenReserve;
+      return ((priceAfter - priceBefore) / priceBefore) * 100;
+    } else {
+      // Sell: adding tokens, receiving SOL
+      const dy = numAmount * 1e9; // Convert tokens to smallest unit
+      const newTokenReserve = tokenReserve + dy;
+      const solOut = solReserve * dy / newTokenReserve;
+      const newSolReserve = solReserve - solOut;
+
+      const priceBefore = solReserve / tokenReserve;
+      const priceAfter = newSolReserve / newTokenReserve;
+      return ((priceBefore - priceAfter) / priceBefore) * 100;
+    }
+  }, [amount, launch.virtualSolReserve, launch.virtualTokenReserve, tradeType]);
+
+  // Determine warning level for price impact
+  const priceImpactWarning = useMemo(() => {
+    if (priceImpact >= 10) {
+      return { level: 'danger', color: 'text-red-400', label: 'Very High' };
+    }
+    if (priceImpact >= 5) {
+      return { level: 'warning', color: 'text-amber-400', label: 'High' };
+    }
+    if (priceImpact >= 2) {
+      return { level: 'caution', color: 'text-yellow-400', label: 'Moderate' };
+    }
+    return null;
+  }, [priceImpact]);
+
+  // Calculate minimum output after slippage
+  const minOutput = useMemo(() => {
+    if (!estimatedOutput) return null;
+    return estimatedOutput * (1 - slippage / 100);
+  }, [estimatedOutput, slippage]);
 
   const handleMax = () => {
     setAmount(maxAmount.toString());
@@ -159,13 +213,50 @@ export const TradePanel: React.FC<TradePanelProps> = ({
         className="mb-4"
       />
 
+      {/* Trade Summary */}
+      {estimatedOutput !== null && parseFloat(amount) > 0 && (
+        <div className="mb-4 p-3 bg-white/5 rounded-lg space-y-2">
+          <div className="flex justify-between items-center">
+            <Text variant="caption" color="muted">Expected Output</Text>
+            <Text variant="caption" className="font-mono">
+              {estimatedOutput.toFixed(6)} {tradeType === 'buy' ? launch.symbol : 'SOL'}
+            </Text>
+          </div>
+          {minOutput !== null && (
+            <div className="flex justify-between items-center">
+              <Text variant="caption" color="muted">Min. Output ({slippage}% slippage)</Text>
+              <Text variant="caption" className="font-mono">
+                {minOutput.toFixed(6)} {tradeType === 'buy' ? launch.symbol : 'SOL'}
+              </Text>
+            </div>
+          )}
+          <div className="flex justify-between items-center">
+            <Text variant="caption" color="muted">Price Impact</Text>
+            <Text variant="caption" className={`font-mono ${priceImpactWarning?.color || 'text-green-400'}`}>
+              {priceImpact > 0.01 ? priceImpact.toFixed(2) : '< 0.01'}%
+              {priceImpactWarning && ` (${priceImpactWarning.label})`}
+            </Text>
+          </div>
+        </div>
+      )}
+
       {/* Price Impact Warning */}
-      {estimatedOutput !== null && parseFloat(amount) > maxAmount * 0.1 && (
-        <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-          <div className="flex items-center gap-2 text-amber-400">
+      {priceImpactWarning && priceImpact >= 2 && (
+        <div className={`mb-4 p-3 rounded-lg border ${
+          priceImpactWarning.level === 'danger'
+            ? 'bg-red-500/10 border-red-500/30'
+            : priceImpactWarning.level === 'warning'
+              ? 'bg-amber-500/10 border-amber-500/30'
+              : 'bg-yellow-500/10 border-yellow-500/30'
+        }`}>
+          <div className={`flex items-center gap-2 ${priceImpactWarning.color}`}>
             <IconWarning className="w-4 h-4 flex-shrink-0" />
-            <Text variant="caption" className="text-amber-400">
-              Large trade may have significant price impact
+            <Text variant="caption" className={priceImpactWarning.color}>
+              {priceImpactWarning.level === 'danger'
+                ? 'Very high price impact! You may lose significant value.'
+                : priceImpactWarning.level === 'warning'
+                  ? 'High price impact - consider a smaller trade size.'
+                  : 'Moderate price impact expected.'}
             </Text>
           </div>
         </div>
@@ -781,7 +872,7 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
     twitter: '',
     telegram: '',
     website: '',
-    creatorFeeBps: 100, // 1% default
+    creatorFeeBps: 20, // Fixed at 0.2% (from 1% protocol fee)
   });
   const [errors, setErrors] = useState<Partial<Record<keyof CreateLaunchData, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<keyof CreateLaunchData, boolean>>>({});
@@ -829,11 +920,7 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
           error = 'Token image is required';
         }
         break;
-      case 'creatorFeeBps':
-        if (formData.creatorFeeBps < 0 || formData.creatorFeeBps > 500) {
-          error = 'Fee must be between 0% and 5%';
-        }
-        break;
+      // creatorFeeBps is fixed at 0.2% - no validation needed
       case 'twitter':
         if (formData.twitter && !formData.twitter.includes('twitter.com') && !formData.twitter.includes('x.com')) {
           error = 'Enter a valid Twitter/X URL';
@@ -856,7 +943,7 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
   };
 
   const validate = (): boolean => {
-    const fields: (keyof CreateLaunchData)[] = ['name', 'symbol', 'imageUri', 'creatorFeeBps'];
+    const fields: (keyof CreateLaunchData)[] = ['name', 'symbol', 'imageUri'];
     let isValid = true;
 
     fields.forEach(field => {
@@ -866,7 +953,7 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
     });
 
     // Mark all fields as touched
-    setTouched({ name: true, symbol: true, imageUri: true, creatorFeeBps: true });
+    setTouched({ name: true, symbol: true, imageUri: true });
 
     return isValid;
   };
@@ -892,12 +979,11 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
   // Calculate form completion percentage
   const completionPercentage = useMemo(() => {
     let filled = 0;
-    let total = 4; // Required fields: name, symbol, imageUri, creatorFeeBps
+    let total = 3; // Required fields: name, symbol, imageUri
 
     if (formData.name.trim()) filled++;
     if (formData.symbol.trim()) filled++;
     if (formData.imageUri.trim()) filled++;
-    if (formData.creatorFeeBps >= 0) filled++;
 
     return Math.round((filled / total) * 100);
   }, [formData]);
@@ -973,7 +1059,7 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
                   twitter: '',
                   telegram: '',
                   website: '',
-                  creatorFeeBps: 100,
+                  creatorFeeBps: 20, // Fixed at 0.2%
                 });
               }}>
                 Create Another
@@ -1123,88 +1209,57 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
         </div>
       </Card>
 
-      {/* Fee Settings */}
+      {/* Fee Structure (Fixed) */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
             <span className="text-white/60 font-bold">3</span>
           </div>
-          <Text variant="h4" className="font-semibold">Fee Settings</Text>
+          <Text variant="h4" className="font-semibold">Trading Fees</Text>
+          <Badge variant="muted" className="ml-2">Fixed</Badge>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-white/60">
-                Creator Fee
-              </label>
-              <span className="text-lg font-bold text-green-400 font-mono">
-                {(formData.creatorFeeBps / 100).toFixed(1)}%
-              </span>
+        <div className="p-4 bg-white/5 rounded-xl border border-white/10">
+          <Text variant="caption" color="muted" className="mb-3 block">Fee Structure per Trade (1% total):</Text>
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-white/60">Creator Earnings</span>
+              <span className="text-sm font-mono text-green-400">0.2%</span>
             </div>
-            <input
-              type="range"
-              min="0"
-              max="500"
-              step="10"
-              value={formData.creatorFeeBps}
-              onChange={(e) => updateField('creatorFeeBps', parseInt(e.target.value))}
-              className="w-full h-2 bg-white/10 rounded-full appearance-none cursor-pointer accent-green-500
-                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5
-                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-green-400
-                [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:shadow-lg
-                [&::-webkit-slider-thumb]:shadow-green-500/30"
-            />
-            <div className="flex justify-between mt-1">
-              <Text variant="caption" color="muted">0%</Text>
-              <Text variant="caption" color="muted">5% max</Text>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-white/60">Protocol Treasury</span>
+              <span className="text-sm font-mono">0.8%</span>
             </div>
-            {errors.creatorFeeBps && (
-              <Text variant="caption" className="text-rose-400 mt-1">
-                {errors.creatorFeeBps}
-              </Text>
-            )}
+            <div className="flex justify-between items-center pt-2 border-t border-white/10">
+              <span className="text-sm font-medium">Total Fee</span>
+              <span className="text-sm font-bold font-mono text-white">1.0%</span>
+            </div>
           </div>
+        </div>
 
-          <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-            <Text variant="caption" color="muted" className="mb-3 block">Fee Breakdown per Trade:</Text>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-white/60">Protocol Fee</span>
-                <span className="text-sm font-mono">1.0%</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-white/60">Your Creator Fee</span>
-                <span className="text-sm font-mono text-green-400">{(formData.creatorFeeBps / 100).toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between items-center pt-2 border-t border-white/10">
-                <span className="text-sm font-medium">Total Fee</span>
-                <span className="text-sm font-bold font-mono text-white">
-                  {(1 + formData.creatorFeeBps / 100).toFixed(1)}%
-                </span>
-              </div>
-            </div>
+        <div className="mt-4 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+          <div className="flex items-start gap-2">
+            <svg className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <Text variant="caption" color="muted">
+              You earn 0.2% of every trade on your token. Fees are automatically
+              sent to your wallet with each transaction.
+            </Text>
           </div>
         </div>
       </Card>
 
-      {/* Token Allocation Info */}
+      {/* Tokenomics Info */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
             <IconRocket className="w-4 h-4 text-white/60" />
           </div>
-          <Text variant="h4" className="font-semibold">Token Allocation</Text>
+          <Text variant="h4" className="font-semibold">Tokenomics</Text>
         </div>
 
         <div className="space-y-3 mb-4">
-          <div className="flex justify-between items-center p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-purple-500" />
-              <Text variant="body">You receive (creator)</Text>
-            </div>
-            <Badge variant="accent">2%</Badge>
-          </div>
           <div className="flex justify-between items-center p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-blue-500" />
@@ -1215,9 +1270,9 @@ export const CreateLaunchForm: React.FC<CreateLaunchFormProps> = ({
           <div className="flex justify-between items-center p-3 bg-green-500/10 rounded-lg border border-green-500/20">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-green-500" />
-              <Text variant="body">Graduation liquidity</Text>
+              <Text variant="body">Graduation liquidity (LP locked)</Text>
             </div>
-            <Badge variant="success">18%</Badge>
+            <Badge variant="success">20%</Badge>
           </div>
         </div>
 

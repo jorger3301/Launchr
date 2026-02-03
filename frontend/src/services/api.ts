@@ -387,14 +387,18 @@ export type NormalizedMessage =
 
 type MessageHandler = (message: NormalizedMessage) => void;
 
+type ConnectionStatusHandler = (connected: boolean) => void;
+
 class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
   private handlers: Set<MessageHandler> = new Set();
+  private connectionHandlers: Set<ConnectionStatusHandler> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private subscriptions: Set<WebSocketChannel> = new Set();
+  private _isConnected = false;
 
   constructor(url: string = `${API_BASE_URL.replace('http', 'ws')}/ws`) {
     this.url = url;
@@ -409,6 +413,8 @@ class WebSocketClient {
       this.ws.onopen = () => {
         console.log('WebSocket connected');
         this.reconnectAttempts = 0;
+        this._isConnected = true;
+        this.notifyConnectionChange(true);
 
         // Resubscribe to previous channel subscriptions
         this.subscriptions.forEach(channel => {
@@ -427,16 +433,33 @@ class WebSocketClient {
 
       this.ws.onclose = () => {
         console.log('WebSocket disconnected');
+        this._isConnected = false;
+        this.notifyConnectionChange(false);
         this.attemptReconnect();
       };
 
       this.ws.onerror = (error) => {
         console.error('WebSocket error:', error);
+        this._isConnected = false;
+        this.notifyConnectionChange(false);
       };
     } catch (error) {
       console.error('Failed to connect WebSocket:', error);
+      this._isConnected = false;
+      this.notifyConnectionChange(false);
       this.attemptReconnect();
     }
+  }
+
+  private notifyConnectionChange(connected: boolean): void {
+    this.connectionHandlers.forEach(handler => handler(connected));
+  }
+
+  onConnectionChange(handler: ConnectionStatusHandler): () => void {
+    this.connectionHandlers.add(handler);
+    // Immediately notify of current state
+    handler(this._isConnected);
+    return () => this.connectionHandlers.delete(handler);
   }
 
   private processMessage(message: WebSocketMessage): void {

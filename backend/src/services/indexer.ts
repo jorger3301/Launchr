@@ -47,9 +47,9 @@ const PLATFORM_FEE_BPS = 100; // 1% platform fee (100 basis points)
 
 const MOCK_LAUNCHES: LaunchAccount[] = [
   {
-    publicKey: 'LNCHMock1111111111111111111111111111111111111',
-    mint: 'MNTMock11111111111111111111111111111111111111',
-    creator: 'CRTRMock1111111111111111111111111111111111111',
+    publicKey: 'LNCHMock111111111111111111111111111111111111',
+    mint: 'MNTMock1111111111111111111111111111111111111',
+    creator: 'CRTRMock111111111111111111111111111111111111',
     status: 'Active',
     name: 'OrbitCat',
     symbol: 'OCAT',
@@ -72,9 +72,9 @@ const MOCK_LAUNCHES: LaunchAccount[] = [
     marketCap: 85000,
   },
   {
-    publicKey: 'LNCHMock2222222222222222222222222222222222222',
-    mint: 'MNTMock22222222222222222222222222222222222222',
-    creator: 'CRTRMock2222222222222222222222222222222222222',
+    publicKey: 'LNCHMock222222222222222222222222222222222222',
+    mint: 'MNTMock2222222222222222222222222222222222222',
+    creator: 'CRTRMock222222222222222222222222222222222222',
     status: 'PendingGraduation',
     name: 'RocketDoge',
     symbol: 'RDOGE',
@@ -97,9 +97,9 @@ const MOCK_LAUNCHES: LaunchAccount[] = [
     marketCap: 180000,
   },
   {
-    publicKey: 'LNCHMock3333333333333333333333333333333333333',
-    mint: 'MNTMock33333333333333333333333333333333333333',
-    creator: 'CRTRMock3333333333333333333333333333333333333',
+    publicKey: 'LNCHMock333333333333333333333333333333333333',
+    mint: 'MNTMock3333333333333333333333333333333333333',
+    creator: 'CRTRMock333333333333333333333333333333333333',
     status: 'Graduated',
     name: 'MoonPepe',
     symbol: 'MPEPE',
@@ -117,15 +117,15 @@ const MOCK_LAUNCHES: LaunchAccount[] = [
     graduatedAt: Math.floor(Date.now() / 1000) - 86400,
     tradeCount: 5432,
     holderCount: 1543,
-    orbitPool: 'ORBTPool111111111111111111111111111111111111',
+    orbitPool: 'ORBTPool11111111111111111111111111111111111',
     creatorFeeBps: 0,
     currentPrice: 0.00000025, // Price set by Orbit LP
     marketCap: 250000,
   },
   {
-    publicKey: 'LNCHMock4444444444444444444444444444444444444',
-    mint: 'MNTMock44444444444444444444444444444444444444',
-    creator: 'CRTRMock4444444444444444444444444444444444444',
+    publicKey: 'LNCHMock444444444444444444444444444444444444',
+    mint: 'MNTMock4444444444444444444444444444444444444',
+    creator: 'CRTRMock444444444444444444444444444444444444',
     status: 'Active',
     name: 'SolanaShiba',
     symbol: 'SSHIB',
@@ -428,6 +428,15 @@ export class IndexerService extends EventEmitter {
     const cached = await this.cache.get(`launch:${publicKey}`);
     if (cached) {
       return JSON.parse(cached);
+    }
+
+    // Use mock data in development
+    if (useMockData()) {
+      const launch = MOCK_LAUNCHES.find(l => l.publicKey === publicKey) || null;
+      if (launch) {
+        await this.cache.set(`launch:${publicKey}`, JSON.stringify(launch), this.LAUNCH_TTL);
+      }
+      return launch;
     }
 
     const launch = await this.solana.getLaunch(new PublicKey(publicKey));

@@ -43,9 +43,9 @@ const TokenMetadataUploadSchema = z.object({
   symbol: z.string().min(1).max(10),
   description: z.string().max(500).optional(),
   image: z.string().optional(), // Base64 data URL or existing URL
-  twitter: z.string().max(100).optional(),
-  telegram: z.string().max(100).optional(),
-  website: z.string().max(200).optional(),
+  twitter: z.string().max(64).optional(), // Program constraint: 64 chars
+  telegram: z.string().max(64).optional(), // Program constraint: 64 chars
+  website: z.string().max(64).optional(), // Program constraint: 64 chars
   creator: SolanaAddressSchema.optional(),
 });
 
