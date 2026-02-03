@@ -311,8 +311,8 @@ async function start() {
       logger.warn('Failed to find fastest Jito block engine:', err);
     });
 
-    // Start HTTP server
-    server.listen(PORT, () => {
+    // Start HTTP server (bind to 0.0.0.0 for Docker/Fly.io)
+    server.listen({ port: Number(PORT), host: '0.0.0.0' }, () => {
       logger.info(`🚀 Launchr API running on port ${PORT}`);
       logger.info(`   RPC: ${RPC_ENDPOINT}`);
       logger.info(`   Program: ${PROGRAM_ID}`);
