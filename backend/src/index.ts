@@ -69,6 +69,9 @@ const SOLANA_CLUSTER = (process.env.SOLANA_CLUSTER || 'devnet') as 'mainnet-beta
 const app = express();
 const server = createServer(app);
 
+// Trust proxy for Fly.io/Railway/Vercel (needed for rate limiting)
+app.set('trust proxy', true);
+
 // Security headers
 app.use(securityHeaders());
 
