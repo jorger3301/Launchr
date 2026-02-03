@@ -28,10 +28,11 @@ import {
   useUserPositions,
   useUserActivity,
   useUserStats,
+  useOnlineStatus,
   WalletType,
 } from './hooks';
 
-import { WalletSelector, PriceChart } from './components/molecules';
+import { WalletSelector, PriceChart, OfflineIndicator } from './components/molecules';
 import { api, wsClient, NormalizedMessage } from './services/api';
 
 import {
@@ -2164,6 +2165,9 @@ const App: React.FC = () => {
   // Available wallets for selector
   const availableWallets = useAvailableWallets();
   const [showWalletSelector, setShowWalletSelector] = useState(false);
+
+  // Network connectivity status
+  const isOnline = useOnlineStatus();
 
   const currentLaunchPk = route.type === 'detail' ? route.launch.publicKey : undefined;
   const launchDetail = USE_MOCKS ? useMockLaunch(currentLaunchPk) : useRealLaunch(currentLaunchPk);
@@ -8034,6 +8038,7 @@ const App: React.FC = () => {
         </div>
       )}
       <Nav />
+      <OfflineIndicator isOnline={isOnline} />
 
       {/* Live Price Ticker */}
       {launches.length > 0 && route.type !== 'home' && (
