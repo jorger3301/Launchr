@@ -188,7 +188,9 @@ router.get('/:address/activity', async (req: Request, res: Response) => {
   try {
     const indexer: IndexerService = req.app.locals.indexer;
     const { address } = req.params;
-    const limit = parseInt(req.query.limit as string) || 50;
+    // Safely parse limit - handle array case and validate bounds
+    const limitParam = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+    const limit = Math.min(Math.max(parseInt(String(limitParam)) || 50, 1), 100);
 
     // Validate address
     try {

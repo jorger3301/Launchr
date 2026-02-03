@@ -730,7 +730,7 @@ fn calculate_balanced_distribution(
     let mut bin_ids = Vec::new();
     let mut distribution = Vec::new();
 
-    let total_bins = (num_bins_per_side as usize * 2) + 1; // bins below + active + bins above
+    // Total bins: bins below + active + bins above = (num_bins_per_side * 2) + 1
 
     // Calculate per-bin allocations based on 40/40/20 strategy
     // Base tokens go to bins below active price
