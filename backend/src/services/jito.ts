@@ -33,11 +33,19 @@ interface TipAccountInfo {
   balance: number;
 }
 
+interface TransactionError {
+  InstructionError?: [number, string | { Custom: number }];
+  InsufficientFundsForRent?: { account_index: number };
+  InvalidAccountIndex?: boolean;
+  InvalidAccountForFee?: boolean;
+  [key: string]: unknown;
+}
+
 interface BundleStatus {
   bundleId: string;
   status: 'Invalid' | 'Pending' | 'Failed' | 'Landed';
   landedSlot?: number;
-  err?: any;
+  err?: TransactionError | string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +191,7 @@ export class JitoService {
             bundle_id: string;
             confirmation_status: 'Invalid' | 'Pending' | 'Failed' | 'Landed';
             slot?: number;
-            err?: any;
+            err?: TransactionError | string | null;
           }[]
         }
       };
@@ -283,7 +291,7 @@ export class JitoService {
 
       const data = await response.json() as {
         error?: { message: string };
-        result?: { value?: { err?: any; logs?: string[] }[] }
+        result?: { value?: { err?: TransactionError | string | null; logs?: string[] }[] }
       };
 
       if (data.error) {

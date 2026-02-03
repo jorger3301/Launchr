@@ -116,6 +116,20 @@ interface SearchAssetsParams {
   sortBy?: { sortBy: 'created' | 'updated' | 'recent_action'; sortDirection: 'asc' | 'desc' };
 }
 
+interface OffChainMetadata {
+  name?: string;
+  symbol?: string;
+  description?: string;
+  image?: string;
+  animation_url?: string;
+  external_url?: string;
+  attributes?: TokenAttribute[];
+  properties?: {
+    files?: { uri: string; type: string }[];
+    category?: string;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // METAPLEX SERVICE
 // ---------------------------------------------------------------------------
@@ -177,11 +191,11 @@ export class MetaplexService {
     if (!asset) return null;
 
     // Fetch off-chain JSON metadata if available
-    let offChainMetadata: any = null;
+    let offChainMetadata: OffChainMetadata | null = null;
     if (asset.content.json_uri) {
       try {
         const jsonResponse = await fetch(asset.content.json_uri);
-        offChainMetadata = await jsonResponse.json();
+        offChainMetadata = await jsonResponse.json() as OffChainMetadata;
       } catch (err) {
         logger.warn(`Failed to fetch off-chain metadata for ${mintAddress}`);
       }
@@ -395,7 +409,7 @@ export class MetaplexService {
   /**
    * Resolve the best image URI from asset data
    */
-  private resolveImageUri(asset: DASAsset, offChainMetadata: any): string | undefined {
+  private resolveImageUri(asset: DASAsset, offChainMetadata: OffChainMetadata | null): string | undefined {
     // Priority: links.image > files[0].cdn_uri > files[0].uri > off-chain image
     if (asset.content.links?.image) {
       return this.convertToHttps(asset.content.links.image);

@@ -22,6 +22,8 @@ export * from './user';
 
 import { z, ZodError, ZodSchema } from 'zod';
 import { Request, Response, NextFunction } from 'express';
+import { ParamsDictionary } from 'express-serve-static-core';
+import { ParsedQs } from 'qs';
 
 /**
  * Format Zod errors into a user-friendly message
@@ -81,7 +83,8 @@ export function validate<TParams = unknown, TQuery = unknown, TBody = unknown>(o
             details: formatZodError(result.error),
           });
         }
-        req.params = result.data as any;
+        // Store validated params - type assertion to ParamsDictionary since Zod validates the shape
+        req.params = result.data as TParams & ParamsDictionary;
       }
 
       if (options.query) {
@@ -92,7 +95,8 @@ export function validate<TParams = unknown, TQuery = unknown, TBody = unknown>(o
             details: formatZodError(result.error),
           });
         }
-        req.query = result.data as any;
+        // Store validated query - type assertion to ParsedQs since Zod validates the shape
+        req.query = result.data as TQuery & ParsedQs;
       }
 
       if (options.body) {

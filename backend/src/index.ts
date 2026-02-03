@@ -31,7 +31,7 @@ import { initJupiter, getJupiter } from './services/jupiter';
 import { initJito, getJito } from './services/jito';
 import { initPyth, getPyth } from './services/pyth';
 import { initMetaplex, getMetaplex } from './services/metaplex';
-import { initMonitoring, getMonitoring } from './services/monitoring';
+import { initMonitoring, getMonitoring, AlertType } from './services/monitoring';
 import {
   securityHeaders,
   nonceHandler,
@@ -176,12 +176,19 @@ app.get('/api/auth/nonce', nonceHandler);
 app.get('/api/monitoring/alerts', (req, res) => {
   const { launchPk, trader, type, severity, limit } = req.query;
 
+  // Valid alert types and severities
+  const validAlertTypes: AlertType[] = [
+    'large_trade', 'whale_trade', 'high_volume', 'rapid_price_change',
+    'velocity_spike', 'wash_trading', 'suspicious_pattern', 'new_whale', 'repeated_trades'
+  ];
+  const validSeverities = ['info', 'warning', 'critical'] as const;
+
   const alerts = monitoringService.getAlerts({
-    launchPk: launchPk as string,
-    trader: trader as string,
-    type: type as any,
-    severity: severity as any,
-    limit: limit ? parseInt(limit as string, 10) : undefined,
+    launchPk: typeof launchPk === 'string' ? launchPk : undefined,
+    trader: typeof trader === 'string' ? trader : undefined,
+    type: typeof type === 'string' && validAlertTypes.includes(type as AlertType) ? type as AlertType : undefined,
+    severity: typeof severity === 'string' && validSeverities.includes(severity as typeof validSeverities[number]) ? severity as typeof validSeverities[number] : undefined,
+    limit: typeof limit === 'string' ? parseInt(limit, 10) : undefined,
   });
 
   res.json({ alerts });

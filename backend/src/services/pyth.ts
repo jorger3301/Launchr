@@ -70,6 +70,21 @@ interface PriceFeed {
   symbol: string;
 }
 
+interface PythPriceFeedResponse {
+  id: string;
+  price: {
+    price: string;
+    conf: string;
+    expo: number;
+    publish_time: number;
+  };
+  ema_price: {
+    price: string;
+    conf: string;
+    expo: number;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // CONSTANTS
 // ---------------------------------------------------------------------------
@@ -203,7 +218,7 @@ export class PythService {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json() as any[];
+      const data = await response.json() as PythPriceFeedResponse[];
 
       if (data && data.length > 0) {
         const feed = data[0];
@@ -294,7 +309,7 @@ export class PythService {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json() as any[];
+      const data = await response.json() as PythPriceFeedResponse[];
 
       for (const feed of data) {
         const priceData: PriceData = {

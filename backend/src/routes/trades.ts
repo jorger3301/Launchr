@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { IndexerService } from '../services/indexer';
 import { logger } from '../utils/logger';
+import { TradeEvent } from '../models/accounts';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get('/recent', async (req: Request, res: Response) => {
     const launches = await indexer.getAllLaunches();
     
     // For now, return empty - in production, aggregate from all launches
-    const trades: any[] = [];
+    const trades: TradeEvent[] = [];
 
     // Sort by timestamp descending
     trades.sort((a, b) => b.timestamp - a.timestamp);

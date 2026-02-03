@@ -9,8 +9,9 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { IndexerService } from '../services/indexer';
-import { MetaplexService } from '../services/metaplex';
+import { MetaplexService, TokenMetadata } from '../services/metaplex';
 import { logger } from '../utils/logger';
+import { LaunchAccount, TradeEvent } from '../models/accounts';
 import {
   validate,
   LaunchListQuerySchema,
@@ -20,6 +21,22 @@ import {
   type LaunchListQuery,
   type LaunchByIdParams,
 } from '../lib/zod';
+
+// =============================================================================
+// HELIUS HOLDER TYPES
+// =============================================================================
+
+interface HeliusHolder {
+  owner: string;
+  amount: number;
+}
+
+interface HolderInfo {
+  rank: number;
+  address: string;
+  balance: number;
+  percentage: number;
+}
 
 const router = Router();
 
@@ -45,30 +62,31 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const indexer: IndexerService = req.app.locals.indexer;
-      const query = req.query as unknown as LaunchListQuery;
+      // Query validated by middleware - extract with proper typing
+      const { status, search, creator, sort, order, page, limit } = req.query as LaunchListQuery & typeof req.query;
 
       let launches = await indexer.getAllLaunches();
 
       // Filter by status (already validated by Zod)
-      if (query.status) {
-        launches = launches.filter((l) => l.status === query.status);
+      if (status) {
+        launches = launches.filter((l: LaunchAccount) => l.status === status);
       }
 
       // Search
-      if (query.search) {
-        launches = await indexer.searchLaunches(query.search);
+      if (search) {
+        launches = await indexer.searchLaunches(search);
       }
 
       // Filter by creator
-      if (query.creator) {
-        launches = launches.filter((l) => l.creator === query.creator);
+      if (creator) {
+        launches = launches.filter((l: LaunchAccount) => l.creator === creator);
       }
 
       // Sort (values validated by Zod)
-      const sortOrder = query.order === 'asc' ? 1 : -1;
+      const sortOrder = order === 'asc' ? 1 : -1;
 
-      launches.sort((a: any, b: any) => {
-        switch (query.sort) {
+      launches.sort((a: LaunchAccount, b: LaunchAccount) => {
+        switch (sort) {
           case 'price':
             return (a.currentPrice - b.currentPrice) * sortOrder;
           case 'volume':
@@ -86,15 +104,15 @@ router.get(
       });
 
       // Pagination (values validated and defaulted by Zod)
-      const startIndex = (query.page - 1) * query.limit;
-      const paginatedLaunches = launches.slice(startIndex, startIndex + query.limit);
+      const startIndex = (page - 1) * limit;
+      const paginatedLaunches = launches.slice(startIndex, startIndex + limit);
 
       res.json({
         launches: paginatedLaunches,
         total: launches.length,
-        page: query.page,
-        pageSize: query.limit,
-        totalPages: Math.ceil(launches.length / query.limit),
+        page,
+        pageSize: limit,
+        totalPages: Math.ceil(launches.length / limit),
       });
     } catch (error) {
       logger.error('Failed to get launches:', error);
@@ -164,7 +182,7 @@ router.get('/graduated', async (req: Request, res: Response) => {
 router.post(
   '/metadata',
   validate({ body: BatchMetadataBodySchema }),
-  async (req: Request, res: Response) => {
+  async (req: Request<object, object, z.infer<typeof BatchMetadataBodySchema>>, res: Response) => {
     try {
       const metaplex: MetaplexService | null = req.app.locals.metaplex;
       const { mints } = req.body;
@@ -173,7 +191,7 @@ router.post(
 
       if (!metaplex) {
         // Return empty metadata if service not available
-        const emptyMetadata: Record<string, any> = {};
+        const emptyMetadata: Record<string, TokenMetadata | null> = {};
         for (const mint of mints) {
           emptyMetadata[mint] = null;
         }
@@ -183,7 +201,7 @@ router.post(
 
       const metadataMap = await metaplex.getMultipleTokenMetadata(mints);
 
-      const metadata: Record<string, any> = {};
+      const metadata: Record<string, TokenMetadata | null> = {};
       for (const mint of mints) {
         const data = metadataMap.get(mint);
         metadata[mint] = data || null;
@@ -204,10 +222,10 @@ router.post(
 router.get(
   '/:publicKey',
   validate({ params: LaunchByIdParamsSchema }),
-  async (req: Request, res: Response) => {
+  async (req: Request<LaunchByIdParams>, res: Response) => {
     try {
       const indexer: IndexerService = req.app.locals.indexer;
-      const { publicKey } = req.params as unknown as LaunchByIdParams;
+      const { publicKey } = req.params;
 
       const launch = await indexer.getLaunch(publicKey);
 
@@ -233,8 +251,9 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const indexer: IndexerService = req.app.locals.indexer;
-      const { publicKey } = req.params as unknown as LaunchByIdParams;
-      const { limit } = req.query as unknown as z.infer<typeof TradesQuerySchema>;
+      // Params and query validated by middleware
+      const { publicKey } = req.params as LaunchByIdParams & typeof req.params;
+      const { limit } = req.query as z.infer<typeof TradesQuerySchema> & typeof req.query;
 
       const rawTrades = await indexer.getRecentTrades(publicKey, limit);
 
@@ -264,11 +283,11 @@ router.get(
 router.get(
   '/:publicKey/holders',
   validate({ params: LaunchByIdParamsSchema }),
-  async (req: Request, res: Response) => {
+  async (req: Request<LaunchByIdParams>, res: Response) => {
     try {
       const indexer: IndexerService = req.app.locals.indexer;
       const helius = req.app.locals.helius;
-      const { publicKey } = req.params as unknown as LaunchByIdParams;
+      const { publicKey } = req.params;
 
       const launch = await indexer.getLaunch(publicKey);
       if (!launch) {
@@ -278,11 +297,11 @@ router.get(
       // Try to get holders from Helius if available
       if (helius) {
         try {
-          const holders = await helius.getTokenHolders(launch.mint);
+          const holders: HeliusHolder[] = await helius.getTokenHolders(launch.mint);
           const totalHolders = holders.length;
 
           // Calculate holder distribution
-          const topHolders = holders.slice(0, 20).map((h: any, index: number) => ({
+          const topHolders: HolderInfo[] = holders.slice(0, 20).map((h: HeliusHolder, index: number) => ({
             rank: index + 1,
             address: h.owner,
             balance: h.amount,
@@ -290,8 +309,8 @@ router.get(
           }));
 
           // Calculate concentration metrics
-          const top10Percentage = topHolders.slice(0, 10).reduce((sum: number, h: any) => sum + h.percentage, 0);
-          const top20Percentage = topHolders.reduce((sum: number, h: any) => sum + h.percentage, 0);
+          const top10Percentage = topHolders.slice(0, 10).reduce((sum: number, h: HolderInfo) => sum + h.percentage, 0);
+          const top20Percentage = topHolders.reduce((sum: number, h: HolderInfo) => sum + h.percentage, 0);
 
           return res.json({
             totalHolders,
@@ -309,7 +328,7 @@ router.get(
 
       // Fallback: Generate approximate holder data from trade history
       const trades = await indexer.getRecentTrades(publicKey, 100);
-      const uniqueTraders = new Set(trades.map((t: any) => t.trader));
+      const uniqueTraders = new Set(trades.map((t: TradeEvent) => t.trader));
 
       const mockHolders = Array.from(uniqueTraders).slice(0, 20).map((addr, index) => ({
         rank: index + 1,
@@ -345,11 +364,11 @@ const ChartQuerySchema = z.object({
 router.get(
   '/:publicKey/chart',
   validate({ params: LaunchByIdParamsSchema, query: ChartQuerySchema }),
-  async (req: Request, res: Response) => {
+  async (req: Request<LaunchByIdParams, object, object, z.infer<typeof ChartQuerySchema>>, res: Response) => {
     try {
       const indexer: IndexerService = req.app.locals.indexer;
-      const { publicKey } = req.params as unknown as LaunchByIdParams;
-      const { timeframe } = req.query as unknown as z.infer<typeof ChartQuerySchema>;
+      const { publicKey } = req.params;
+      const { timeframe } = req.query;
 
       const launch = await indexer.getLaunch(publicKey);
       if (!launch) {
@@ -414,18 +433,18 @@ router.get(
           const candleEnd = candleStart + interval;
 
           const candleTrades = trades.filter(
-            (t: any) => t.timestamp >= candleStart && t.timestamp < candleEnd
+            (t: TradeEvent) => t.timestamp >= candleStart && t.timestamp < candleEnd
           );
 
           if (candleTrades.length > 0) {
-            const prices = candleTrades.map((t: any) => t.price);
+            const prices = candleTrades.map((t: TradeEvent) => t.price);
             candles.push({
               time: candleStart,
               open: prices[0],
               high: Math.max(...prices),
               low: Math.min(...prices),
               close: prices[prices.length - 1],
-              volume: candleTrades.reduce((sum: number, t: any) => sum + t.solAmount, 0),
+              volume: candleTrades.reduce((sum: number, t: TradeEvent) => sum + t.solAmount, 0),
             });
           } else if (candles.length > 0) {
             // Use previous close as the price for empty candles
@@ -501,10 +520,10 @@ router.get(
 router.get(
   '/:publicKey/metadata',
   validate({ params: LaunchByIdParamsSchema }),
-  async (req: Request, res: Response) => {
+  async (req: Request<LaunchByIdParams>, res: Response) => {
     try {
       const metaplex: MetaplexService | null = req.app.locals.metaplex;
-      const { publicKey } = req.params as unknown as LaunchByIdParams;
+      const { publicKey } = req.params;
 
       if (!metaplex) {
         // Return null metadata if service not available

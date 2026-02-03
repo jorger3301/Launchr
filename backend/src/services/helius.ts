@@ -23,6 +23,11 @@ interface WebhookConfig {
   webhookType: 'enhanced' | 'raw';
 }
 
+interface TokenAttribute {
+  trait_type: string;
+  value: string | number;
+}
+
 interface TokenMetadata {
   mint: string;
   name: string;
@@ -30,7 +35,38 @@ interface TokenMetadata {
   uri: string;
   image?: string;
   description?: string;
-  attributes?: Record<string, any>[];
+  attributes?: TokenAttribute[];
+}
+
+interface AccountData {
+  account: string;
+  nativeBalanceChange: number;
+  tokenBalanceChanges: {
+    mint: string;
+    rawTokenAmount: { tokenAmount: string; decimals: number };
+    userAccount: string;
+  }[];
+}
+
+interface TransactionEvents {
+  nft?: {
+    description: string;
+    type: string;
+    source: string;
+    amount: number;
+    fee: number;
+    buyer?: string;
+    seller?: string;
+    nfts: { mint: string; tokenStandard: string }[];
+  };
+  swap?: {
+    nativeInput?: { account: string; amount: string };
+    nativeOutput?: { account: string; amount: string };
+    tokenInputs: { mint: string; rawTokenAmount: { tokenAmount: string; decimals: number }; userAccount: string }[];
+    tokenOutputs: { mint: string; rawTokenAmount: { tokenAmount: string; decimals: number }; userAccount: string }[];
+    tokenFees: { mint: string; rawTokenAmount: { tokenAmount: string; decimals: number }; userAccount: string }[];
+    innerSwaps: { tokenInputs: object[]; tokenOutputs: object[]; programInfo: { source: string; account: string } }[];
+  };
 }
 
 interface EnhancedTransaction {
@@ -53,8 +89,8 @@ interface EnhancedTransaction {
     tokenAmount: number;
     mint: string;
   }[];
-  accountData: any[];
-  events: any;
+  accountData: AccountData[];
+  events: TransactionEvents;
 }
 
 interface PriorityFeeEstimate {
@@ -113,7 +149,22 @@ export class HeliusService {
         })
       });
 
-      const data = await response.json() as { error?: { message: string }; result?: any };
+      interface DASAssetResponse {
+        id: string;
+        content?: {
+          metadata?: {
+            name?: string;
+            symbol?: string;
+            description?: string;
+            attributes?: TokenAttribute[];
+          };
+          json_uri?: string;
+          links?: { image?: string };
+          files?: { uri?: string }[];
+        };
+      }
+
+      const data = await response.json() as { error?: { message: string }; result?: DASAssetResponse };
 
       if (data.error) {
         logger.warn(`Failed to get token metadata: ${data.error.message}`);
@@ -121,6 +172,7 @@ export class HeliusService {
       }
 
       const asset = data.result;
+      if (!asset) return null;
       return {
         mint: mintAddress,
         name: asset.content?.metadata?.name || 'Unknown',
@@ -154,7 +206,16 @@ export class HeliusService {
         })
       });
 
-      const data = await response.json() as { result?: any[] };
+      interface BatchDASAsset {
+        id: string;
+        content?: {
+          metadata?: { name?: string; symbol?: string; description?: string };
+          json_uri?: string;
+          links?: { image?: string };
+        };
+      }
+
+      const data = await response.json() as { result?: BatchDASAsset[] };
 
       if (data.result) {
         for (const asset of data.result) {

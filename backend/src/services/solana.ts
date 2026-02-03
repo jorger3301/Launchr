@@ -392,7 +392,7 @@ export class SolanaService {
         publicKey: pubkey.toBase58(),
         mint: mint.toBase58(),
         creator: creator.toBase58(),
-        status: ['Active', 'PendingGraduation', 'Graduated', 'Cancelled'][status] as any,
+        status: (['Active', 'PendingGraduation', 'Graduated', 'Cancelled'] as const)[status],
         totalSupply,
         tokensSold,
         graduationTokens,

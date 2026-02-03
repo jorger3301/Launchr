@@ -1,16 +1,41 @@
 /**
  * Users Routes
- * 
+ *
  * REST API endpoints for user data.
  */
 
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { PublicKey } from '@solana/web3.js';
 import { SolanaService } from '../services/solana';
 import { IndexerService } from '../services/indexer';
 import { logger } from '../utils/logger';
+import { LaunchAccount, TradeEvent, UserPositionAccount } from '../models/accounts';
 
 const router = Router();
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+interface EnrichedPosition extends Omit<UserPositionAccount, 'launch'> {
+  launch: LaunchAccount | { publicKey: string };
+}
+
+interface UserActivity {
+  type: 'buy' | 'sell';
+  launch: {
+    publicKey: string;
+    name: string;
+    symbol: string;
+    mint: string;
+  };
+  solAmount: number;
+  tokenAmount: number;
+  price: number;
+  timestamp: number;
+  signature: string;
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/users/:address/positions - Get user's positions
@@ -46,16 +71,16 @@ router.get('/:address/positions', async (req: Request, res: Response) => {
 
     // Calculate totals
     const totalValue = enrichedPositions.reduce((sum, pos) => {
-      const launch = pos.launch as any;
-      if (launch.currentPrice) {
+      const launch = pos.launch;
+      if ('currentPrice' in launch && launch.currentPrice) {
         return sum + (pos.tokenBalance * launch.currentPrice / 1e9);
       }
       return sum;
     }, 0);
 
     const totalPnl = enrichedPositions.reduce((sum, pos) => {
-      const launch = pos.launch as any;
-      if (launch.currentPrice && pos.costBasis) {
+      const launch = pos.launch;
+      if ('currentPrice' in launch && launch.currentPrice && pos.costBasis) {
         const currentValue = pos.tokenBalance * launch.currentPrice / 1e9;
         return sum + (currentValue - pos.costBasis);
       }
@@ -174,13 +199,13 @@ router.get('/:address/activity', async (req: Request, res: Response) => {
 
     // Get all launches and collect user's trades from each
     const launches = await indexer.getAllLaunches();
-    const allActivity: any[] = [];
+    const allActivity: UserActivity[] = [];
 
     // Collect trades from each launch
     await Promise.all(
       launches.slice(0, 20).map(async (launch) => {
         const trades = await indexer.getRecentTrades(launch.publicKey, 100);
-        const userTrades = trades.filter((t: any) => t.trader === address);
+        const userTrades = trades.filter((t: TradeEvent) => t.trader === address);
 
         for (const trade of userTrades) {
           allActivity.push({
