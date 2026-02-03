@@ -184,8 +184,20 @@ pub struct Graduate<'info> {
 pub struct GraduateParams {
     /// Bin step for Orbit pool (BPS)
     pub bin_step_bps: Option<u16>,
-    /// Number of bins for liquidity distribution
+    /// Number of bins for liquidity distribution (default: 10 bins each side)
     pub num_liquidity_bins: Option<u8>,
+}
+
+/// Balanced liquidity strategy constants
+pub mod balanced_strategy {
+    /// Default number of bins on each side of active bin
+    pub const DEFAULT_BINS_PER_SIDE: u8 = 10;
+    /// Target allocation: 40% to base token bins (below active price)
+    pub const BASE_ALLOCATION_PCT: u8 = 40;
+    /// Target allocation: 40% to quote token bins (above active price)
+    pub const QUOTE_ALLOCATION_PCT: u8 = 40;
+    /// Remaining 20% goes to active bin (mixed)
+    pub const ACTIVE_BIN_PCT: u8 = 20;
 }
 
 /// Graduate a launch to Orbit Finance
@@ -196,7 +208,8 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
 
     // Use default values if not provided
     let bin_step_bps = params.bin_step_bps.unwrap_or(config.default_bin_step_bps);
-    let _num_bins = params.num_liquidity_bins.unwrap_or(16);
+    let num_bins_per_side = params.num_liquidity_bins
+        .unwrap_or(balanced_strategy::DEFAULT_BINS_PER_SIDE);
 
     // Calculate current price from bonding curve
     let current_price = launch.current_price();
@@ -356,9 +369,32 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
         ],
         signer_seeds,
     )?;
-    
+
+    // ========== CPI: Create Position ==========
+
+    let create_position_ix = build_create_position_instruction(
+        &ctx.accounts.orbit_program.key(),
+        &ctx.accounts.launch_authority.key(), // Position owned by launch authority (effectively burned)
+        &ctx.accounts.orbit_pool.key(),
+        &ctx.accounts.orbit_position.key(),
+        active_bin_index - (num_bins_per_side as i32),
+        active_bin_index + (num_bins_per_side as i32),
+    );
+
+    msg!("Creating Orbit position (balanced {} bins each side)...", num_bins_per_side);
+    invoke_signed(
+        &create_position_ix,
+        &[
+            ctx.accounts.launch_authority.to_account_info(),
+            ctx.accounts.orbit_pool.to_account_info(),
+            ctx.accounts.orbit_position.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+        ],
+        signer_seeds,
+    )?;
+
     // ========== Transfer Liquidity to Orbit ==========
-    
+
     // Transfer tokens from token_vault to orbit base vault
     if ctx.accounts.token_vault.amount > 0 {
         token::transfer(
@@ -374,7 +410,7 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
             ctx.accounts.token_vault.amount,
         )?;
     }
-    
+
     // Transfer tokens from graduation_vault to orbit base vault
     if ctx.accounts.graduation_vault.amount > 0 {
         token::transfer(
@@ -390,20 +426,55 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
             ctx.accounts.graduation_vault.amount,
         )?;
     }
-    
+
     // Transfer SOL from curve_vault to orbit quote vault
     // (Wrap to WSOL in production - simplified here)
     let curve_vault_lamports = ctx.accounts.curve_vault.lamports();
     if curve_vault_lamports > 0 {
-        let curve_vault_seeds: &[&[u8]] = &[
-            CURVE_VAULT_SEED,
-            launch_key.as_ref(),
-            &[ctx.bumps.curve_vault],
-        ];
-        
         **ctx.accounts.curve_vault.try_borrow_mut_lamports()? -= curve_vault_lamports;
         **ctx.accounts.orbit_quote_vault.try_borrow_mut_lamports()? += curve_vault_lamports;
     }
+
+    // ========== CPI: Add Balanced Liquidity ==========
+    // 40% quote bins (above active) + 40% base bins (below active) + 20% active bin
+
+    let (bin_ids, liquidity_distribution) = calculate_balanced_distribution(
+        active_bin_index,
+        num_bins_per_side,
+        token_amount,
+        lp_sol_amount,
+    );
+
+    let add_liquidity_ix = build_add_liquidity_instruction(
+        &ctx.accounts.orbit_program.key(),
+        &ctx.accounts.launch_authority.key(),
+        &ctx.accounts.orbit_pool.key(),
+        &ctx.accounts.orbit_position.key(),
+        &ctx.accounts.orbit_base_vault.key(),
+        &ctx.accounts.orbit_quote_vault.key(),
+        &ctx.accounts.orbit_bin_array.key(),
+        &bin_ids,
+        &liquidity_distribution,
+    );
+
+    msg!("Adding balanced liquidity (40/40/20 strategy)...");
+    msg!("  Quote bins (above active): {}%", balanced_strategy::QUOTE_ALLOCATION_PCT);
+    msg!("  Base bins (below active): {}%", balanced_strategy::BASE_ALLOCATION_PCT);
+    msg!("  Active bin (mixed): {}%", balanced_strategy::ACTIVE_BIN_PCT);
+
+    invoke_signed(
+        &add_liquidity_ix,
+        &[
+            ctx.accounts.launch_authority.to_account_info(),
+            ctx.accounts.orbit_pool.to_account_info(),
+            ctx.accounts.orbit_position.to_account_info(),
+            ctx.accounts.orbit_base_vault.to_account_info(),
+            ctx.accounts.orbit_quote_vault.to_account_info(),
+            ctx.accounts.orbit_bin_array.to_account_info(),
+            ctx.accounts.token_program.to_account_info(),
+        ],
+        signer_seeds,
+    )?;
     
     // ========== Update State ==========
 
@@ -443,9 +514,10 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
         lp_sol_amount as f64 / 1e9,
         token_amount as f64 / 1e9
     );
+    msg!("Strategy: Balanced 40/40/20 across {} bins", (num_bins_per_side * 2) + 1);
     msg!("Creator reward: {} SOL", graduation::CREATOR_REWARD_LAMPORTS as f64 / 1e9);
     msg!("Treasury fee: {} SOL", graduation::TREASURY_FEE_LAMPORTS as f64 / 1e9);
-    msg!("LP tokens are permanently locked (position owned by program PDA)");
+    msg!("LP position permanently locked (owned by program PDA)");
 
     Ok(())
 }
@@ -562,7 +634,7 @@ fn build_create_bin_array_instruction(
     let mut data = Vec::new();
     data.extend_from_slice(&CREATE_BIN_ARRAY_DISCRIMINATOR);
     data.extend_from_slice(&lower_bin_index.to_le_bytes());
-    
+
     Instruction {
         program_id: *orbit_program,
         accounts: vec![
@@ -573,4 +645,128 @@ fn build_create_bin_array_instruction(
         ],
         data,
     }
+}
+
+/// Orbit create_position discriminator
+const CREATE_POSITION_DISCRIMINATOR: [u8; 8] = [135, 128, 47, 77, 15, 152, 240, 49];
+
+/// Orbit add_liquidity discriminator
+const ADD_LIQUIDITY_DISCRIMINATOR: [u8; 8] = [181, 157, 89, 67, 143, 182, 52, 72];
+
+fn build_create_position_instruction(
+    orbit_program: &Pubkey,
+    owner: &Pubkey,
+    pool: &Pubkey,
+    position: &Pubkey,
+    lower_bin_index: i32,
+    upper_bin_index: i32,
+) -> Instruction {
+    let mut data = Vec::new();
+    data.extend_from_slice(&CREATE_POSITION_DISCRIMINATOR);
+    data.extend_from_slice(&lower_bin_index.to_le_bytes());
+    data.extend_from_slice(&upper_bin_index.to_le_bytes());
+
+    Instruction {
+        program_id: *orbit_program,
+        accounts: vec![
+            AccountMeta::new(*owner, true),
+            AccountMeta::new(*pool, false),
+            AccountMeta::new(*position, false),
+            AccountMeta::new_readonly(anchor_lang::solana_program::system_program::ID, false),
+        ],
+        data,
+    }
+}
+
+fn build_add_liquidity_instruction(
+    orbit_program: &Pubkey,
+    owner: &Pubkey,
+    pool: &Pubkey,
+    position: &Pubkey,
+    base_vault: &Pubkey,
+    quote_vault: &Pubkey,
+    bin_array: &Pubkey,
+    bin_ids: &[i32],
+    distribution: &[u64],
+) -> Instruction {
+    let mut data = Vec::new();
+    data.extend_from_slice(&ADD_LIQUIDITY_DISCRIMINATOR);
+
+    // Encode bin_ids array
+    data.extend_from_slice(&(bin_ids.len() as u32).to_le_bytes());
+    for bin_id in bin_ids {
+        data.extend_from_slice(&bin_id.to_le_bytes());
+    }
+
+    // Encode distribution array (liquidity shares per bin)
+    data.extend_from_slice(&(distribution.len() as u32).to_le_bytes());
+    for share in distribution {
+        data.extend_from_slice(&share.to_le_bytes());
+    }
+
+    Instruction {
+        program_id: *orbit_program,
+        accounts: vec![
+            AccountMeta::new(*owner, true),
+            AccountMeta::new(*pool, false),
+            AccountMeta::new(*position, false),
+            AccountMeta::new(*base_vault, false),
+            AccountMeta::new(*quote_vault, false),
+            AccountMeta::new(*bin_array, false),
+            AccountMeta::new_readonly(anchor_spl::token::ID, false),
+        ],
+        data,
+    }
+}
+
+/// Calculate balanced liquidity distribution across bins
+/// Returns (bin_ids, liquidity_shares) for 40/40/20 strategy
+fn calculate_balanced_distribution(
+    active_bin_index: i32,
+    num_bins_per_side: u8,
+    total_base_tokens: u64,
+    total_quote_tokens: u64,
+) -> (Vec<i32>, Vec<u64>) {
+    let mut bin_ids = Vec::new();
+    let mut distribution = Vec::new();
+
+    let total_bins = (num_bins_per_side as usize * 2) + 1; // bins below + active + bins above
+
+    // Calculate per-bin allocations based on 40/40/20 strategy
+    // Base tokens go to bins below active price
+    // Quote tokens go to bins above active price
+    // Active bin gets mixed allocation
+
+    let base_per_bin = if num_bins_per_side > 0 {
+        (total_base_tokens as u128 * balanced_strategy::BASE_ALLOCATION_PCT as u128 / 100)
+            / num_bins_per_side as u128
+    } else { 0 };
+
+    let quote_per_bin = if num_bins_per_side > 0 {
+        (total_quote_tokens as u128 * balanced_strategy::QUOTE_ALLOCATION_PCT as u128 / 100)
+            / num_bins_per_side as u128
+    } else { 0 };
+
+    let active_base = total_base_tokens as u128 * balanced_strategy::ACTIVE_BIN_PCT as u128 / 200;
+    let active_quote = total_quote_tokens as u128 * balanced_strategy::ACTIVE_BIN_PCT as u128 / 200;
+
+    // Bins below active price (base token only)
+    for i in (1..=num_bins_per_side).rev() {
+        let bin_id = active_bin_index - (i as i32);
+        bin_ids.push(bin_id);
+        distribution.push(base_per_bin as u64);
+    }
+
+    // Active bin (mixed base + quote)
+    bin_ids.push(active_bin_index);
+    distribution.push((active_base + active_quote) as u64);
+
+    // Bins above active price (quote token only)
+    for i in 1..=num_bins_per_side {
+        let bin_id = active_bin_index + (i as i32);
+        bin_ids.push(bin_id);
+        distribution.push(quote_per_bin as u64);
+    }
+
+    (bin_ids, distribution)
 }
