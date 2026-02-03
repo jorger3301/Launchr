@@ -24,12 +24,16 @@ RUN npm ci --only=production
 # Copy built files
 COPY --from=builder /app/dist ./dist
 
-# Create logs directory
-RUN mkdir -p logs
+# Create directories for logs and uploads
+RUN mkdir -p logs uploads
 
 # Non-root user
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001
+
+# Set ownership for writable directories
+RUN chown -R nodejs:nodejs logs uploads
+
 USER nodejs
 
 # Health check
