@@ -11,6 +11,7 @@ primary_region = 'iad'
   PORT = '3001'
   NODE_ENV = 'production'
   LOG_LEVEL = 'info'
+  CORS_ORIGIN = 'https://launchr.vercel.app,http://localhost:3000'
 
 [http_service]
   internal_port = 3001

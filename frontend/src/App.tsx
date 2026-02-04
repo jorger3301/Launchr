@@ -4691,7 +4691,7 @@ const App: React.FC = () => {
         }, 2000);
       } catch (err) {
         // Provide specific error context without exposing raw error details to users
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        const errorMessage = (err instanceof Error ? err.message : 'Unknown error').toLowerCase();
         console.error('Token creation failed:', err);
 
         if (errorMessage.includes('upload') || errorMessage.includes('metadata')) {
