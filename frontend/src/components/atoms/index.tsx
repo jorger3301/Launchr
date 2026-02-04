@@ -535,6 +535,15 @@ export const Card: React.FC<CardProps> = ({
   hover = false,
   onClick,
 }) => {
+  const isInteractive = !!onClick;
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <div
       className={`
@@ -543,6 +552,9 @@ export const Card: React.FC<CardProps> = ({
         ${className}
       `}
       onClick={onClick}
+      role={isInteractive ? "button" : undefined}
+      tabIndex={isInteractive ? 0 : undefined}
+      onKeyDown={isInteractive ? handleKeyDown : undefined}
     >
       {children}
     </div>

@@ -551,27 +551,6 @@ textarea:focus-visible {
   animation: price-down 0.5s ease-out;
 }
 
-/* Price value animations */
-@keyframes price-up-animate {
-  0% { color: inherit; }
-  50% { color: #22C55E; }
-  100% { color: inherit; }
-}
-
-@keyframes price-down-animate {
-  0% { color: inherit; }
-  50% { color: #EF4444; }
-  100% { color: inherit; }
-}
-
-.price-up-animate {
-  animation: price-up-animate 0.6s ease-out;
-}
-
-.price-down-animate {
-  animation: price-down-animate 0.6s ease-out;
-}
-
 /* Ticker scroll */
 @keyframes ticker-scroll {
   0% { transform: translateX(0); }
@@ -713,14 +692,15 @@ textarea:focus-visible {
   animation: pulse-ring 1.5s ease-out infinite;
 }
 
-/* Live indicator - Static for cleaner look */
-.live-indicator {
-  /* Animation removed for institutional simplicity */
-}
 
 /* Smooth number transition */
 .number-transition {
   transition: all 0.3s var(--ease-out-quart);
+  display: inline-block;
+}
+
+.number-transition.updating {
+  transform: scale(1.05);
 }
 
 /* Focus ring */
@@ -2180,16 +2160,6 @@ textarea:focus-visible {
 }
 
 /* Reduce motion for users who prefer it */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
 /* Card hover states - Minimal institutional grade */
 .glass-card {
   transition: border-color 0.15s ease;
@@ -2692,16 +2662,6 @@ html {
 }
 
 /* Reduced motion preferences */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
 /* =============================================================================
    INSTITUTIONAL GRADE UX ENHANCEMENTS
    ============================================================================= */
@@ -2824,35 +2784,6 @@ textarea,
   transition: color 0.3s ease;
 }
 
-/* Improved skeleton loading with wave effect */
-.skeleton-wave {
-  position: relative;
-  overflow: hidden;
-  background: var(--glass2);
-}
-
-.skeleton-wave::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.08),
-    transparent
-  );
-  animation: skeleton-wave 1.5s infinite;
-}
-
-@keyframes skeleton-wave {
-  100% {
-    left: 100%;
-  }
-}
-
 /* Card hover lift effect refinement */
 .card-hover-lift {
   transition: transform 0.25s var(--ease-out-quart), box-shadow 0.25s var(--ease-out-quart);
@@ -2885,16 +2816,6 @@ textarea,
   100% {
     background-color: transparent;
   }
-}
-
-/* Smooth number transitions */
-.number-transition {
-  transition: transform 0.3s var(--ease-out-quart);
-  display: inline-block;
-}
-
-.number-transition.updating {
-  transform: scale(1.05);
 }
 
 /* Enhanced modal backdrop blur */
@@ -3905,19 +3826,11 @@ textarea:focus {
   }
 }
 
-.price-up-animate {
-  animation: price-increase-flash 0.5s ease-out;
-}
-
-.price-down-animate {
-  animation: price-decrease-flash 0.5s ease-out;
-}
-
 /* =============================================================================
    PREMIUM SKELETON SCREENS
    ============================================================================= */
 
-@keyframes skeleton-wave {
+@keyframes skeleton-gradient {
   0% {
     background-position: -200% 0;
   }
@@ -3934,7 +3847,7 @@ textarea:focus {
     var(--glass) 33%
   );
   background-size: 200% 100%;
-  animation: skeleton-wave 1.5s linear infinite;
+  animation: skeleton-gradient 1.5s linear infinite;
   border-radius: 8px;
 }
 
@@ -3946,7 +3859,7 @@ textarea:focus {
     var(--glass2) 100%
   );
   background-size: 200% 200%;
-  animation: skeleton-wave 2s ease-in-out infinite;
+  animation: skeleton-gradient 2s ease-in-out infinite;
   border-radius: 50%;
 }
 
@@ -4952,16 +4865,6 @@ textarea:focus {
 /* =============================================================================
    RESPONSIVE UTILITIES
    ============================================================================= */
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
 
 /* =============================================================================
    INSTITUTIONAL-GRADE POLISH - ENHANCED ANIMATIONS & UTILITIES
@@ -5973,11 +5876,6 @@ textarea:focus {
 .price-down-animate {
   animation: price-flash-down 1s ease-out;
   border-radius: 4px;
-}
-
-/* Smooth number transitions */
-.number-transition {
-  transition: color 0.3s ease;
 }
 
 /* =============================================================================

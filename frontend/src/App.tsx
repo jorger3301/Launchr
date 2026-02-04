@@ -51,12 +51,8 @@ import {
 
 // Enable mocks if:
 // 1. Explicitly set via env var
-// 2. OR in production without a proper backend URL configured
-const API_URL = process.env.REACT_APP_API_URL || '';
-const IS_LOCALHOST_API = !API_URL || API_URL.includes('localhost');
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-
-const USE_MOCKS = process.env.REACT_APP_USE_MOCKS === 'true' || (IS_PRODUCTION && IS_LOCALHOST_API);
+// Mock mode requires explicit opt-in via environment variable
+const USE_MOCKS = process.env.REACT_APP_USE_MOCKS === 'true';
 
 // ---------------------------------------------------------------------------
 // CONSTANTS
@@ -4694,8 +4690,10 @@ const App: React.FC = () => {
           setCreationStep(0);
         }, 2000);
       } catch (err) {
-        // Provide specific error context
+        // Provide specific error context without exposing raw error details to users
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        console.error('Token creation failed:', err);
+
         if (errorMessage.includes('upload') || errorMessage.includes('metadata')) {
           showToast('Failed to upload token metadata. Please try again.', 'error');
         } else if (errorMessage.includes('insufficient') || errorMessage.includes('balance')) {
@@ -4705,7 +4703,7 @@ const App: React.FC = () => {
         } else if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
           showToast('Network error. Please check your connection and try again.', 'error');
         } else {
-          showToast(`Failed to create token: ${errorMessage}`, 'error');
+          showToast('Failed to create token. Please try again.', 'error');
         }
         setCreationStep(0);
       } finally {
