@@ -58,34 +58,38 @@ router.get('/:address/positions', async (req: Request, res: Response) => {
     // Get user positions from Solana
     const positions = await solana.getUserPositions(userPubkey);
 
-    // Enrich with launch data
+    // Enrich with launch data and compute per-position PnL
     const enrichedPositions = await Promise.all(
       positions.map(async (pos) => {
         const launch = await indexer.getLaunch(pos.launch);
+        const launchData = launch || { publicKey: pos.launch };
+
+        let currentValue = 0;
+        let pnl = 0;
+        let pnlPercent = 0;
+
+        if (launch && launch.currentPrice && pos.tokenBalance > 0) {
+          currentValue = pos.tokenBalance * launch.currentPrice;
+          const cost = pos.costBasis > 0
+            ? pos.costBasis
+            : (pos.tokenBalance * (pos.solSpent / Math.max(pos.tokensBought, 1)));
+          pnl = currentValue - cost;
+          pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+        }
+
         return {
           ...pos,
-          launch: launch || { publicKey: pos.launch },
+          launch: launchData,
+          currentValue,
+          pnl,
+          pnlPercent,
         };
       })
     );
 
-    // Calculate totals
-    const totalValue = enrichedPositions.reduce((sum, pos) => {
-      const launch = pos.launch;
-      if ('currentPrice' in launch && launch.currentPrice) {
-        return sum + (pos.tokenBalance * launch.currentPrice / 1e9);
-      }
-      return sum;
-    }, 0);
-
-    const totalPnl = enrichedPositions.reduce((sum, pos) => {
-      const launch = pos.launch;
-      if ('currentPrice' in launch && launch.currentPrice && pos.costBasis) {
-        const currentValue = pos.tokenBalance * launch.currentPrice / 1e9;
-        return sum + (currentValue - pos.costBasis);
-      }
-      return sum;
-    }, 0);
+    // Calculate totals from per-position values
+    const totalValue = enrichedPositions.reduce((sum, pos) => sum + pos.currentValue, 0);
+    const totalPnl = enrichedPositions.reduce((sum, pos) => sum + pos.pnl, 0);
 
     res.json({
       positions: enrichedPositions,
@@ -120,9 +124,12 @@ router.get('/:address/launches', async (req: Request, res: Response) => {
     const launches = await indexer.getAllLaunches();
     const userLaunches = launches.filter(l => l.creator === address);
 
+    // Strip internal fields not needed by frontend
+    const cleaned = userLaunches.map(({ graduationTokens, creatorTokens, realTokenReserve, ...rest }) => rest);
+
     res.json({
-      launches: userLaunches,
-      total: userLaunches.length,
+      launches: cleaned,
+      total: cleaned.length,
     });
 
   } catch (error) {

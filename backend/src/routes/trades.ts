@@ -1,6 +1,6 @@
 /**
  * Trades Routes
- * 
+ *
  * REST API endpoints for trade data.
  */
 
@@ -19,19 +19,38 @@ router.get('/recent', async (req: Request, res: Response) => {
   try {
     const indexer: IndexerService = req.app.locals.indexer;
     const { limit = '50' } = req.query;
+    const parsedLimit = Math.min(parseInt(limit as string) || 50, 100);
 
-    // Get all launches and their recent trades
+    // Aggregate recent trades from active launches
     const launches = await indexer.getAllLaunches();
-    
-    // For now, return empty - in production, aggregate from all launches
-    const trades: TradeEvent[] = [];
+    const activeLaunches = launches
+      .filter(l => l.status === 'Active' || l.status === 'PendingGraduation')
+      .sort((a, b) => b.tradeCount - a.tradeCount)
+      .slice(0, 20);
+
+    const allTrades: TradeEvent[] = [];
+    for (const launch of activeLaunches) {
+      const launchTrades = await indexer.getRecentTrades(launch.publicKey, 10);
+      allTrades.push(...launchTrades);
+    }
 
     // Sort by timestamp descending
-    trades.sort((a, b) => b.timestamp - a.timestamp);
+    allTrades.sort((a, b) => b.timestamp - a.timestamp);
 
-    res.json({ 
-      trades: trades.slice(0, parseInt(limit as string)),
-      total: trades.length,
+    // Transform to frontend-expected format (TradeData)
+    const trades = allTrades.slice(0, parsedLimit).map((trade) => ({
+      type: trade.type,
+      user: trade.trader,
+      amount: trade.tokenAmount,
+      solAmount: trade.solAmount,
+      price: trade.price,
+      timestamp: trade.timestamp,
+      txSignature: trade.signature,
+    }));
+
+    res.json({
+      trades,
+      total: allTrades.length,
     });
 
   } catch (error) {
@@ -46,10 +65,28 @@ router.get('/recent', async (req: Request, res: Response) => {
 
 router.get('/:signature', async (req: Request, res: Response) => {
   try {
+    const indexer: IndexerService = req.app.locals.indexer;
     const { signature } = req.params;
 
-    // In production, fetch from cache or Solana
-    // For now, return 404
+    // Search through cached trades for all launches
+    const launches = await indexer.getAllLaunches();
+    for (const launch of launches) {
+      const trades = await indexer.getRecentTrades(launch.publicKey, 100);
+      const found = trades.find(t => t.signature === signature);
+      if (found) {
+        res.json({
+          type: found.type,
+          user: found.trader,
+          amount: found.tokenAmount,
+          solAmount: found.solAmount,
+          price: found.price,
+          timestamp: found.timestamp,
+          txSignature: found.signature,
+        });
+        return;
+      }
+    }
+
     res.status(404).json({ error: 'Trade not found' });
 
   } catch (error) {

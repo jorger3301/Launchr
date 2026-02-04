@@ -18,7 +18,7 @@ import {
   generateMockPriceHistory,
   generateMockUserPosition,
 } from './data';
-import type { UseWalletResult, UseLaunchesResult, UseTradeResult, GlobalStats, CreateLaunchParams } from '../hooks';
+import type { UseWalletResult, UseLaunchesResult, UseTradeResult, GlobalStats, CreateLaunchParams, TradeContext } from '../hooks';
 
 // =============================================================================
 // MOCK WALLET
@@ -158,7 +158,15 @@ export function useMockTrade(): UseTradeResult {
     return 'mock_signature_' + Date.now();
   }, []);
 
-  return { buy, sell, loading, error: null };
+  const estimateBuy = useCallback((solAmount: number, _context: TradeContext) => {
+    return { tokensOut: solAmount * 1e9 * 0.99, priceImpact: solAmount * 0.5 };
+  }, []);
+
+  const estimateSell = useCallback((tokenAmount: number, _context: TradeContext) => {
+    return { solOut: tokenAmount * 0.000001 * 0.99, priceImpact: tokenAmount * 0.0001 };
+  }, []);
+
+  return { buy, sell, estimateBuy, estimateSell, loading, error: null };
 }
 
 // =============================================================================

@@ -319,7 +319,7 @@ export class SolanaService {
       const tradingPaused = data.readUInt8(offset++) === 1;
       const totalLaunches = data.readBigUInt64LE(offset); offset += 8;
       const totalGraduations = data.readBigUInt64LE(offset); offset += 8;
-      const totalVolumeLamports = data.readBigUInt64LE(offset); offset += 16;
+      const totalVolumeLamports = data.readBigUInt64LE(offset); offset += 8;
       const totalFeesCollected = data.readBigUInt64LE(offset); offset += 8;
       const bump = data.readUInt8(offset);
 
@@ -521,21 +521,41 @@ export class SolanaService {
 
   private parseTradeFromLogs(logs: string[], signature: string, blockTime: number | null): TradeEvent | null {
     try {
+      // Anchor emits events as base64-encoded Borsh data in "Program data:" logs.
+      // TradeExecuted layout (after 8-byte discriminator):
+      //   Pubkey launch (32), Pubkey trader (32), bool is_buy (1),
+      //   u64 sol_amount (8), u64 token_amount (8), u64 price (8),
+      //   u64 protocol_fee (8), u64 creator_fee (8), i64 timestamp (8)
+      const TRADE_EVENT_SIZE = 121;
+
       for (const log of logs) {
-        if (log.includes('TradeExecuted')) {
-          // Parse trade event from log
-          // This is simplified - real implementation would parse the event data
-          return {
-            signature,
-            type: log.includes('is_buy: true') ? 'buy' : 'sell',
-            launch: '',
-            trader: '',
-            solAmount: 0,
-            tokenAmount: 0,
-            price: 0,
-            timestamp: blockTime || Date.now() / 1000,
-          };
-        }
+        if (!log.startsWith('Program data: ')) continue;
+
+        const base64Data = log.slice('Program data: '.length);
+        const data = Buffer.from(base64Data, 'base64');
+
+        if (data.length !== TRADE_EVENT_SIZE) continue;
+
+        let offset = 8; // Skip event discriminator
+        const launch = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
+        const trader = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
+        const isBuy = data.readUInt8(offset) === 1; offset += 1;
+        const solAmount = Number(data.readBigUInt64LE(offset)); offset += 8;
+        const tokenAmount = Number(data.readBigUInt64LE(offset)); offset += 8;
+        const price = Number(data.readBigUInt64LE(offset)); offset += 8;
+        offset += 16; // Skip protocol_fee and creator_fee
+        const timestamp = Number(data.readBigInt64LE(offset));
+
+        return {
+          signature,
+          type: isBuy ? 'buy' : 'sell',
+          launch,
+          trader,
+          solAmount,
+          tokenAmount,
+          price,
+          timestamp: timestamp || blockTime || Date.now() / 1000,
+        };
       }
       return null;
     } catch {

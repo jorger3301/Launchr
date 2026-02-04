@@ -40,6 +40,53 @@ interface HolderInfo {
 
 const router = Router();
 
+// Strip backend-only fields not needed by the frontend
+function stripInternalFields(launch: LaunchAccount) {
+  const { graduationTokens, creatorTokens, realTokenReserve, ...rest } = launch;
+  return rest;
+}
+
+// Compute 24h price change and volume from trade history
+async function compute24hStats(
+  indexer: IndexerService,
+  launch: LaunchAccount
+): Promise<{ priceChange24h: number; volume24h: number }> {
+  try {
+    const trades = await indexer.getRecentTrades(launch.publicKey, 500);
+    const cutoff = Math.floor(Date.now() / 1000) - 86400; // 24h ago in seconds
+    const recentTrades = trades.filter(t => t.timestamp >= cutoff);
+
+    // Volume: sum of SOL traded in last 24h (convert lamports to SOL)
+    const volume24h = recentTrades.reduce((sum, t) => sum + t.solAmount, 0) / 1e9;
+
+    // Price change: compare oldest 24h trade price to current price
+    let priceChange24h = 0;
+    if (recentTrades.length > 0) {
+      // Trades are sorted desc by timestamp; last element is oldest in 24h window
+      const oldestPrice = recentTrades[recentTrades.length - 1].price;
+      if (oldestPrice > 0) {
+        priceChange24h = ((launch.currentPrice - oldestPrice) / oldestPrice) * 100;
+      }
+    }
+
+    return { priceChange24h, volume24h };
+  } catch {
+    return { priceChange24h: 0, volume24h: 0 };
+  }
+}
+
+// Strip internal fields and enrich with 24h stats
+async function enrichLaunch(indexer: IndexerService, launch: LaunchAccount) {
+  return {
+    ...stripInternalFields(launch),
+    ...(await compute24hStats(indexer, launch)),
+  };
+}
+
+async function enrichLaunches(indexer: IndexerService, launches: LaunchAccount[]) {
+  return Promise.all(launches.map(l => enrichLaunch(indexer, l)));
+}
+
 // =============================================================================
 // ADDITIONAL SCHEMAS
 // =============================================================================
@@ -107,8 +154,10 @@ router.get(
       const startIndex = (page - 1) * limit;
       const paginatedLaunches = launches.slice(startIndex, startIndex + limit);
 
+      const enriched = await enrichLaunches(indexer, paginatedLaunches);
+
       res.json({
-        launches: paginatedLaunches,
+        launches: enriched,
         total: launches.length,
         page,
         pageSize: limit,
@@ -133,7 +182,7 @@ router.get(
       const indexer: IndexerService = req.app.locals.indexer;
       const launches = await indexer.getTrendingLaunches();
 
-      res.json({ launches });
+      res.json({ launches: await enrichLaunches(indexer, launches) });
     } catch (error) {
       logger.error('Failed to get trending launches:', error);
       res.status(500).json({ error: 'Failed to fetch trending launches' });
@@ -149,8 +198,8 @@ router.get('/recent', async (req: Request, res: Response) => {
   try {
     const indexer: IndexerService = req.app.locals.indexer;
     const launches = await indexer.getRecentLaunches();
-    
-    res.json({ launches });
+
+    res.json({ launches: await enrichLaunches(indexer, launches) });
 
   } catch (error) {
     logger.error('Failed to get recent launches:', error);
@@ -166,8 +215,8 @@ router.get('/graduated', async (req: Request, res: Response) => {
   try {
     const indexer: IndexerService = req.app.locals.indexer;
     const launches = await indexer.getGraduatedLaunches();
-    
-    res.json({ launches });
+
+    res.json({ launches: await enrichLaunches(indexer, launches) });
 
   } catch (error) {
     logger.error('Failed to get graduated launches:', error);
@@ -233,7 +282,7 @@ router.get(
         return res.status(404).json({ error: 'Launch not found' });
       }
 
-      res.json(launch);
+      res.json(await enrichLaunch(indexer, launch));
     } catch (error) {
       logger.error('Failed to get launch:', error);
       res.status(500).json({ error: 'Failed to fetch launch' });

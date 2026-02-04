@@ -54,6 +54,8 @@ export interface UseLaunchesResult {
 export interface UseTradeResult {
   buy: (launchPk: string, solAmount: number, slippage: number) => Promise<string>;
   sell: (launchPk: string, tokenAmount: number, slippage: number) => Promise<string>;
+  estimateBuy: (solAmount: number, context: TradeContext) => { tokensOut: number; priceImpact: number };
+  estimateSell: (tokenAmount: number, context: TradeContext) => { solOut: number; priceImpact: number };
   loading: boolean;
   error: string | null;
 }
@@ -630,10 +632,11 @@ export function useLaunch(publicKey: string | undefined) {
     setError(null);
 
     try {
-      // Fetch launch data and trades in parallel from backend
-      const [launchRes, tradesRes] = await Promise.all([
+      // Fetch launch data, trades, and holders in parallel from backend
+      const [launchRes, tradesRes, holdersRes] = await Promise.all([
         api.getLaunch(publicKey),
         api.getLaunchTrades(publicKey, 50),
+        api.getLaunchHolders(publicKey),
       ]);
 
       if (launchRes.error) {
@@ -657,9 +660,8 @@ export function useLaunch(publicKey: string | undefined) {
         .reverse(); // Oldest first
       setPriceHistory(history);
 
-      // Holders would come from a dedicated endpoint if available
-      // For now, placeholder until backend provides holder data
-      setHolders([]);
+      // Set holder data from backend
+      setHolders(holdersRes.data?.topHolders || []);
 
     } catch (err) {
       console.error('Failed to fetch launch:', err);
@@ -752,18 +754,52 @@ export function useUserPosition(launchPk: string | undefined, userAddress: strin
         return;
       }
 
-      // Parse position data (would use Anchor deserialization)
-      // Placeholder
+      // Parse UserPosition account (Borsh layout):
+      // 8 disc + 32 launch + 32 user + 8 tokens_bought + 8 tokens_sold
+      // + 8 token_balance + 8 sol_spent + 8 sol_received + 8 first_trade_at
+      // + 8 last_trade_at + 4 buy_count + 4 sell_count + 8 avg_buy_price + 8 cost_basis
+      const data = Buffer.from(accountInfo.data);
+      let off = 8 + 32 + 32; // Skip discriminator, launch, user pubkeys
+      const tokensBought = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const tokensSold = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const tokenBalance = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const solSpent = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const solReceived = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      off += 16; // Skip first_trade_at, last_trade_at
+      off += 8; // Skip buy_count (u32) + sell_count (u32)
+      const avgBuyPrice = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const costBasis = Number(new BN(data.slice(off, off + 8), 'le'));
+
+      const allocatedSol = tokensBought > 0 ? (solSpent * tokensSold / tokensBought) : 0;
+      const realizedPnl = solReceived - allocatedSol;
+
+      // Compute unrealized PnL using current market price from launch data
+      let unrealizedPnl = 0;
+      if (launchPk && tokenBalance > 0) {
+        try {
+          const launchRes = await api.getLaunch(launchPk);
+          if (launchRes.data && 'currentPrice' in launchRes.data) {
+            const currentValue = tokenBalance * launchRes.data.currentPrice;
+            const remainingCost = costBasis > 0 ? costBasis : (tokenBalance * avgBuyPrice);
+            unrealizedPnl = currentValue - remainingCost;
+          }
+        } catch {
+          // Fall back to 0 if we can't fetch price
+        }
+      }
+
+      const totalPnl = realizedPnl + unrealizedPnl;
+
       const parsedPosition: UserPositionData = {
-        tokenBalance: 0,
-        solSpent: 0,
-        solReceived: 0,
-        avgBuyPrice: 0,
-        costBasis: 0,
-        unrealizedPnl: 0,
-        realizedPnl: 0,
-        totalPnl: 0,
-        roiPercent: 0,
+        tokenBalance,
+        solSpent,
+        solReceived,
+        avgBuyPrice,
+        costBasis,
+        unrealizedPnl,
+        realizedPnl,
+        totalPnl,
+        roiPercent: solSpent > 0 ? (totalPnl / solSpent) * 100 : 0,
       };
 
       setPosition(parsedPosition);
@@ -802,8 +838,6 @@ export interface TradeContext {
 export function useTrade(wallet: UseWalletResult): UseTradeResult & {
   buyWithContext: (launchPk: string, solAmount: number, slippage: number, context: TradeContext) => Promise<string>;
   sellWithContext: (launchPk: string, tokenAmount: number, slippage: number, context: TradeContext) => Promise<string>;
-  estimateBuy: (solAmount: number, context: TradeContext) => { tokensOut: number; priceImpact: number };
-  estimateSell: (tokenAmount: number, context: TradeContext) => { solOut: number; priceImpact: number };
 } {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2111,7 +2145,7 @@ export interface PositionWithLaunch {
     imageUri?: string;
     currentPrice?: number;
     gi?: number;
-    status?: 'active' | 'graduated' | 'failed';
+    status?: 'Active' | 'PendingGraduation' | 'Graduated' | 'Cancelled';
     price?: number;
     creator?: string;
     marketCap?: number;

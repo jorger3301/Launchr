@@ -331,15 +331,16 @@ export class IndexerService extends EventEmitter {
 
   private handleProgramLogs(logs: string[], signature: string): void {
     for (const log of logs) {
-      if (log.includes('TradeExecuted')) {
+      // Anchor logs instruction names as "Program log: Instruction: <Name>"
+      if (log.includes('Instruction: Buy') || log.includes('Instruction: Sell')) {
         this.handleTradeEvent(signature);
         break;
       }
-      if (log.includes('LaunchCreated')) {
+      if (log.includes('Instruction: CreateLaunch') || log.includes('Launch created')) {
         this.handleLaunchCreated(signature);
         break;
       }
-      if (log.includes('LaunchGraduated')) {
+      if (log.includes('Instruction: Graduate') || log.includes('Launch graduated')) {
         this.handleLaunchGraduated(signature);
         break;
       }

@@ -56,7 +56,7 @@ dotenv.config();
 
 const PORT = process.env.PORT || 3001;
 const RPC_ENDPOINT = process.env.RPC_ENDPOINT || 'https://api.devnet.solana.com';
-const PROGRAM_ID = process.env.PROGRAM_ID || 'LNCHRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+const PROGRAM_ID = process.env.PROGRAM_ID || 'AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY || '';

@@ -99,6 +99,8 @@ export interface LaunchData {
   website?: string;
   orbitPool?: string;
   creatorFeeBps?: number;
+  priceChange24h?: number;
+  volume24h?: number;
 }
 
 export interface TradeData {

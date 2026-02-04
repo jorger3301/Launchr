@@ -100,6 +100,15 @@ const fm = (n: number): string => {
   return "$" + n.toFixed(2);
 };
 
+// Format raw token amount (9-decimal on-chain units) to human-readable display
+const fTok = (raw: number): string => {
+  const n = raw / 1e9;
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+  return n.toFixed(0);
+};
+
 // Format price with adaptive precision
 const fP = (p: number): string => {
   if (p < 0.0001) return p.toExponential(2);
@@ -1700,7 +1709,7 @@ interface LaunchItem {
   name: string;
   symbol: string;
   creator: string;
-  status: string;
+  status: 'Active' | 'PendingGraduation' | 'Graduated' | 'Cancelled';
   price: number;
   priceChange24h: number;
   volume24h: number;
@@ -1713,12 +1722,14 @@ interface LaunchItem {
 }
 
 interface TradeItem {
-  id: string; // Unique identifier for React key
+  id: string;
   type: 'buy' | 'sell';
   trader: string;
   sol: number;
   tokens: string;
+  price: number;
   time: string;
+  txSignature: string;
 }
 
 type Route =
@@ -1905,6 +1916,20 @@ interface ChgProps {
 }
 
 const Chg: React.FC<ChgProps> = ({ v }) => {
+  // Show "—" when no real price change data is available
+  if (v === 0) {
+    return (
+      <span style={{
+        color: "var(--t3)",
+        display: "inline-flex",
+        alignItems: "center",
+        fontSize: "var(--fs-base)",
+        fontWeight: 500
+      }}>
+        —
+      </span>
+    );
+  }
   const pos = v >= 0;
   return (
     <span style={{
@@ -2076,9 +2101,18 @@ const App: React.FC = () => {
     return { type: 'home' };
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const updateSearch = useCallback((value: string) => {
+    setSearchQuery(value);
+    clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => setDebouncedSearch(value), 300);
+  }, []);
+  useEffect(() => () => clearTimeout(searchTimerRef.current), []);
   const [tab, setTab] = useState('all');
   const [sort, setSort] = useState('volume');
   const [detailTab, setDetailTab] = useState('trades');
+  const [tradePage, setTradePage] = useState(0);
   const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
   const [tradeAmount, setTradeAmount] = useState('');
   const [viewKey, setViewKey] = useState(0);
@@ -2264,8 +2298,8 @@ const App: React.FC = () => {
   // Transform launches to our format
   const launches: LaunchItem[] = useMemo(() => {
     return rawLaunches.map((l, i) => {
-      // Calculate progress from realSolReserve / graduationThreshold
-      const progress = l.graduationThreshold > 0
+      // Calculate progress from realSolReserve / graduationThreshold (safe division)
+      const progress = l.graduationThreshold > 0 && isFinite(l.realSolReserve)
         ? Math.min((l.realSolReserve / l.graduationThreshold) * 100, 100)
         : 0;
       return {
@@ -2276,8 +2310,8 @@ const App: React.FC = () => {
         creator: l.creator?.slice(0, 4) + "..." + l.creator?.slice(-4) || 'Unknown',
         status: l.status,
         price: l.currentPrice || 0,
-        priceChange24h: 0, // Not available in data, set to 0
-        volume24h: l.realSolReserve || 0, // Use realSolReserve as volume proxy
+        priceChange24h: l.priceChange24h ?? 0,
+        volume24h: l.volume24h ?? 0,
         marketCap: l.marketCap || 0,
         holders: l.holderCount || 0,
         trades: l.tradeCount || 0,
@@ -2313,24 +2347,35 @@ const App: React.FC = () => {
     }
   }, [pendingDetailId, launches, launchesLoading]);
 
-  // Generate mock sparkline data for each launch
+  // Generate sparkline data — use a deterministic spread around the current price
+  // (seeded by publicKey hash to be stable across renders)
   const sparklineData = useMemo(() => {
     const data: Record<string, number[]> = {};
     launches.forEach(l => {
       const base = l.price;
-      data[l.id] = Array.from({ length: 12 }, (_, i) =>
-        base * (0.8 + Math.random() * 0.4) * (1 + i * 0.02)
-      );
+      // Use a simple hash of the id for deterministic pseudo-randomness
+      let seed = 0;
+      for (let c = 0; c < l.id.length; c++) seed = ((seed << 5) - seed + l.id.charCodeAt(c)) | 0;
+      data[l.id] = Array.from({ length: 12 }, (_, i) => {
+        seed = (seed * 16807 + 0) % 2147483647;
+        const noise = (seed / 2147483647) * 0.4 - 0.2; // -0.2 to +0.2
+        return base * (0.9 + noise) * (1 + i * 0.01);
+      });
     });
     return data;
   }, [launches]);
 
-  // Listen for graduation events via WebSocket
+  // Listen for graduation events + real-time trade updates via WebSocket
   useEffect(() => {
     if (!settings.notifications.graduationAlerts) return;
 
-    wsClient.connect();
-    wsClient.subscribeChannel('launches');
+    try {
+      wsClient.connect();
+      wsClient.subscribeChannel('launches');
+      wsClient.subscribeChannel('trades');
+    } catch (err) {
+      console.error('WebSocket connection failed:', err);
+    }
 
     const unsubscribe = wsClient.onMessage((message: NormalizedMessage) => {
       if (message.type === 'launch_graduated') {
@@ -2344,11 +2389,11 @@ const App: React.FC = () => {
             name: launch.name || 'Unknown',
             symbol: launch.symbol || '???',
             gi: 0,
-            status: 'graduated',
+            status: 'Graduated',
             price: launch.currentPrice || 0,
             priceChange24h: 0,
             creator: launch.creator || '',
-            marketCap: launch.currentPrice ? launch.currentPrice * 800000000 : 0,
+            marketCap: launch.marketCap || (launch.currentPrice ? launch.currentPrice * (launch.totalSupply || 800_000_000) : 0),
             volume24h: 0,
             progress: 100,
             holders: launch.holderCount || 0,
@@ -2363,29 +2408,35 @@ const App: React.FC = () => {
 
     return () => {
       wsClient.unsubscribeChannel('launches');
+      wsClient.unsubscribeChannel('trades');
       unsubscribe();
     };
   }, [settings.notifications.graduationAlerts, launches, showToast]);
 
   // Transform trades
   const trades: TradeItem[] = useMemo(() => {
-    return (rawTrades || []).slice(0, 8).map((t, i) => ({
-      id: t.txSignature || `trade-${t.timestamp}-${i}`, // Unique key
+    return (rawTrades || []).map((t, i) => ({
+      id: t.txSignature || `trade-${t.timestamp}-${i}`,
       type: t.type as 'buy' | 'sell',
       trader: t.user?.slice(0, 4) + "..." + t.user?.slice(-4) || 'Unknown',
       sol: t.solAmount || 0,
-      tokens: ((t.amount || 0) / 1e6).toFixed(0) + "M",
-      time: getTimeAgo(t.timestamp || Date.now())
+      tokens: fTok(t.amount || 0),
+      price: t.price || 0,
+      time: getTimeAgo(t.timestamp || Date.now()),
+      txSignature: t.txSignature || '',
     }));
   }, [rawTrades]);
+  const TRADES_PER_PAGE = 15;
+  const paginatedTrades = useMemo(() => trades.slice(tradePage * TRADES_PER_PAGE, (tradePage + 1) * TRADES_PER_PAGE), [trades, tradePage]);
+  const totalTradePages = Math.ceil(trades.length / TRADES_PER_PAGE);
 
   // Filtered launches with advanced filters
   const filteredLaunches = useMemo(() => {
     let l = [...launches];
 
-    // Text search
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    // Text search (debounced)
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
       l = l.filter(x => x.name.toLowerCase().includes(q) || x.symbol.toLowerCase().includes(q));
     }
 
@@ -2429,35 +2480,48 @@ const App: React.FC = () => {
     }
 
     return l;
-  }, [launches, searchQuery, tab, sort, watchlist, filters]);
+  }, [launches, debouncedSearch, tab, sort, watchlist, filters]);
 
-  // Generate detailed transactions with signatures for Solscan
+  // Detailed transactions from real user activity API
   const detailedTransactions: DetailedTransaction[] = useMemo(() => {
-    if (!wallet.connected) return [];
-    const baseTxs = [
-      { type: 'buy' as const, launch: 'OrbitCat', symbol: 'OCAT', amount: 50000000, sol: 2.5, time: '2m ago', timestamp: Date.now() - 120000, txSignature: '5KzR8vNqP8wY4mXjL2pG9hB7dF3cA1nM6sQwE4tR7uZx', gi: 0 },
-      { type: 'sell' as const, launch: 'SolPepe', symbol: 'SPEPE', amount: 25000000, sol: 1.8, time: '15m ago', timestamp: Date.now() - 900000, txSignature: '3HjK2mWpN5xY7vLqR4sC8bT9dF1eA6gM2nQwE5tR3uZy', gi: 1 },
-      { type: 'buy' as const, launch: 'DogWifRocket', symbol: 'DWRKT', amount: 100000000, sol: 5.0, time: '1h ago', timestamp: Date.now() - 3600000, txSignature: '7PmN3oXqS6yZ8wLrT5uD9cV2eB4fA1hK6sQwE7tR8uZw', gi: 2 },
-      { type: 'create' as const, launch: 'MyCoin', symbol: 'MINE', amount: 0, sol: 0.5, time: '2d ago', timestamp: Date.now() - 172800000, txSignature: '9RoP5qYsU8zA0xNtV7wF1dC3eD6gB2iL8sQwE9tR0uZv', gi: 3 },
-      { type: 'buy' as const, launch: 'OrbitCat', symbol: 'OCAT', amount: 247000000, sol: 8.2, time: '3d ago', timestamp: Date.now() - 259200000, txSignature: '2JkL4nWpM7xY9vLqR6sC0bT1dF3eA8gM4nQwE2tR5uZu', gi: 0 },
-      { type: 'sell' as const, launch: 'BonkOrbit', symbol: 'BORBIT', amount: 75000000, sol: 3.1, time: '5d ago', timestamp: Date.now() - 432000000, txSignature: '4MnO6pXrQ9yZ1wLtT8uD2cV4eB7fA3hK0sQwE4tR6uZt', gi: 4 },
-    ];
-    return baseTxs;
-  }, [wallet.connected]);
+    if (!wallet.connected || !userTradeActivity || userTradeActivity.length === 0) return [];
+    return userTradeActivity.map((act, i) => ({
+      type: act.type as 'buy' | 'sell' | 'create',
+      launch: act.launch?.name || 'Unknown',
+      symbol: act.launch?.symbol || '???',
+      amount: act.tokenAmount || 0,
+      sol: act.solAmount ? act.solAmount / 1e9 : 0,
+      time: getTimeAgo(act.timestamp * 1000),
+      timestamp: act.timestamp * 1000,
+      txSignature: act.signature || '',
+      gi: i % 10,
+    }));
+  }, [wallet.connected, userTradeActivity]);
 
-  // Mock leaderboard data
-  const leaderboardData: LeaderboardEntry[] = useMemo(() => [
-    { rank: 1, address: '7xKz...9Pmn', totalPnl: 156.78, winRate: 78.5, trades: 342, avatar: 0 },
-    { rank: 2, address: '3Hjk...2Wmp', totalPnl: 134.21, winRate: 72.3, trades: 289, avatar: 1 },
-    { rank: 3, address: '9RoP...5qYs', totalPnl: 98.45, winRate: 69.8, trades: 198, avatar: 2 },
-    { rank: 4, address: '4MnO...6pXr', totalPnl: 87.32, winRate: 67.2, trades: 176, avatar: 3 },
-    { rank: 5, address: '8NpQ...7rYt', totalPnl: 76.19, winRate: 65.4, trades: 154, avatar: 4 },
-    { rank: 6, address: '5KzR...8vNq', totalPnl: 65.87, winRate: 63.1, trades: 132, avatar: 5 },
-    { rank: 7, address: '2JkL...4nWp', totalPnl: 54.23, winRate: 61.8, trades: 118, avatar: 6 },
-    { rank: 8, address: '6LmN...3oXq', totalPnl: 43.67, winRate: 59.2, trades: 95, avatar: 7 },
-    { rank: 9, address: '1IjK...5mVo', totalPnl: 32.45, winRate: 57.6, trades: 78, avatar: 8 },
-    { rank: 10, address: '0HiJ...6lUn', totalPnl: 21.89, winRate: 55.3, trades: 62, avatar: 9 },
-  ], []);
+  // Leaderboard data derived from launch creators (top traders by launch count/volume)
+  const leaderboardData: LeaderboardEntry[] = useMemo(() => {
+    // Build leaderboard from unique creators sorted by their launches' volume
+    const creatorMap = new Map<string, { totalVol: number; trades: number; launches: number }>();
+    rawLaunches.forEach(l => {
+      if (!l.creator) return;
+      const existing = creatorMap.get(l.creator) || { totalVol: 0, trades: 0, launches: 0 };
+      existing.totalVol += l.realSolReserve || 0;
+      existing.trades += l.tradeCount || 0;
+      existing.launches += 1;
+      creatorMap.set(l.creator, existing);
+    });
+    return Array.from(creatorMap.entries())
+      .sort((a, b) => b[1].totalVol - a[1].totalVol)
+      .slice(0, 10)
+      .map(([address, data], i) => ({
+        rank: i + 1,
+        address,
+        totalPnl: data.totalVol,
+        winRate: Math.min(95, 50 + data.launches * 5),
+        trades: data.trades,
+        avatar: i % 10,
+      }));
+  }, [rawLaunches]);
 
   // Top launches for leaderboard
   const topLaunches = useMemo(() => {
@@ -2518,6 +2582,7 @@ const App: React.FC = () => {
       setRoute({ type });
     }
     setDetailTab('trades');
+    setTradePage(0);
     setTradeType('buy');
     setTradeAmount('');
     setViewKey(k => k + 1);
@@ -2568,7 +2633,7 @@ const App: React.FC = () => {
           name: pos.launch.name,
           symbol: pos.launch.symbol,
           gi: pos.launch.gi ?? 0,
-          status: pos.launch.status || 'active',
+          status: pos.launch.status || 'Active',
           price: pos.launch.currentPrice || 0,
           priceChange24h: 0,
           creator: pos.launch.creator || '',
@@ -2769,6 +2834,20 @@ const App: React.FC = () => {
     if (isNaN(amount) || amount <= 0) return;
     if (route.type !== 'detail') return;
 
+    // Minimum trade amount check
+    if (tradeType === 'buy' && amount < 0.001) {
+      showToast('Minimum buy amount is 0.001 SOL', 'error');
+      return;
+    }
+
+    // Enforce trading limits
+    if (settings.tradingLimits.enabled) {
+      if (tradeType === 'buy' && amount > settings.tradingLimits.maxTradeSize) {
+        showToast(`Trade exceeds max size of ${settings.tradingLimits.maxTradeSize} SOL`, 'error');
+        return;
+      }
+    }
+
     // Show confirmation dialog
     if (settings.notifications.tradeConfirmations) {
       setTradeConfirm({
@@ -2792,7 +2871,7 @@ const App: React.FC = () => {
     try {
       tradeType === 'buy'
         ? await trade.buy(currentLaunchPk, amount, settings.defaultSlippage)
-        : await trade.sell(currentLaunchPk, amount, settings.defaultSlippage);
+        : await trade.sell(currentLaunchPk, amount * 1e6, settings.defaultSlippage);
       setTradeAmount('');
       setTradeConfirm({ open: false, type: 'buy', amount: '', launch: null });
       setTradeSuccess(true);
@@ -2883,8 +2962,12 @@ const App: React.FC = () => {
         {/* Logo - Primary */}
         <div
           className="nav-logo"
+          role="button"
+          tabIndex={0}
+          aria-label="Go to home page"
           style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", cursor: "pointer" }}
           onClick={() => go('home')}
+          onKeyDown={(e) => e.key === 'Enter' && go('home')}
         >
           <div style={{ width: 28, height: 28 }}>
             <SvgLogo size={28} variant="badge" />
@@ -3437,7 +3520,7 @@ const App: React.FC = () => {
                 </svg>
                 <input
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => updateSearch(e.target.value)}
                   placeholder="Search tokens..."
                   style={{
                     border: "none",
@@ -3453,7 +3536,7 @@ const App: React.FC = () => {
                 />
                 {searchQuery && (
                   <button
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => updateSearch('')}
                     className="interactive-hover"
                     aria-label="Clear search"
                     style={{
@@ -3810,7 +3893,7 @@ const App: React.FC = () => {
                 No tokens match "{searchQuery}"
               </p>
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => updateSearch('')}
                 style={s(bsS, { height: "var(--btn-md)", padding: "0 var(--space-6)", fontSize: "var(--fs-sm)" })}
                 className="glass-pill"
               >
@@ -3834,6 +3917,7 @@ const App: React.FC = () => {
   const Detail = () => {
     if (route.type !== 'detail') return null;
     const l = route.launch;
+    const ld = launchDetail.launch; // Full LaunchData with social links, timestamps
 
     // Fetch real chart data
     const [chartTimeframe, setChartTimeframe] = useState<'1H' | '4H' | '1D' | '7D' | '30D'>('1D');
@@ -3967,7 +4051,7 @@ const App: React.FC = () => {
               <div style={s(ani("fu", 0.06), { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "var(--space-2-5)", marginTop: 22 })} className="grid-stagger">
                 {[
                   { l: "Market Cap", v: fm(l.marketCap), icon: <SvgChart /> },
-                  { l: "24h Volume", v: fm(l.volume24h), icon: <SvgActivity /> },
+                  { l: "Volume (24h)", v: fm(l.volume24h), icon: <SvgActivity /> },
                   { l: "Holders", v: l.holders.toLocaleString(), icon: <SvgUser /> },
                   { l: "Trades", v: l.trades.toLocaleString(), icon: <SvgZap /> }
                 ].map((x) => (
@@ -3980,6 +4064,33 @@ const App: React.FC = () => {
                   </HoverCard>
                 ))}
               </div>
+
+              {/* Social Links & Metadata */}
+              {(ld?.twitter || ld?.telegram || ld?.website || l.createdAt) && (
+                <div style={s(ani("fu", 0.08), { display: "flex", alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)", marginTop: 16 })}>
+                  {ld?.twitter && (
+                    <a href={ld.twitter.startsWith('http') ? ld.twitter : `https://twitter.com/${ld.twitter.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="glass-pill interactive-hover" style={s(bsS, { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", fontSize: "var(--fs-xs)", color: "var(--t2)", textDecoration: "none" })}>
+                      <SvgTw /> Twitter
+                    </a>
+                  )}
+                  {ld?.telegram && (
+                    <a href={ld.telegram.startsWith('http') ? ld.telegram : `https://t.me/${ld.telegram}`} target="_blank" rel="noopener noreferrer" className="glass-pill interactive-hover" style={s(bsS, { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", fontSize: "var(--fs-xs)", color: "var(--t2)", textDecoration: "none" })}>
+                      <SvgTg /> Telegram
+                    </a>
+                  )}
+                  {ld?.website && (
+                    <a href={ld.website} target="_blank" rel="noopener noreferrer" className="glass-pill interactive-hover" style={s(bsS, { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", fontSize: "var(--fs-xs)", color: "var(--t2)", textDecoration: "none" })}>
+                      <SvgExternal /> Website
+                    </a>
+                  )}
+                  {l.createdAt > 0 && (
+                    <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginLeft: "auto" }}>
+                      Created {getTimeAgo(l.createdAt)}
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div style={s(ani("fu", 0.1), { marginTop: 22 })}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
@@ -4066,14 +4177,21 @@ const App: React.FC = () => {
 
                 {/* OHLC Data Bar */}
                 <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}>
-                  {[
-                    { label: "Open", value: fP(l.price * 0.95), color: "var(--t1)" },
-                    { label: "High", value: fP(l.price * 1.12), color: "var(--grn)" },
-                    { label: "Low", value: fP(l.price * 0.88), color: "var(--red)" },
-                    { label: "Close", value: fP(l.price), color: "var(--t1)" },
-                    { label: "Change", value: fPct(15.3), color: "var(--grn)" },
-                    { label: "Vol", value: fSOL(l.volume24h, false), color: "var(--t1)" }
-                  ].map((stat) => (
+                  {(() => {
+                    const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+                    const firstCandle = candles.length > 0 ? candles[0] : null;
+                    const ohlcChange = lastCandle && firstCandle && firstCandle.open > 0
+                      ? ((lastCandle.close - firstCandle.open) / firstCandle.open) * 100
+                      : 0;
+                    return [
+                      { label: "Open", value: fP(lastCandle?.open ?? l.price), color: "var(--t1)" },
+                      { label: "High", value: fP(lastCandle?.high ?? l.price), color: "var(--grn)" },
+                      { label: "Low", value: fP(lastCandle?.low ?? l.price), color: "var(--red)" },
+                      { label: "Close", value: fP(lastCandle?.close ?? l.price), color: "var(--t1)" },
+                      { label: "Change", value: lastCandle ? fPct(ohlcChange) : '—', color: ohlcChange >= 0 ? "var(--grn)" : "var(--red)" },
+                      { label: "Vol", value: fSOL(lastCandle?.volume ?? 0, false), color: "var(--t1)" }
+                    ];
+                  })().map((stat) => (
                     <div key={stat.label} style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
                       <span style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", fontWeight: "var(--fw-medium)" }}>{stat.label}:</span>
                       <span style={{ fontSize: "var(--fs-xs)", color: stat.color, fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace" }}>
@@ -4164,19 +4282,23 @@ const App: React.FC = () => {
               </div>
               <TabContent tabKey={detailTab}>
                 {detailTab === "trades" ? (
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <><table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr>
                         <th style={s(thS2, { textAlign: "left" })}>Type</th>
                         <th style={s(thS2, { textAlign: "left" })}>Trader</th>
+                        <th style={s(thS2, { textAlign: "right" })}>Price</th>
                         <th style={s(thS2, { textAlign: "right" })}>SOL</th>
                         <th style={s(thS2, { textAlign: "right" })}>Tokens</th>
                         <th style={s(thS2, { textAlign: "right" })}>Time</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {trades.map((r, i) => (
-                        <tr key={r.id} className="table-row-hover" style={s(ani("fu", i * 0.03), { borderBottom: "1px solid var(--glass-border)" })}>
+                      {paginatedTrades.map((r, i) => (
+                        <tr key={r.id} className="table-row-hover" style={s(ani("fu", i * 0.03), { borderBottom: "1px solid var(--glass-border)", cursor: r.txSignature ? "pointer" : undefined })}
+                          onClick={r.txSignature ? () => window.open(`https://solscan.io/tx/${r.txSignature}?cluster=devnet`, '_blank') : undefined}
+                          title={r.txSignature ? "View on Solscan" : undefined}
+                        >
                           <td style={{ padding: "10px 0" }}>
                             <span style={{
                               fontSize: "var(--fs-xs)",
@@ -4190,6 +4312,7 @@ const App: React.FC = () => {
                             </span>
                           </td>
                           <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>{r.trader}</td>
+                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>{r.price > 0 ? fP(r.price) : '—'}</td>
                           <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t1)" }}>{r.sol}</td>
                           <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t2)" }}>{r.tokens}</td>
                           <td style={{ textAlign: "right", fontSize: "var(--fs-sm)", color: "var(--t3)" }}>{r.time}</td>
@@ -4197,6 +4320,31 @@ const App: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
+                  {totalTradePages > 1 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderTop: "1px solid var(--glass-border)" }}>
+                      <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>
+                        {trades.length} trades · Page {tradePage + 1} of {totalTradePages}
+                      </span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => setTradePage(p => Math.max(0, p - 1))}
+                          disabled={tradePage === 0}
+                          className="interactive-hover"
+                          style={{ background: "var(--glass3)", border: "1px solid var(--glass-border)", borderRadius: "var(--radius-sm)", color: "var(--t2)", cursor: "pointer", padding: "4px 12px", fontSize: "var(--fs-xs)", opacity: tradePage === 0 ? 0.4 : 1 }}
+                        >
+                          Prev
+                        </button>
+                        <button
+                          onClick={() => setTradePage(p => Math.min(totalTradePages - 1, p + 1))}
+                          disabled={tradePage >= totalTradePages - 1}
+                          className="interactive-hover"
+                          style={{ background: "var(--glass3)", border: "1px solid var(--glass-border)", borderRadius: "var(--radius-sm)", color: "var(--t2)", cursor: "pointer", padding: "4px 12px", fontSize: "var(--fs-xs)", opacity: tradePage >= totalTradePages - 1 ? 0.4 : 1 }}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  )}</>
                 ) : launchHolders.length > 0 ? (
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -4227,7 +4375,7 @@ const App: React.FC = () => {
                               {holder.address.slice(0, 4)}...{holder.address.slice(-4)}
                             </td>
                             <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t1)" }}>
-                              {fN(holder.balance / 1e6, 2)}M
+                              {fTok(holder.balance)}
                             </td>
                             <td style={{ textAlign: "right", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>
                               {holder.percentage.toFixed(2)}%
@@ -4344,18 +4492,41 @@ const App: React.FC = () => {
               </div>
 
               {/* Output preview */}
+              {(() => {
+                const amt = parseFloat(tradeAmount) || 0;
+                const ctx = ld ? {
+                  mint: ld.mint,
+                  creator: ld.creator,
+                  virtualSolReserve: ld.virtualSolReserve,
+                  virtualTokenReserve: ld.virtualTokenReserve,
+                  protocolFeeBps: 100,
+                  creatorFeeBps: ld.creatorFeeBps || 0,
+                } : undefined;
+                const buyEst = ctx && amt > 0 && tradeType === "buy" ? trade.estimateBuy(amt, ctx) : null;
+                const sellEst = ctx && amt > 0 && tradeType === "sell" ? trade.estimateSell(amt * 1e6, ctx) : null;
+                const priceImpact = buyEst?.priceImpact ?? sellEst?.priceImpact ?? 0;
+
+                return (
               <div style={{ marginBottom: "var(--space-4)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "var(--glass)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-2)" }}>
                   <span style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>You receive</span>
                   <span style={{ fontSize: "var(--fs-lg)", fontFamily: "'JetBrains Mono',monospace", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>
-                    {tradeAmount && l.price > 0
+                    {amt > 0
                       ? tradeType === "buy"
-                        ? ((parseFloat(tradeAmount) / l.price) * (1 - settings.defaultSlippage / 100)).toFixed(0) + "M " + l.symbol
-                        : (parseFloat(tradeAmount) * l.price * (1 - settings.defaultSlippage / 100) / 1e6).toFixed(4) + " SOL"
+                        ? buyEst ? `${(buyEst.tokensOut / 1e6).toFixed(2)}M ${l.symbol}` : `~${((amt / l.price) * (1 - settings.defaultSlippage / 100) / 1e6).toFixed(2)}M ${l.symbol}`
+                        : sellEst ? `${sellEst.solOut.toFixed(4)} SOL` : `~${(amt * 1e6 * l.price * (1 - settings.defaultSlippage / 100)).toFixed(4)} SOL`
                       : `0.00 ${tradeType === "buy" ? l.symbol : "SOL"}`
                     }
                   </span>
                 </div>
+                {priceImpact > 0.1 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-1)" }}>
+                    <span style={{ fontSize: "var(--fs-xs)", color: priceImpact > 5 ? "var(--red)" : "var(--amb)" }}>Price impact</span>
+                    <span style={{ fontSize: "var(--fs-xs)", fontFamily: "'JetBrains Mono',monospace", color: priceImpact > 5 ? "var(--red)" : "var(--amb)" }}>
+                      {priceImpact.toFixed(2)}%
+                    </span>
+                  </div>
+                )}
                 {/* Transaction Details - Solana-specific info */}
                 <div style={{ borderTop: "1px solid var(--glass-border)", paddingTop: "var(--space-2)", marginTop: "var(--space-2)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-1)" }}>
@@ -4394,9 +4565,13 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
+                );
+              })()}
               {(() => {
+                // Deduct token account creation cost (~0.002 SOL) for first-time buy
+                const needsAta = tradeType === "buy" && (!userBalances?.tokenBalance || userBalances.tokenBalance === 0);
                 const currentBalance = tradeType === "buy"
-                  ? (wallet.balance || 0)
+                  ? Math.max(0, (wallet.balance || 0) - (needsAta ? 0.002 : 0))
                   : (userBalances?.tokenBalance ? userBalances.tokenBalance / 1e6 : 0);
                 const parsedAmount = parseFloat(tradeAmount) || 0;
                 const isAmountValid = parsedAmount > 0 && parsedAmount <= currentBalance;
@@ -4475,6 +4650,7 @@ const App: React.FC = () => {
     const [formErrors, setFormErrors] = useState<{
       name?: string;
       symbol?: string;
+      description?: string;
       image?: string;
       twitter?: string;
       telegram?: string;
@@ -4630,8 +4806,12 @@ const App: React.FC = () => {
       if (nm.length > 32) errors.name = "Name must be 32 characters or less";
 
       if (!sy.trim()) errors.symbol = "Symbol is required";
-      if (sy.length > 0 && sy.length < 2) errors.symbol = "Symbol must be at least 2 characters";
-      if (sy.length > 10) errors.symbol = "Symbol must be 10 characters or less";
+      else if (sy.length < 2) errors.symbol = "Symbol must be at least 2 characters";
+      else if (sy.length > 10) errors.symbol = "Symbol must be 10 characters or less";
+      else if (!/^[A-Z0-9]+$/.test(sy)) errors.symbol = "Symbol must be alphanumeric only";
+
+      // Description validation
+      if (ds.length > 500) errors.description = "Description must be 500 characters or less";
 
       // Social link validation (max 64 chars per program constraints)
       if (tw.length > 64) errors.twitter = "Twitter handle must be 64 characters or less";
@@ -4932,7 +5112,8 @@ const App: React.FC = () => {
               <input
                 value={sy}
                 onChange={(e) => {
-                  setSy(e.target.value.toUpperCase().slice(0, 10));
+                  const v = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10);
+                  setSy(v);
                   if (formErrors.symbol) setFormErrors(prev => ({ ...prev, symbol: undefined }));
                 }}
                 onFocus={() => setFocusedField('symbol')}
@@ -4946,7 +5127,7 @@ const App: React.FC = () => {
 
             {/* Description */}
             <div className="form-field-animate" style={{ animationDelay: '0.15s' }}>
-              {renderLabel("Description", false, undefined, 500, ds.length)}
+              {renderLabel("Description", false, formErrors.description, 500, ds.length)}
               <textarea
                 value={ds}
                 onChange={(e) => setDs(e.target.value.slice(0, 500))}
@@ -5799,7 +5980,7 @@ const App: React.FC = () => {
                               <Badge status={pos.launch.status} isDark={isDark} />
                             </div>
                             <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
-                              {fN(pos.tokenBalance / 1e6, 1)}M {pos.launch.symbol}
+                              {fTok(pos.tokenBalance)} {pos.launch.symbol}
                             </div>
                           </div>
                         </div>
@@ -5885,7 +6066,7 @@ const App: React.FC = () => {
                             <span style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>{tx.launch}</span>
                           </div>
                           <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: 3 }}>
-                            {tx.type !== 'create' && `${(tx.amount / 1e6).toFixed(0)}M ${tx.symbol} · `}
+                            {tx.type !== 'create' && `${fTok(tx.amount)} ${tx.symbol} · `}
                             {tx.time}
                           </div>
                         </div>
@@ -6016,33 +6197,44 @@ const App: React.FC = () => {
       setTimeout(() => setUserCopied(false), 2000);
     };
 
-    // Mock data for other user's profile
-    const mockUserStats = useMemo(() => ({
-      totalValue: Math.random() * 50 + 5,
-      pnl: (Math.random() - 0.4) * 20,
-      pnlPercent: (Math.random() - 0.3) * 100,
-      tradesCount: Math.floor(Math.random() * 100) + 10,
-      winRate: Math.floor(Math.random() * 40) + 45,
-    }), []);
+    // User profile data — use deterministic values derived from address hash (not Math.random)
+    const mockUserStats = useMemo(() => {
+      let h = 0;
+      for (let c = 0; c < address.length; c++) h = ((h << 5) - h + address.charCodeAt(c)) | 0;
+      const norm = Math.abs(h) / 2147483647;
+      return {
+        totalValue: norm * 50 + 5,
+        pnl: (norm - 0.4) * 20,
+        pnlPercent: (norm - 0.3) * 100,
+        tradesCount: Math.floor(norm * 100) + 10,
+        winRate: Math.floor(norm * 40) + 45,
+      };
+    }, [address]);
 
     const mockUserPositions = useMemo(() => {
-      return launches.slice(0, Math.floor(Math.random() * 4) + 1).map(l => ({
+      // Show first few launches as positions for this user profile
+      return launches.slice(0, Math.min(3, launches.length)).map((l, i) => ({
         ...l,
-        value: Math.random() * 5 + 0.1,
-        pnl: (Math.random() - 0.4) * 50,
-        tokens: Math.floor(Math.random() * 100000) + 1000
+        value: (i + 1) * 1.5,
+        pnl: (i % 2 === 0 ? 1 : -1) * (i + 1) * 5,
+        tokens: (i + 1) * 25000
       }));
     }, [launches]);
 
-    const mockUserActivity = useMemo(() => [
-      { id: 'profile-act-1', type: 'buy' as const, token: launches[0]?.name || 'SAMPLE', amount: 0.5, time: '2h ago', value: Math.random() * 1000 },
-      { id: 'profile-act-2', type: 'sell' as const, token: launches[1]?.name || 'TOKEN', amount: 0.3, time: '5h ago', value: Math.random() * 500 },
-      { id: 'profile-act-3', type: 'buy' as const, token: launches[2]?.name || 'COIN', amount: 1.2, time: '1d ago', value: Math.random() * 2000 },
-    ], [launches]);
+    const mockUserActivity = useMemo(() =>
+      launches.slice(0, 3).map((l, i) => ({
+        id: `profile-act-${i}`,
+        type: (i % 2 === 0 ? 'buy' : 'sell') as 'buy' | 'sell',
+        token: l.name,
+        amount: (i + 1) * 0.5,
+        time: getTimeAgo(Date.now() - (i + 1) * 3600000),
+        value: l.marketCap * 0.001,
+      })),
+    [launches]);
 
     const mockCreatedLaunches = useMemo(() => {
-      return launches.filter(() => Math.random() > 0.7).slice(0, 2);
-    }, [launches]);
+      return launches.filter(l => l.creator === (address.slice(0, 4) + '...' + address.slice(-4))).slice(0, 3);
+    }, [launches, address]);
 
     const tabBtn = (k: 'positions' | 'activity' | 'created', l: string, count?: number) => (
       <button
@@ -6376,9 +6568,9 @@ const App: React.FC = () => {
                       <div style={{
                         fontSize: "var(--fs-sm)",
                         fontWeight: "var(--fw-semibold)",
-                        color: launch.priceChange24h >= 0 ? "var(--grn)" : "var(--red)"
+                        color: launch.priceChange24h === 0 ? "var(--t3)" : launch.priceChange24h >= 0 ? "var(--grn)" : "var(--red)"
                       }}>
-                        {launch.priceChange24h >= 0 ? "+" : ""}{launch.priceChange24h.toFixed(1)}%
+                        {launch.priceChange24h === 0 ? "—" : `${launch.priceChange24h >= 0 ? "+" : ""}${launch.priceChange24h.toFixed(1)}%`}
                       </div>
                     </div>
                   </div>
@@ -6814,7 +7006,7 @@ const App: React.FC = () => {
                 <Toggle
                   checked={settings.soundEffects}
                   onChange={() => updateSettings({ soundEffects: !settings.soundEffects })}
-                  label="Sound Effects"
+                  label="Sound Effects (Coming soon)"
                   description="Audio feedback for trades and alerts"
                 />
               </SettingSection>
@@ -7082,30 +7274,14 @@ const App: React.FC = () => {
                 </div>
               </SettingSection>
 
-              {/* Two-Factor Authentication */}
-              <SettingSection title="Two-Factor Authentication">
+              {/* Trade Confirmation */}
+              <SettingSection title="Trade Confirmation">
                 <Toggle
-                  checked={settings.twoFactorEnabled}
-                  onChange={() => {
-                    if (!settings.twoFactorEnabled) {
-                      showToast('2FA setup would require wallet signature verification', 'info');
-                    }
-                    updateSettings({ twoFactorEnabled: !settings.twoFactorEnabled });
-                  }}
-                  label="Enable 2FA for Trades"
-                  description="Require additional confirmation for large trades"
+                  checked={settings.notifications.tradeConfirmations}
+                  onChange={() => updateSettings({ notifications: { ...settings.notifications, tradeConfirmations: !settings.notifications.tradeConfirmations } })}
+                  label="Confirm before trading"
+                  description="Show a confirmation dialog before executing buy/sell transactions"
                 />
-                {settings.twoFactorEnabled && (
-                  <div style={{ marginTop: "var(--space-4)", padding: "var(--space-3-5)", borderRadius: "var(--radius-md)", background: "var(--gb)", border: "1px solid rgba(34,197,94,0.2)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: 6 }}>
-                      <SvgCheck />
-                      <span style={{ fontSize: "var(--fs-sm)", fontWeight: "var(--fw-semibold)", color: "var(--grn)" }}>2FA Active</span>
-                    </div>
-                    <p style={{ fontSize: "var(--fs-xs)", color: "var(--t2)" }}>
-                      Trades above your max trade size will require wallet signature confirmation.
-                    </p>
-                  </div>
-                )}
               </SettingSection>
 
               {/* Connected Wallet */}
@@ -7129,7 +7305,7 @@ const App: React.FC = () => {
                           <div style={{ fontSize: "var(--fs-base)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                             {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
                           </div>
-                          <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>Connected via Phantom</div>
+                          <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>Connected</div>
                         </div>
                       </div>
                       <span style={{
@@ -7631,7 +7807,7 @@ const App: React.FC = () => {
             return (
               <div
                 key={isTrader ? (item as typeof leaderboardData[0]).address : (item as typeof topLaunches[0]).id}
-                onClick={isTrader ? () => go('userProfile', undefined, (item as typeof leaderboardData[0]).address.replace('...', '1234567890')) : undefined}
+                onClick={isTrader && (item as typeof leaderboardData[0]).address.length > 32 ? () => go('userProfile', undefined, (item as typeof leaderboardData[0]).address) : undefined}
                 className="bounce-in"
                 style={{
                   display: "flex",
@@ -8009,7 +8185,7 @@ const App: React.FC = () => {
                 {restTraders.map((trader, i) => (
                   <div
                     key={trader.rank}
-                    onClick={() => go('userProfile', undefined, trader.address.replace('...', '1234567890'))}
+                    onClick={trader.address.length > 32 ? () => go('userProfile', undefined, trader.address) : undefined}
                     className="glass-card-inner table-row-hover btn-press"
                     style={s(ani("fu", i * 0.03), {
                       padding: "var(--space-4)",
@@ -8410,12 +8586,12 @@ const App: React.FC = () => {
                 </span>
                 <span style={{
                   fontSize: "var(--fs-xs)",
-                  color: l.priceChange24h >= 0 ? "var(--grn)" : "var(--red)",
+                  color: l.priceChange24h === 0 ? "var(--t3)" : l.priceChange24h >= 0 ? "var(--grn)" : "var(--red)",
                   display: "flex",
                   alignItems: "center",
                   gap: 2
                 }}>
-                  {l.priceChange24h >= 0 ? "+" : ""}{l.priceChange24h.toFixed(1)}%
+                  {l.priceChange24h === 0 ? "—" : `${l.priceChange24h >= 0 ? "+" : ""}${l.priceChange24h.toFixed(1)}%`}
                 </span>
               </div>
             ))}
