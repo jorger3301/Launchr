@@ -18,7 +18,7 @@ import {
   generateMockPriceHistory,
   generateMockUserPosition,
 } from './data';
-import type { UseWalletResult, UseLaunchesResult, UseTradeResult, GlobalStats } from '../hooks';
+import type { UseWalletResult, UseLaunchesResult, UseTradeResult, GlobalStats, CreateLaunchParams } from '../hooks';
 
 // =============================================================================
 // MOCK WALLET
@@ -116,8 +116,11 @@ export function useMockLaunch(publicKey: string | undefined) {
 export function useMockUserPosition(launchPk: string | undefined, userAddress: string | undefined) {
   const position = useMemo(() => {
     if (!launchPk || !userAddress) return null;
-    // 70% chance user has a position
-    return Math.random() > 0.3 ? generateMockUserPosition() : null;
+    // Deterministic "random" based on input - always returns same result for same inputs
+    // This prevents unstable behavior from Math.random() in render
+    const hash = (launchPk + userAddress).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    const hasPosition = (hash % 10) < 7; // 70% chance based on hash
+    return hasPosition ? generateMockUserPosition() : null;
   }, [launchPk, userAddress]);
 
   return {
@@ -139,7 +142,9 @@ export function useMockTrade(): UseTradeResult {
     // Simulate transaction delay
     await new Promise(r => setTimeout(r, 1500));
     setLoading(false);
-    console.log(`[MOCK] Buy: ${solAmount} SOL on ${launchPk.slice(0, 8)}... (slippage: ${slippage}%)`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[MOCK] Buy: ${solAmount} SOL on ${launchPk.slice(0, 8)}... (slippage: ${slippage}%)`);
+    }
     return 'mock_signature_' + Date.now();
   }, []);
 
@@ -147,7 +152,9 @@ export function useMockTrade(): UseTradeResult {
     setLoading(true);
     await new Promise(r => setTimeout(r, 1500));
     setLoading(false);
-    console.log(`[MOCK] Sell: ${tokenAmount} tokens on ${launchPk.slice(0, 8)}... (slippage: ${slippage}%)`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[MOCK] Sell: ${tokenAmount} tokens on ${launchPk.slice(0, 8)}... (slippage: ${slippage}%)`);
+    }
     return 'mock_signature_' + Date.now();
   }, []);
 
@@ -161,11 +168,13 @@ export function useMockTrade(): UseTradeResult {
 export function useMockCreateLaunch() {
   const [loading, setLoading] = useState(false);
 
-  const createLaunch = useCallback(async (params: any): Promise<string> => {
+  const createLaunch = useCallback(async (params: CreateLaunchParams): Promise<string> => {
     setLoading(true);
     await new Promise(r => setTimeout(r, 2000));
     setLoading(false);
-    console.log('[MOCK] Created launch:', params);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[MOCK] Created launch:', params.name, params.symbol);
+    }
     return 'mock_signature_' + Date.now();
   }, []);
 

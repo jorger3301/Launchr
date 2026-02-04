@@ -49,7 +49,14 @@ import {
 // MODE SWITCH
 // ---------------------------------------------------------------------------
 
-const USE_MOCKS = process.env.REACT_APP_USE_MOCKS === 'true';
+// Enable mocks if:
+// 1. Explicitly set via env var
+// 2. OR in production without a proper backend URL configured
+const API_URL = process.env.REACT_APP_API_URL || '';
+const IS_LOCALHOST_API = !API_URL || API_URL.includes('localhost');
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+const USE_MOCKS = process.env.REACT_APP_USE_MOCKS === 'true' || (IS_PRODUCTION && IS_LOCALHOST_API);
 
 // ---------------------------------------------------------------------------
 // CONSTANTS
@@ -329,7 +336,7 @@ const TradeIcon: React.FC<{ type: 'buy' | 'sell'; size?: number }> = ({ type, si
     <div style={{
       width: size,
       height: size,
-      borderRadius: 12,
+      borderRadius: "var(--radius-md)",
       background: isBuy ? "var(--gb)" : "var(--rb)",
       display: "flex",
       alignItems: "center",
@@ -656,14 +663,14 @@ const Tooltip: React.FC<TooltipProps> = ({ content, children, position = 'top' }
             position: 'absolute',
             ...positionStyles[position],
             padding: '6px 12px',
-            borderRadius: 8,
+            borderRadius: "var(--radius-sm)",
             background: 'var(--bg-elevated)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
             border: '1px solid var(--glass-border2)',
             color: 'var(--t1)',
-            fontSize: 11,
-            fontWeight: 500,
+            fontSize: "var(--fs-xs)",
+            fontWeight: "var(--fw-medium)",
             whiteSpace: 'nowrap',
             zIndex: 200,
             pointerEvents: 'none',
@@ -931,11 +938,11 @@ const StatCard: React.FC<StatCardProps> = ({
   return (
     <div className="glass-card-inner card-lift stat-card" style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: 'var(--t3)', fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: "var(--fs-xs)", color: 'var(--t3)', fontWeight: "var(--fw-medium)" }}>{label}</span>
         {icon && <span style={{ color: 'var(--t3)' }}>{icon}</span>}
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--t1)' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: "var(--space-2)" }}>
+        <span style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: 'var(--t1)' }}>
           {animated && !isNaN(numericValue) ? (
             <AnimatedNumber value={numericValue} prefix={prefix} suffix={suffix} decimals={numericValue % 1 !== 0 ? 2 : 0} />
           ) : (
@@ -947,8 +954,8 @@ const StatCard: React.FC<StatCardProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: 2,
-            fontSize: 12,
-            fontWeight: 500,
+            fontSize: "var(--fs-sm)",
+            fontWeight: "var(--fw-medium)",
             color: trend >= 0 ? 'var(--grn)' : 'var(--red)'
           }}>
             {trend >= 0 ? <SvgUp /> : <SvgDn />}
@@ -1069,13 +1076,13 @@ const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ status, network = '
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: "var(--space-1-5)",
           padding: '4px 10px',
-          borderRadius: 100,
+          borderRadius: "var(--radius-full)",
           background: 'var(--glass2)',
           border: '1px solid var(--glass-border)',
-          fontSize: 11,
-          fontWeight: 500,
+          fontSize: "var(--fs-xs)",
+          fontWeight: "var(--fw-medium)",
           color: 'var(--t2)',
           cursor: 'default',
         }}
@@ -1123,11 +1130,11 @@ const CountBadge: React.FC<CountBadgeProps> = ({ count, max = 99, color = 'var(-
         minWidth: 18,
         height: 18,
         padding: '0 5px',
-        borderRadius: 100,
+        borderRadius: "var(--radius-full)",
         background: color,
         color: '#fff',
-        fontSize: 10,
-        fontWeight: 700,
+        fontSize: "var(--fs-2xs)",
+        fontWeight: "var(--fw-bold)",
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -1148,8 +1155,8 @@ interface KeyboardHintProps {
 }
 
 const KeyboardHint: React.FC<KeyboardHintProps> = ({ keys, label }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-    {label && <span style={{ fontSize: 11, color: 'var(--t3)' }}>{label}</span>}
+  <div style={{ display: 'flex', alignItems: 'center', gap: "var(--space-1-5)" }}>
+    {label && <span style={{ fontSize: "var(--fs-xs)", color: 'var(--t3)' }}>{label}</span>}
     <div style={{ display: 'flex', gap: 3 }}>
       {keys.map((key, i) => (
         <React.Fragment key={key}>
@@ -1160,18 +1167,18 @@ const KeyboardHint: React.FC<KeyboardHintProps> = ({ keys, label }) => (
             minWidth: 22,
             height: 22,
             padding: '0 6px',
-            borderRadius: 6,
+            borderRadius: "var(--radius-xs)",
             background: 'var(--glass2)',
             border: '1px solid var(--glass-border)',
             boxShadow: '0 2px 0 var(--glass-border)',
-            fontSize: 10,
-            fontWeight: 600,
+            fontSize: "var(--fs-2xs)",
+            fontWeight: "var(--fw-semibold)",
             color: 'var(--t2)',
             fontFamily: 'inherit',
           }}>
             {key}
           </kbd>
-          {i < keys.length - 1 && <span style={{ fontSize: 10, color: 'var(--t3)' }}>+</span>}
+          {i < keys.length - 1 && <span style={{ fontSize: "var(--fs-2xs)", color: 'var(--t3)' }}>+</span>}
         </React.Fragment>
       ))}
     </div>
@@ -1344,13 +1351,13 @@ const UpdatePulse: React.FC<{ show: boolean }> = ({ show }) => {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 6,
+        gap: "var(--space-1-5)",
         padding: '4px 10px',
-        borderRadius: 100,
+        borderRadius: "var(--radius-full)",
         background: 'rgba(34, 197, 94, 0.1)',
         border: '1px solid rgba(34, 197, 94, 0.2)',
-        fontSize: 11,
-        fontWeight: 500,
+        fontSize: "var(--fs-xs)",
+        fontWeight: "var(--fw-medium)",
         color: 'var(--grn)',
       }}
     >
@@ -1381,6 +1388,59 @@ const Skeleton: React.FC<{ width?: string | number; height?: number; borderRadiu
       borderRadius,
     }}
   />
+);
+
+// Skeleton grid for token list loading state
+const TokenCardSkeleton: React.FC = () => (
+  <div
+    className="glass-card skeleton-card"
+    style={{
+      padding: "var(--space-5)",
+      borderRadius: "var(--radius-lg)",
+      background: "var(--glass)",
+      border: "1px solid var(--glass-border)",
+    }}
+  >
+    <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-3-5)", marginBottom: "var(--space-4)" }}>
+      <Skeleton width={48} height={48} borderRadius={14} />
+      <div style={{ flex: 1 }}>
+        <Skeleton width="60%" height={18} borderRadius={6} />
+        <div style={{ height: 8 }} />
+        <Skeleton width="40%" height={14} borderRadius={6} />
+      </div>
+    </div>
+    <div style={{ display: "flex", gap: "var(--space-3)", marginBottom: 14 }}>
+      <div style={{ flex: 1 }}>
+        <Skeleton width="100%" height={12} borderRadius={4} />
+        <div style={{ height: 6 }} />
+        <Skeleton width="70%" height={20} borderRadius={6} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <Skeleton width="100%" height={12} borderRadius={4} />
+        <div style={{ height: 6 }} />
+        <Skeleton width="70%" height={20} borderRadius={6} />
+      </div>
+    </div>
+    <Skeleton width="100%" height={6} borderRadius={3} />
+  </div>
+);
+
+const TokenGridSkeleton: React.FC<{ count?: number }> = ({ count = 6 }) => (
+  <div
+    className="token-grid grid-stagger"
+    style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+      gap: "var(--space-4)",
+    }}
+    aria-label="Loading tokens..."
+    role="status"
+  >
+    {Array.from({ length: count }).map((_, i) => (
+      <TokenCardSkeleton key={i} />
+    ))}
+    <span className="sr-only">Loading token data, please wait...</span>
+  </div>
 );
 
 // Error state component with retry
@@ -1417,7 +1477,7 @@ const ErrorState: React.FC<ErrorStateProps> = ({
     </div>
     <h3 style={{
       fontSize: compact ? 14 : 18,
-      fontWeight: 600,
+      fontWeight: "var(--fw-semibold)",
       color: "var(--t1)",
       marginBottom: 8
     }}>
@@ -1436,9 +1496,9 @@ const ErrorState: React.FC<ErrorStateProps> = ({
         className="btn-press interactive-hover"
         style={{
           padding: compact ? "8px 16px" : "10px 20px",
-          borderRadius: 100,
+          borderRadius: "var(--radius-full)",
           fontSize: compact ? 12 : 13,
-          fontWeight: 500,
+          fontWeight: "var(--fw-medium)",
           background: "var(--glass2)",
           border: "1px solid var(--glass-border)",
           color: "var(--t1)",
@@ -1528,17 +1588,15 @@ const Sparkline: React.FC<{ data: number[]; width?: number; height?: number }> =
   );
 };
 
-// Live indicator dot
+// Live indicator dot - Simplified
 const LiveDot: React.FC = () => (
   <span
-    className="live-indicator"
     style={{
       width: 6,
       height: 6,
       borderRadius: '50%',
       background: 'var(--grn)',
-      display: 'inline-block',
-      boxShadow: '0 0 8px var(--grn)'
+      display: 'inline-block'
     }}
   />
 );
@@ -1547,7 +1605,7 @@ const LiveDot: React.FC = () => (
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
-  message: string;
+  message: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   type?: 'danger' | 'success' | 'info';
@@ -1585,23 +1643,23 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       <div
         onClick={(e) => e.stopPropagation()}
         className="glass-card modal-enter"
-        style={{ padding: 28, maxWidth: 380, width: '100%' }}
+        style={{ padding: "var(--space-7)", maxWidth: 380, width: '100%' }}
       >
-        <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--t1)', marginBottom: 12 }}>{title}</h3>
-        <p style={{ fontSize: 14, color: 'var(--t2)', marginBottom: 24, lineHeight: 1.6 }}>{message}</p>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <h3 style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-bold)", color: 'var(--t1)', marginBottom: "var(--space-3)" }}>{title}</h3>
+        <div style={{ fontSize: "var(--fs-sm)", color: 'var(--t2)', marginBottom: "var(--space-6)", lineHeight: "var(--lh-relaxed)" }}>{message}</div>
+        <div style={{ display: 'flex', gap: "var(--space-2)" }}>
           <button
             onClick={onCancel}
             className="glass-pill btn-press"
             style={{
               flex: 1,
-              height: 44,
-              fontSize: 14,
-              fontWeight: 500,
+              height: "var(--btn-lg)",
+              fontSize: "var(--fs-sm)",
+              fontWeight: "var(--fw-medium)",
               background: 'var(--sb)',
               color: 'var(--st)',
               border: '1px solid var(--sbd)',
-              borderRadius: 100,
+              borderRadius: "var(--radius-full)",
               cursor: 'pointer',
               fontFamily: 'inherit'
             }}
@@ -1613,9 +1671,9 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             className="btn-press"
             style={{
               flex: 1,
-              height: 44,
-              fontSize: 14,
-              fontWeight: 600,
+              height: "var(--btn-lg)",
+              fontSize: "var(--fs-sm)",
+              fontWeight: "var(--fw-semibold)",
               background: type === 'danger'
                 ? 'linear-gradient(135deg, #fca5a5, #ef4444)'
                 : type === 'success'
@@ -1623,7 +1681,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                   : 'var(--pb)',
               color: type === 'info' ? 'var(--pt)' : '#fff',
               border: 'none',
-              borderRadius: 100,
+              borderRadius: "var(--radius-full)",
               cursor: 'pointer',
               fontFamily: 'inherit'
             }}
@@ -1659,6 +1717,7 @@ interface LaunchItem {
 }
 
 interface TradeItem {
+  id: string; // Unique identifier for React key
   type: 'buy' | 'sell';
   trader: string;
   sol: number;
@@ -1764,6 +1823,7 @@ interface UserPosition {
 
 // Mock trading activity
 interface ActivityItem {
+  id: string; // Unique identifier for React key
   type: 'buy' | 'sell' | 'create';
   launch: string;
   symbol: string;
@@ -1782,7 +1842,7 @@ const inpS: React.CSSProperties = {
   border: "1px solid var(--glass-input-bd)",
   color: "var(--t1)",
   outline: "none",
-  borderRadius: 14,
+  borderRadius: "var(--radius-lg)",
   fontSize: 14
 };
 
@@ -1791,8 +1851,8 @@ const bpS: React.CSSProperties = {
   color: "white",
   border: "none",
   cursor: "pointer",
-  borderRadius: 100,
-  fontWeight: 600,
+  borderRadius: "var(--radius-full)",
+  fontWeight: "var(--fw-semibold)",
   transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
   boxShadow: "0 4px 16px rgba(34, 197, 94, 0.25)"
 };
@@ -1802,7 +1862,7 @@ const bsS: React.CSSProperties = {
   color: "var(--st)",
   border: "1px solid var(--sbd)",
   cursor: "pointer",
-  borderRadius: 100,
+  borderRadius: "var(--radius-full)",
   transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
 };
 
@@ -1828,9 +1888,9 @@ const Badge: React.FC<BadgeProps> = ({ status, isDark }) => {
       border: `1px solid ${cfg.bd}`,
       color: cfg.tx,
       padding: "2px 9px",
-      borderRadius: 100,
-      fontSize: 11,
-      fontWeight: 500,
+      borderRadius: "var(--radius-full)",
+      fontSize: "var(--fs-xs)",
+      fontWeight: "var(--fw-medium)",
       whiteSpace: "nowrap",
       backdropFilter: "blur(8px)",
       WebkitBackdropFilter: "blur(8px)"
@@ -1856,7 +1916,7 @@ const Chg: React.FC<ChgProps> = ({ v }) => {
       display: "inline-flex",
       alignItems: "center",
       gap: 2,
-      fontSize: 13,
+      fontSize: "var(--fs-base)",
       fontWeight: 500
     }}>
       {pos ? <SvgUp /> : <SvgDn />}
@@ -1874,7 +1934,10 @@ interface OrbsProps {
 }
 
 const Orbs: React.FC<OrbsProps> = ({ isDark }) => {
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  // Use refs to avoid React re-renders on every animation frame
+  const orb1Ref = useRef<HTMLDivElement>(null);
+  const orb2Ref = useRef<HTMLDivElement>(null);
+  const orb3Ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let rafId: number;
@@ -1893,7 +1956,18 @@ const Orbs: React.FC<OrbsProps> = ({ isDark }) => {
       // Smooth interpolation (0.02 = very subtle, slow follow)
       currentX += (targetX - currentX) * 0.02;
       currentY += (targetY - currentY) * 0.02;
-      setMousePos({ x: currentX, y: currentY });
+
+      // Directly update DOM transforms instead of React state (avoids 60fps re-renders)
+      if (orb1Ref.current) {
+        orb1Ref.current.style.transform = `translate(${currentX * 30}px, ${currentY * 20}px)`;
+      }
+      if (orb2Ref.current) {
+        orb2Ref.current.style.transform = `translate(${currentX * -20}px, ${currentY * 25}px)`;
+      }
+      if (orb3Ref.current) {
+        orb3Ref.current.style.transform = `translate(${currentX * 15}px, ${currentY * -15}px)`;
+      }
+
       rafId = requestAnimationFrame(animate);
     };
 
@@ -1906,58 +1980,59 @@ const Orbs: React.FC<OrbsProps> = ({ isDark }) => {
     };
   }, []);
 
-  // Parallax multipliers for each orb (different depths)
-  const orb1Offset = { x: mousePos.x * 30, y: mousePos.y * 20 };
-  const orb2Offset = { x: mousePos.x * -20, y: mousePos.y * 25 };
-  const orb3Offset = { x: mousePos.x * 15, y: mousePos.y * -15 };
-
   return (
     <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
-      <div style={{
-        position: "absolute",
-        top: "10%",
-        left: "15%",
-        width: 500,
-        height: 500,
-        borderRadius: "50%",
-        background: isDark
-          ? "radial-gradient(circle,rgba(34,197,94,0.06) 0%,transparent 70%)"
-          : "radial-gradient(circle,rgba(34,197,94,0.12) 0%,transparent 70%)",
-        animation: "orb1 25s ease-in-out infinite",
-        filter: "blur(80px)",
-        transform: `translate(${orb1Offset.x}px, ${orb1Offset.y}px)`,
-        willChange: "transform"
-      }} />
-      <div style={{
-        position: "absolute",
-        top: "50%",
-        right: "10%",
-        width: 450,
-        height: 450,
-        borderRadius: "50%",
-        background: isDark
-          ? "radial-gradient(circle,rgba(99,102,241,0.04) 0%,transparent 70%)"
-          : "radial-gradient(circle,rgba(99,102,241,0.08) 0%,transparent 70%)",
-        animation: "orb2 30s ease-in-out infinite",
-        filter: "blur(80px)",
-        transform: `translate(${orb2Offset.x}px, ${orb2Offset.y}px)`,
-        willChange: "transform"
-      }} />
-      <div style={{
-        position: "absolute",
-        bottom: "10%",
-        left: "40%",
-        width: 400,
-        height: 400,
-        borderRadius: "50%",
-        background: isDark
-          ? "radial-gradient(circle,rgba(236,72,153,0.03) 0%,transparent 70%)"
-          : "radial-gradient(circle,rgba(236,72,153,0.06) 0%,transparent 70%)",
-        animation: "orb3 20s ease-in-out infinite",
-        filter: "blur(80px)",
-        transform: `translate(${orb3Offset.x}px, ${orb3Offset.y}px)`,
-        willChange: "transform"
-      }} />
+      <div
+        ref={orb1Ref}
+        style={{
+          position: "absolute",
+          top: "10%",
+          left: "15%",
+          width: 500,
+          height: 500,
+          borderRadius: "50%",
+          background: isDark
+            ? "radial-gradient(circle,rgba(34,197,94,0.06) 0%,transparent 70%)"
+            : "radial-gradient(circle,rgba(34,197,94,0.12) 0%,transparent 70%)",
+          animation: "orb1 25s ease-in-out infinite",
+          filter: "blur(80px)",
+          willChange: "transform"
+        }}
+      />
+      <div
+        ref={orb2Ref}
+        style={{
+          position: "absolute",
+          top: "50%",
+          right: "10%",
+          width: 450,
+          height: 450,
+          borderRadius: "50%",
+          background: isDark
+            ? "radial-gradient(circle,rgba(99,102,241,0.04) 0%,transparent 70%)"
+            : "radial-gradient(circle,rgba(99,102,241,0.08) 0%,transparent 70%)",
+          animation: "orb2 30s ease-in-out infinite",
+          filter: "blur(80px)",
+          willChange: "transform"
+        }}
+      />
+      <div
+        ref={orb3Ref}
+        style={{
+          position: "absolute",
+          bottom: "10%",
+          left: "40%",
+          width: 400,
+          height: 400,
+          borderRadius: "50%",
+          background: isDark
+            ? "radial-gradient(circle,rgba(236,72,153,0.03) 0%,transparent 70%)"
+            : "radial-gradient(circle,rgba(236,72,153,0.06) 0%,transparent 70%)",
+          animation: "orb3 20s ease-in-out infinite",
+          filter: "blur(80px)",
+          willChange: "transform"
+        }}
+      />
     </div>
   );
 };
@@ -2154,8 +2229,8 @@ const App: React.FC = () => {
   const statsData = USE_MOCKS ? useMockGlobalStats() : useRealGlobalStats();
   const { stats } = statsData;
 
-  const trade = USE_MOCKS ? useMockTrade() : useRealTrade(wallet as any);
-  const createData = USE_MOCKS ? useMockCreateLaunch() : useRealCreateLaunch(wallet as any);
+  const trade = USE_MOCKS ? useMockTrade() : useRealTrade(wallet);
+  const createData = USE_MOCKS ? useMockCreateLaunch() : useRealCreateLaunch(wallet);
   const { createLaunch } = createData;
 
   // SOL Price from Pyth Oracle
@@ -2165,6 +2240,7 @@ const App: React.FC = () => {
   // Available wallets for selector
   const availableWallets = useAvailableWallets();
   const [showWalletSelector, setShowWalletSelector] = useState(false);
+  const [showNavMenu, setShowNavMenu] = useState(false);
 
   // Network connectivity status
   const isOnline = useOnlineStatus();
@@ -2297,7 +2373,8 @@ const App: React.FC = () => {
 
   // Transform trades
   const trades: TradeItem[] = useMemo(() => {
-    return (rawTrades || []).slice(0, 8).map((t) => ({
+    return (rawTrades || []).slice(0, 8).map((t, i) => ({
+      id: t.txSignature || `trade-${t.timestamp}-${i}`, // Unique key
       type: t.type as 'buy' | 'sell',
       trader: t.user?.slice(0, 4) + "..." + t.user?.slice(-4) || 'Unknown',
       sol: t.solAmount || 0,
@@ -2548,6 +2625,7 @@ const App: React.FC = () => {
     // Use real API data when not mocking
     if (!USE_MOCKS && userTradeActivity.length > 0) {
       return userTradeActivity.map((activity, i) => ({
+        id: activity.signature || `activity-${activity.timestamp}-${i}`,
         type: activity.type as 'buy' | 'sell',
         launch: activity.launch.name,
         symbol: activity.launch.symbol,
@@ -2560,12 +2638,12 @@ const App: React.FC = () => {
 
     // Mock data
     return [
-      { type: 'buy' as const, launch: 'OrbitCat', symbol: 'OCAT', amount: 50000000, sol: 2.5, time: '2m ago', gi: 0 },
-      { type: 'sell' as const, launch: 'SolPepe', symbol: 'SPEPE', amount: 25000000, sol: 1.8, time: '15m ago', gi: 1 },
-      { type: 'buy' as const, launch: 'DogWifRocket', symbol: 'DWRKT', amount: 100000000, sol: 5.0, time: '1h ago', gi: 2 },
-      { type: 'create' as const, launch: 'MyCoin', symbol: 'MINE', amount: 0, sol: 0.5, time: '2d ago', gi: 3 },
-      { type: 'buy' as const, launch: 'OrbitCat', symbol: 'OCAT', amount: 247000000, sol: 8.2, time: '3d ago', gi: 0 },
-      { type: 'sell' as const, launch: 'BonkOrbit', symbol: 'BORBIT', amount: 75000000, sol: 3.1, time: '5d ago', gi: 4 },
+      { id: 'act-1', type: 'buy' as const, launch: 'OrbitCat', symbol: 'OCAT', amount: 50000000, sol: 2.5, time: '2m ago', gi: 0 },
+      { id: 'act-2', type: 'sell' as const, launch: 'SolPepe', symbol: 'SPEPE', amount: 25000000, sol: 1.8, time: '15m ago', gi: 1 },
+      { id: 'act-3', type: 'buy' as const, launch: 'DogWifRocket', symbol: 'DWRKT', amount: 100000000, sol: 5.0, time: '1h ago', gi: 2 },
+      { id: 'act-4', type: 'create' as const, launch: 'MyCoin', symbol: 'MINE', amount: 0, sol: 0.5, time: '2d ago', gi: 3 },
+      { id: 'act-5', type: 'buy' as const, launch: 'OrbitCat', symbol: 'OCAT', amount: 247000000, sol: 8.2, time: '3d ago', gi: 0 },
+      { id: 'act-6', type: 'sell' as const, launch: 'BonkOrbit', symbol: 'BORBIT', amount: 75000000, sol: 3.1, time: '5d ago', gi: 4 },
     ];
   }, [wallet.connected, userTradeActivity]);
 
@@ -2586,6 +2664,106 @@ const App: React.FC = () => {
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
+  }
+
+  // Solana transaction error parser - provides user-friendly messages for common errors
+  function parseTransactionError(err: unknown): { message: string; detail?: string } {
+    const errorStr = err instanceof Error ? err.message : String(err);
+    const errorLower = errorStr.toLowerCase();
+
+    // Transaction expired (blockhash too old - Solana txs expire after ~1 minute)
+    if (errorLower.includes('blockhash') && (errorLower.includes('expired') || errorLower.includes('not found'))) {
+      return {
+        message: 'Transaction expired',
+        detail: 'Solana transactions expire after ~60 seconds. Please try again.'
+      };
+    }
+
+    // Slippage exceeded
+    if (errorLower.includes('slippage') || errorLower.includes('mintoken') || errorLower.includes('minsol')) {
+      return {
+        message: 'Price changed too much',
+        detail: 'The price moved beyond your slippage tolerance. Try increasing slippage or using a smaller amount.'
+      };
+    }
+
+    // Insufficient funds
+    if (errorLower.includes('insufficient') && errorLower.includes('lamports')) {
+      return {
+        message: 'Insufficient SOL balance',
+        detail: 'Make sure you have enough SOL for the trade plus network fees (~0.01 SOL).'
+      };
+    }
+
+    // Insufficient token balance
+    if (errorLower.includes('insufficient') && (errorLower.includes('token') || errorLower.includes('balance'))) {
+      return {
+        message: 'Insufficient token balance',
+        detail: 'You don\'t have enough tokens to complete this sale.'
+      };
+    }
+
+    // Simulation failed (catches issues before tx is sent)
+    if (errorLower.includes('simulation failed')) {
+      return {
+        message: 'Transaction simulation failed',
+        detail: 'The transaction would fail on-chain. Check your inputs and try again.'
+      };
+    }
+
+    // Security check failed
+    if (errorLower.includes('security') || errorLower.includes('unauthorized program')) {
+      return {
+        message: 'Security check failed',
+        detail: 'Transaction rejected for security reasons. Do not retry.'
+      };
+    }
+
+    // User rejected in wallet
+    if (errorLower.includes('user rejected') || errorLower.includes('user denied')) {
+      return {
+        message: 'Transaction cancelled',
+        detail: 'You cancelled the transaction in your wallet.'
+      };
+    }
+
+    // Wallet not connected
+    if (errorLower.includes('wallet not connected')) {
+      return {
+        message: 'Wallet disconnected',
+        detail: 'Please reconnect your wallet and try again.'
+      };
+    }
+
+    // Launch not active/tradeable
+    if (errorLower.includes('not active') || errorLower.includes('not tradeable') || errorLower.includes('graduated')) {
+      return {
+        message: 'Token not tradeable',
+        detail: 'This token has graduated to Orbit DEX or is no longer active.'
+      };
+    }
+
+    // Network/RPC errors
+    if (errorLower.includes('network') || errorLower.includes('timeout') || errorLower.includes('fetch')) {
+      return {
+        message: 'Network error',
+        detail: 'Check your connection and try again. Solana may be congested.'
+      };
+    }
+
+    // Max retries exceeded
+    if (errorLower.includes('max retries') || errorLower.includes('failed after')) {
+      return {
+        message: 'Transaction failed to confirm',
+        detail: 'Network congestion may be high. Wait a moment and try again.'
+      };
+    }
+
+    // Generic fallback - include original message for debugging
+    return {
+      message: 'Transaction failed',
+      detail: errorStr.length > 100 ? 'An unexpected error occurred. Please try again.' : errorStr
+    };
   }
 
   // Handlers
@@ -2629,7 +2807,10 @@ const App: React.FC = () => {
       // Reset success state after animation
       setTimeout(() => setTradeSuccess(false), 2000);
     } catch (err) {
-      showToast('Transaction failed. Please try again.', 'error');
+      const { message, detail } = parseTransactionError(err);
+      // Show detailed message for better UX - Solana transactions are atomic (all-or-nothing)
+      showToast(detail ? `${message}: ${detail}` : message, 'error');
+      console.error('Trade error:', err);
     } finally {
       setTradeLoading(false);
     }
@@ -2674,8 +2855,9 @@ const App: React.FC = () => {
       showToast(`Token "${data.name}" created successfully!`, 'success');
       go('launches');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create token';
-      showToast(message, 'error');
+      const { message, detail } = parseTransactionError(err);
+      showToast(detail ? `${message}: ${detail}` : message, 'error');
+      console.error('Create token error:', err);
     }
   }, [createLaunch, go, showToast, wallet.address]);
 
@@ -2690,180 +2872,291 @@ const App: React.FC = () => {
       zIndex: 50,
       backdropFilter: "blur(40px) saturate(1.8)",
       WebkitBackdropFilter: "blur(40px) saturate(1.8)",
-      background: isDark ? "rgba(17,24,39,0.85)" : "rgba(238,240,244,0.6)",
+      background: isDark ? "rgba(17,24,39,0.92)" : "rgba(255,255,255,0.85)",
       borderBottom: "1px solid var(--glass-border)"
     }}>
       <div style={{
         maxWidth: 1400,
         margin: "0 auto",
-        padding: "0 24px",
+        padding: "0 var(--space-6)",
         height: 56,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between"
       }}>
+        {/* Logo - Primary */}
         <div
           className="nav-logo"
-          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+          style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", cursor: "pointer" }}
           onClick={() => go('home')}
         >
-          <div style={{
-            width: 32,
-            height: 32,
-            filter: "drop-shadow(0 4px 12px rgba(34,197,94,0.35))"
-          }}>
-            <SvgLogo size={32} variant="badge" />
+          <div style={{ width: 28, height: 28 }}>
+            <SvgLogo size={28} variant="badge" />
           </div>
-          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.5, color: "var(--t1)" }}>
+          <span style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-bold)", letterSpacing: -0.5, color: "var(--t1)" }}>
             Launchr
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          {/* SOL/USD Price Display - Pyth Oracle */}
-          <Tooltip content="Live SOL/USD price from Pyth Oracle" position="bottom">
+
+        {/* Right side - Clean & minimal */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+          {/* Network Badge - Important for testnet awareness */}
+          <Tooltip content="You are connected to Solana Devnet (testnet)" position="bottom">
             <div
-              className="glass-pill sol-price-nav"
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
-                padding: "6px 12px",
-                borderRadius: 100,
-                background: "var(--glass2)",
-                border: "1px solid var(--glass-border)",
-                cursor: "default",
-                transition: "all 0.2s ease"
+                gap: "var(--space-1-5)",
+                padding: "var(--space-1-5) var(--space-2-5)",
+                borderRadius: "var(--radius-full)",
+                background: "rgba(251, 191, 36, 0.15)",
+                border: "1px solid rgba(251, 191, 36, 0.3)"
               }}
             >
-              {/* Solana Logo */}
-              <svg width={16} height={16} viewBox="0 0 397.7 311.7" fill="none" style={{ flexShrink: 0 }}>
-                <defs>
-                  <linearGradient id="sol-nav-gradient" x1="0" y1="0" x2="397.7" y2="311.7" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stopColor="#00FFA3" />
-                    <stop offset="100%" stopColor="#DC1FFF" />
-                  </linearGradient>
-                </defs>
-                <path d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z" fill="url(#sol-nav-gradient)"/>
-                <path d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z" fill="url(#sol-nav-gradient)"/>
-                <path d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z" fill="url(#sol-nav-gradient)"/>
-              </svg>
-              <span
-                className={solPrice.change24h > 0 ? 'price-up-animate' : solPrice.change24h < 0 ? 'price-down-animate' : ''}
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--t1)",
-                  fontFamily: "'JetBrains Mono', monospace",
-                  letterSpacing: "-0.02em"
-                }}
-              >
-                ${solPrice.price > 0 ? solPrice.price.toFixed(2) : '--'}
+              <span style={{
+                width: 6,
+                height: 6,
+                borderRadius: "var(--radius-full)",
+                background: "var(--amb)",
+                boxShadow: "0 0 6px var(--amb)"
+              }} />
+              <span style={{
+                fontSize: "var(--fs-xs)",
+                fontWeight: "var(--fw-semibold)",
+                color: "var(--amb)",
+                textTransform: "uppercase",
+                letterSpacing: 0.5
+              }}>
+                Devnet
               </span>
-              {solPrice.change24h !== 0 && (
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 2,
-                    fontSize: 10,
-                    fontWeight: 500,
-                    color: solPrice.change24h >= 0 ? "var(--grn)" : "var(--red)",
-                    padding: "2px 6px",
-                    borderRadius: 6,
-                    background: solPrice.change24h >= 0 ? "var(--gb)" : "var(--rb)"
-                  }}
-                >
-                  {solPrice.change24h >= 0 ? <SvgUp /> : <SvgDn />}
-                  {Math.abs(solPrice.change24h).toFixed(1)}%
-                </span>
-              )}
-              {/* Live indicator dot */}
-              <span
-                className="live-indicator"
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: "var(--grn)",
-                  marginLeft: 2
-                }}
-              />
             </div>
           </Tooltip>
-          <div style={{ width: 1, height: 20, background: 'var(--glass-border)', margin: '0 6px' }} />
-          <ConnectionStatus status={wallet.connected ? 'connected' : 'disconnected'} network="Devnet" />
-          <div style={{ width: 1, height: 20, background: 'var(--glass-border)', margin: '0 6px' }} />
-          <Tooltip content="Leaderboard" position="bottom">
+
+          {/* SOL Price - Compact inline display */}
+          <div
+            className="nav-sol-price"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              padding: "var(--space-2) var(--space-3)",
+              borderRadius: "var(--radius-sm)",
+              background: "var(--glass2)",
+              border: "1px solid var(--glass-border)"
+            }}
+          >
+            <svg width={14} height={14} viewBox="0 0 397.7 311.7" fill="none">
+              <defs>
+                <linearGradient id="sol-nav-gradient" x1="0" y1="0" x2="397.7" y2="311.7" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#00FFA3" />
+                  <stop offset="100%" stopColor="#DC1FFF" />
+                </linearGradient>
+              </defs>
+              <path d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z" fill="url(#sol-nav-gradient)"/>
+              <path d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z" fill="url(#sol-nav-gradient)"/>
+              <path d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z" fill="url(#sol-nav-gradient)"/>
+            </svg>
+            <span style={{
+              fontSize: "var(--fs-sm)",
+              fontWeight: "var(--fw-semibold)",
+              color: "var(--t1)",
+              fontFamily: "'JetBrains Mono', monospace"
+            }}>
+              ${solPrice.price > 0 ? solPrice.price.toFixed(2) : '--'}
+            </span>
+            {solPrice.change24h !== 0 && (
+              <span style={{
+                fontSize: "var(--fs-xs)",
+                fontWeight: "var(--fw-medium)",
+                color: solPrice.change24h >= 0 ? "var(--grn)" : "var(--red)"
+              }}>
+                {solPrice.change24h >= 0 ? '+' : ''}{solPrice.change24h.toFixed(1)}%
+              </span>
+            )}
+          </div>
+
+          {/* Menu toggle button */}
+          <div style={{ position: "relative" }}>
             <button
-              onClick={() => go('leaderboard')}
-              className={`glass-pill nav-icon-btn btn-press ${route.type === 'leaderboard' ? 'nav-active-indicator active' : ''}`}
-              style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, color: route.type === 'leaderboard' ? "var(--amb)" : "var(--t2)" })}
-            >
-              <SvgTrophy />
-            </button>
-          </Tooltip>
-          <Tooltip content="Telegram" position="bottom">
-            <a
-              href="https://t.me/launchrcommunity"
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={() => setShowNavMenu(!showNavMenu)}
               className="glass-pill nav-icon-btn btn-press"
-              style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, textDecoration: "none" })}
+              style={s(bsS, {
+                width: 40,
+                height: 40,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                color: showNavMenu ? "var(--grn)" : "var(--t2)"
+              })}
+              aria-label="Toggle menu"
+              aria-expanded={showNavMenu}
             >
-              <SvgTg />
-            </a>
-          </Tooltip>
-          <Tooltip content="Twitter" position="bottom">
-            <a
-              href="https://x.com/launchrapp"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="glass-pill nav-icon-btn btn-press"
-              style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, textDecoration: "none" })}
-            >
-              <SvgTw />
-            </a>
-          </Tooltip>
-          <Tooltip content={isDark ? "Light mode" : "Dark mode"} position="bottom">
-            <button
-              className="glass-pill nav-icon-btn btn-press"
-              onClick={() => {
-                const newTheme = isDark ? 'light' : 'dark';
-                setIsDark(!isDark);
-                setSettings(prev => ({ ...prev, theme: newTheme }));
-              }}
-              style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 })}
-            >
-              {isDark ? <SvgSun /> : <SvgMoon />}
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                {showNavMenu ? (
+                  <path d="M18 6L6 18M6 6l12 12" />
+                ) : (
+                  <>
+                    <path d="M4 6h16M4 12h16M4 18h16" />
+                  </>
+                )}
+              </svg>
             </button>
-          </Tooltip>
-          <Tooltip content="Settings" position="bottom">
-            <button
-              onClick={() => go('settings')}
-              className={`glass-pill nav-icon-btn btn-press ${route.type === 'settings' ? 'nav-active-indicator active' : ''}`}
-              style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, color: route.type === 'settings' ? "var(--grn)" : "var(--t2)" })}
-            >
-              <SvgSettings />
-            </button>
-          </Tooltip>
-          {wallet.connected && (
-            <button
-              onClick={() => go('profile')}
-              className="glass-pill"
-              style={s(bsS, { width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 })}
-            >
-              <SvgUser />
-            </button>
-          )}
+
+            {/* Dropdown Menu */}
+            {showNavMenu && (
+              <>
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                  onClick={() => setShowNavMenu(false)}
+                />
+                <div
+                  className="nav-dropdown"
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + var(--space-2))",
+                    right: 0,
+                    minWidth: 200,
+                    padding: "var(--space-2)",
+                    borderRadius: "var(--radius-lg)",
+                    background: isDark ? "rgba(17,24,39,0.98)" : "rgba(255,255,255,0.98)",
+                    border: "1px solid var(--glass-border)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+                    zIndex: 50,
+                    animation: "fadeIn 0.15s ease"
+                  }}
+                >
+                  {/* Navigation items */}
+                  <button
+                    onClick={() => { go('leaderboard'); setShowNavMenu(false); }}
+                    className="interactive-hover btn-press"
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-3)",
+                      padding: "var(--space-3)",
+                      borderRadius: "var(--radius-sm)",
+                      border: "none",
+                      background: route.type === 'leaderboard' ? "var(--glass2)" : "transparent",
+                      color: route.type === 'leaderboard' ? "var(--grn)" : "var(--t1)",
+                      fontSize: "var(--fs-base)",
+                      fontWeight: "var(--fw-medium)",
+                      cursor: "pointer",
+                      transition: "background var(--transition-fast)",
+                      fontFamily: "inherit"
+                    }}
+                  >
+                    <SvgTrophy /> Leaderboard
+                  </button>
+                  <button
+                    onClick={() => { go('settings'); setShowNavMenu(false); }}
+                    className="interactive-hover btn-press"
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-3)",
+                      padding: "var(--space-3)",
+                      borderRadius: "var(--radius-sm)",
+                      border: "none",
+                      background: route.type === 'settings' ? "var(--glass2)" : "transparent",
+                      color: route.type === 'settings' ? "var(--grn)" : "var(--t1)",
+                      fontSize: "var(--fs-base)",
+                      fontWeight: "var(--fw-medium)",
+                      cursor: "pointer",
+                      transition: "background var(--transition-fast)",
+                      fontFamily: "inherit"
+                    }}
+                  >
+                    <SvgSettings /> Settings
+                  </button>
+
+                  {/* Divider */}
+                  <div style={{ height: 1, background: "var(--glass-border)", margin: "var(--space-2) 0" }} />
+
+                  {/* Theme toggle */}
+                  <button
+                    onClick={() => {
+                      const newTheme = isDark ? 'light' : 'dark';
+                      setIsDark(!isDark);
+                      setSettings(prev => ({ ...prev, theme: newTheme }));
+                    }}
+                    className="interactive-hover btn-press"
+                    aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-3)",
+                      padding: "var(--space-3)",
+                      borderRadius: "var(--radius-sm)",
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--t1)",
+                      fontSize: "var(--fs-base)",
+                      fontWeight: "var(--fw-medium)",
+                      cursor: "pointer",
+                      transition: "background var(--transition-fast)",
+                      fontFamily: "inherit"
+                    }}
+                  >
+                    {isDark ? <SvgSun /> : <SvgMoon />}
+                    {isDark ? "Light Mode" : "Dark Mode"}
+                  </button>
+
+                  {/* Divider */}
+                  <div style={{ height: 1, background: "var(--glass-border)", margin: "var(--space-2) 0" }} />
+
+                  {/* Social links */}
+                  <div style={{ display: "flex", gap: "var(--space-1)", padding: "var(--space-1) var(--space-2)" }}>
+                    <a
+                      href="https://t.me/launchrcommunity"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="glass-pill nav-icon-btn btn-press"
+                      style={{ width: "var(--btn-md)", height: "var(--btn-md)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none", borderRadius: "var(--radius-sm)" }}
+                      aria-label="Join Telegram"
+                    >
+                      <SvgTg />
+                    </a>
+                    <a
+                      href="https://x.com/launchrapp"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="glass-pill nav-icon-btn btn-press"
+                      style={{ width: "var(--btn-md)", height: "var(--btn-md)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none", borderRadius: "var(--radius-sm)" }}
+                      aria-label="Follow on Twitter"
+                    >
+                      <SvgTw />
+                    </a>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Connect Wallet - Primary CTA */}
           <button
             onClick={() => wallet.connected ? go('profile') : setShowWalletSelector(true)}
-            className={wallet.connected ? "nav-icon-btn" : "btn-premium-glow nav-connect-btn"}
-            style={s(bpS, { height: 34, padding: "0 18px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 })}
+            className={wallet.connected ? "glass-pill" : "btn-premium-glow nav-connect-btn"}
+            style={s(bpS, {
+              height: "var(--btn-md)",
+              padding: wallet.connected ? "0 var(--space-4)" : "0 var(--space-5)",
+              fontSize: "var(--fs-base)",
+              fontWeight: "var(--fw-semibold)",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              borderRadius: "var(--radius-md)"
+            })}
           >
             {wallet.connected ? (
               <>
-                <span className="live-indicator" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--grn)" }} />
-                {wallet.address?.slice(0, 4) + "..." + wallet.address?.slice(-4)}
+                <span style={{ width: 6, height: 6, borderRadius: "var(--radius-full)", background: "var(--grn)" }} />
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "var(--fs-sm)" }}>
+                  {wallet.address?.slice(0, 4)}...{wallet.address?.slice(-4)}
+                </span>
               </>
             ) : (
               <>
@@ -2883,7 +3176,7 @@ const App: React.FC = () => {
   const Foot = () => (
     <footer style={{
       borderTop: "1px solid var(--glass-border)",
-      padding: "18px 24px",
+      padding: "var(--space-5) var(--space-6)",
       position: "relative",
       zIndex: 1
     }}>
@@ -2894,20 +3187,10 @@ const App: React.FC = () => {
         justifyContent: "space-between",
         alignItems: "center",
         flexWrap: "wrap",
-        gap: 12
+        gap: "var(--space-3)"
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{
-            width: 20,
-            height: 20,
-            filter: "drop-shadow(0 2px 6px rgba(34,197,94,0.25))"
-          }}>
-            <SvgLogo size={20} variant="badge" />
-          </div>
-          <span style={{ fontSize: 12, color: "var(--t3)", fontWeight: 600, letterSpacing: -0.3 }}>Launchr</span>
-          <span style={{ fontSize: 10, color: "var(--t3)", opacity: 0.4 }}>© 2026</span>
-        </div>
-        <div style={{ display: "flex", gap: 20, fontSize: 12 }}>
+        <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>© 2026 Launchr</span>
+        <div style={{ display: "flex", gap: "var(--space-5)", fontSize: "var(--fs-xs)" }}>
           <a
             href="https://docs.launchr.app"
             target="_blank"
@@ -2951,111 +3234,99 @@ const App: React.FC = () => {
       alignItems: "center",
       position: "relative",
       zIndex: 1,
-      padding: "40px 0"
+      padding: "var(--space-12) 0"
     }}>
       <div
         className="hero-grid"
         style={{
           maxWidth: 1400,
           margin: "0 auto",
-          padding: "0 24px",
-          width: "100%",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 56,
-          alignItems: "center"
+          padding: "0 var(--space-6)",
+          width: "100%"
         }}
       >
+        {/* Left: Value prop & CTA */}
         <div style={ani("fu", 0)}>
-          <h1 className="hero-heading" style={{ fontSize: 54, fontWeight: 700, letterSpacing: -2, lineHeight: 1.06, color: "var(--t1)" }}>
+          <h1 className="hero-heading" style={{ fontSize: "var(--fs-5xl)", fontWeight: "var(--fw-bold)", letterSpacing: -2, lineHeight: "var(--lh-tight)", color: "var(--t1)" }}>
             Launch into<br />
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 10, marginTop: 6, justifyContent: "inherit" }}>
-              <span style={{
-                width: 44,
-                height: 44,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                filter: "drop-shadow(0 6px 20px rgba(34,197,94,0.4))",
-                flexShrink: 0
-              }}>
-                <SvgLogo size={44} variant="badge" />
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-3)", marginTop: 8 }}>
+              <span style={{ width: 48, height: 48, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <SvgLogo size={48} variant="badge" />
               </span>
               Orbit
             </span>
           </h1>
           <p className="hero-subheading" style={s(ani("fu", 0.08), {
-            marginTop: 20,
-            fontSize: 16,
-            lineHeight: 1.7,
-            maxWidth: 420,
-            color: "var(--t2)",
-            fontWeight: 400
+            marginTop: "var(--space-4)",
+            fontSize: "var(--fs-lg)",
+            lineHeight: "var(--lh-relaxed)",
+            maxWidth: 400,
+            color: "var(--t2)"
           })}>
-            Fair-launch tokens with bonding curve pricing that graduate into Orbit Finance DLMM liquidity. No presales. No rugs. Just launch.
+            Fair-launch tokens with bonding curve pricing. No presales, no rugs. Just launch.
           </p>
-          <div className="hero-buttons" style={s(ani("fu", 0.16), { display: "flex", gap: 10, marginTop: 30, flexWrap: "wrap" })}>
+          <div className="hero-buttons" style={s(ani("fu", 0.16), { display: "flex", alignItems: "center", gap: "var(--space-4)", marginTop: "var(--space-8)", flexWrap: "wrap" })}>
             <button
               onClick={() => go('create')}
-              className="btn-press btn-premium-glow ripple-container"
-              style={s(bpS, { height: 44, padding: "0 24px", fontSize: 14, display: "flex", alignItems: "center", gap: 8, justifyContent: "center" })}
+              className="btn-press btn-premium-glow"
+              style={s(bpS, { height: "var(--btn-lg)", padding: "0 var(--space-6)", fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", display: "flex", alignItems: "center", gap: "var(--space-2)" })}
             >
-              <SvgPlus /> Create Launch
+              <SvgPlus /> Launch Token
             </button>
             <button
-              className="glass-pill btn-press card-lift interactive-hover"
               onClick={() => go('launches')}
-              style={s(bsS, { height: 44, padding: "0 24px", fontSize: 14, fontWeight: 500, display: "flex", alignItems: "center", gap: 8, justifyContent: "center" })}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--t2)",
+                fontSize: "var(--fs-md)",
+                fontWeight: "var(--fw-medium)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-1-5)",
+                padding: "var(--space-2) 0",
+                transition: "color var(--transition-fast)"
+              }}
+              className="interactive-hover"
             >
-              <SvgChart /> Explore Markets
+              Explore Markets <span style={{ fontSize: "var(--fs-lg)" }}>→</span>
             </button>
           </div>
         </div>
-        <div className="glass-card card-lift hover-scale-premium card-3d" style={s(ani("si", 0.1), { padding: 40 })}>
-          <div style={{ textAlign: "center" }}>
-            <h2 style={{ fontSize: 36, fontWeight: 700, letterSpacing: -1, color: "var(--t1)" }}>Permissionless</h2>
-            <h2 style={{ fontSize: 36, fontWeight: 700, letterSpacing: -1, color: "var(--t2)", marginTop: 2 }}>Token Launches</h2>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 12 }}>
-              <LiveDot />
-              <span style={{ fontSize: 12, color: "var(--t2)" }}>Live on Devnet</span>
+
+        {/* Right: Stats */}
+        <div className="glass-card hero-stats" style={s(ani("si", 0.1), { padding: "var(--space-8)" })}>
+          <div className="stats-grid">
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "var(--fs-4xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                <AnimatedNumber value={stats.totalLaunches} />
+              </div>
+              <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: "var(--space-1)", fontWeight: "var(--fw-medium)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                Launches
+              </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginTop: 28 }} className="grid-stagger stats-grid-3 stat-card-animate">
-              <HoverCard className="glass-card-inner" style={{ padding: 18 }} glowColor="rgba(99, 102, 241, 0.15)">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 600, letterSpacing: 0.5 }}>LAUNCHES</span>
-                  <SvgFire />
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "var(--t1)" }}>
-                  <AnimatedNumber value={stats.totalLaunches} />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 11, color: "var(--grn)" }}>
-                  <SvgUp /> +12 this week
-                </div>
-              </HoverCard>
-              <HoverCard className="glass-card-inner" style={{ padding: 18 }} glowColor="rgba(34, 197, 94, 0.15)">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 600, letterSpacing: 0.5 }}>GRADUATED</span>
-                  <SvgTrophy />
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "var(--grn)" }}>
-                  <AnimatedNumber value={stats.totalGraduated} />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 11, color: "var(--t3)" }}>
-                  {Math.round((stats.totalGraduated / stats.totalLaunches) * 100) || 0}% success rate
-                </div>
-              </HoverCard>
-              <HoverCard className="glass-card-inner" style={{ padding: 18 }} glowColor="rgba(251, 191, 36, 0.15)">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 600, letterSpacing: 0.5 }}>VOLUME</span>
-                  <SvgChart />
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "var(--t1)" }}>
-                  <AnimatedNumber value={stats.totalVolume / 1000} prefix="$" suffix="K" decimals={1} />
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 11, color: "var(--grn)" }}>
-                  <SvgUp /> +23.4% 24h
-                </div>
-              </HoverCard>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "var(--fs-4xl)", fontWeight: "var(--fw-bold)", color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
+                <AnimatedNumber value={stats.totalGraduated} />
+              </div>
+              <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: "var(--space-1)", fontWeight: "var(--fw-medium)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                Graduated
+              </div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "var(--fs-4xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                <AnimatedNumber value={stats.totalVolume / 1000} prefix="$" suffix="K" decimals={0} />
+              </div>
+              <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: "var(--space-1)", fontWeight: "var(--fw-medium)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                Volume
+              </div>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid var(--glass-border)", marginTop: "var(--space-6)", paddingTop: "var(--space-5)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--space-2)" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "var(--radius-full)", background: "var(--grn)" }} />
+              <span style={{ fontSize: "var(--fs-base)", color: "var(--t2)" }}>Live on Devnet</span>
             </div>
           </div>
         </div>
@@ -3073,10 +3344,10 @@ const App: React.FC = () => {
         key={k}
         onClick={() => setTab(k)}
         style={{
-          padding: "6px 16px",
-          borderRadius: 100,
-          fontSize: 12,
-          fontWeight: 500,
+          padding: "var(--space-1) var(--space-4)",
+          borderRadius: "var(--radius-full)",
+          fontSize: "var(--fs-xs)",
+          fontWeight: "var(--fw-medium)",
           cursor: "pointer",
           border: "none",
           transition: "all .15s",
@@ -3085,20 +3356,20 @@ const App: React.FC = () => {
           fontFamily: "inherit",
           display: "flex",
           alignItems: "center",
-          gap: 6
+          gap: "var(--space-1)"
         }}
       >
         {l}
         {badge && (
           <span style={{
-            fontSize: 9,
-            padding: "2px 6px",
-            borderRadius: 100,
+            fontSize: "var(--fs-3xs)",
+            padding: "2px var(--space-1)",
+            borderRadius: "var(--radius-full)",
             background: tab === k ? "rgba(255,255,255,0.2)" : "var(--rb)",
             color: tab === k ? "var(--pt)" : "var(--red)",
-            fontWeight: 600,
+            fontWeight: "var(--fw-semibold)",
             textTransform: "uppercase",
-            letterSpacing: 0.3
+            letterSpacing: "0.03em"
           }}>
             {badge}
           </span>
@@ -3111,10 +3382,10 @@ const App: React.FC = () => {
         key={k}
         onClick={() => setSort(k)}
         style={{
-          padding: "4px 12px",
-          borderRadius: 100,
-          fontSize: 11,
-          fontWeight: 500,
+          padding: "var(--space-1) var(--space-3)",
+          borderRadius: "var(--radius-full)",
+          fontSize: "var(--fs-xs)",
+          fontWeight: "var(--fw-medium)",
           cursor: "pointer",
           border: "none",
           transition: "all .12s",
@@ -3128,40 +3399,40 @@ const App: React.FC = () => {
     );
 
     const thS: React.CSSProperties = {
-      fontWeight: 600,
-      padding: "10px 0",
+      fontWeight: "var(--fw-semibold)",
+      padding: "var(--space-2) 0",
       borderBottom: "1px solid var(--glass-border)",
-      fontSize: 10,
-      letterSpacing: 0.8,
+      fontSize: "var(--fs-xs)",
+      letterSpacing: "0.08em",
       color: "var(--t3)",
       textTransform: "uppercase"
     };
 
     return (
-      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "36px 24px", position: "relative", zIndex: 1 }}>
-        <div className="glass-card" style={s(ani("fu", 0), { padding: "26px 28px" })}>
+      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "var(--space-10) var(--space-6)", position: "relative", zIndex: 1 }}>
+        <div className="glass-card" style={s(ani("fu", 0), { padding: "var(--space-6) var(--space-7)" })}>
           <div style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-start",
-            marginBottom: 22,
+            marginBottom: "var(--space-6)",
             flexWrap: "wrap",
-            gap: 14
+            gap: "var(--space-4)"
           }}>
             <div>
-              <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5, color: "var(--t1)" }}>Launches</h1>
-              <p style={{ fontSize: 13, marginTop: 4, color: "var(--t2)", fontWeight: 400 }}>
+              <h1 style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", letterSpacing: "var(--ls-tight)", color: "var(--t1)" }}>Launches</h1>
+              <p style={{ fontSize: "var(--fs-sm)", marginTop: "var(--space-1)", color: "var(--t2)", fontWeight: 400 }}>
                 Explore live bonding curves and graduated tokens.
               </p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
               <div style={s(inpS, {
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
-                height: 38,
-                padding: "0 14px",
-                borderRadius: 100,
+                gap: "var(--space-2)",
+                height: "var(--btn-md)",
+                padding: "0 var(--space-4)",
+                borderRadius: "var(--radius-full)",
                 transition: "border-color 0.15s ease, box-shadow 0.15s ease"
               })}>
                 <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--t3)" strokeWidth={2} strokeLinecap="round">
@@ -3178,7 +3449,7 @@ const App: React.FC = () => {
                     padding: 0,
                     height: "100%",
                     width: 130,
-                    fontSize: 13,
+                    fontSize: "var(--fs-sm)",
                     color: "var(--t1)",
                     outline: "none",
                     fontFamily: "inherit"
@@ -3187,6 +3458,8 @@ const App: React.FC = () => {
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
+                    className="interactive-hover"
+                    aria-label="Clear search"
                     style={{
                       background: "var(--glass3)",
                       border: "none",
@@ -3208,25 +3481,26 @@ const App: React.FC = () => {
                 <button
                   onClick={handleRefresh}
                   className="glass-pill interactive-hover btn-press"
-                  style={s(bsS, { width: 38, height: 38, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" })}
+                  style={s(bsS, { width: "var(--btn-md)", height: "var(--btn-md)", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" })}
+                  aria-label="Refresh market data"
                 >
                   <SvgRefresh spinning={isRefreshing} />
                 </button>
               </Tooltip>
               <button
                 onClick={() => go('create')}
-                style={s(bpS, { height: 38, padding: "0 16px", fontSize: 13, display: "flex", alignItems: "center", gap: 5 })}
+                style={s(bpS, { height: "var(--btn-md)", padding: "0 var(--space-4)", fontSize: "var(--fs-sm)", display: "flex", alignItems: "center", gap: "var(--space-1)" })}
               >
                 <SvgPlus /> Create
               </button>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-5)", flexWrap: "wrap" }}>
             <div style={{
               display: "flex",
-              gap: 3,
-              padding: 3,
-              borderRadius: 100,
+              gap: "var(--space-1)",
+              padding: "var(--space-1)",
+              borderRadius: "var(--radius-full)",
               background: "var(--glass2)",
               backdropFilter: "blur(8px)",
               WebkitBackdropFilter: "blur(8px)"
@@ -3240,12 +3514,12 @@ const App: React.FC = () => {
               onClick={() => setShowFilters(!showFilters)}
               className="glass-pill"
               style={s(bsS, {
-                height: 32,
-                padding: "0 14px",
-                fontSize: 12,
+                height: "var(--btn-sm)",
+                padding: "0 var(--space-4)",
+                fontSize: "var(--fs-xs)",
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
+                gap: "var(--space-1)",
                 color: hasActiveFilters ? "var(--grn)" : "var(--t2)"
               })}
             >
@@ -3263,111 +3537,113 @@ const App: React.FC = () => {
           </div>
           {/* Advanced Filters Panel */}
           {showFilters && (
-            <div className="glass-card-inner" style={s(ani("fu", 0), { padding: 20, marginBottom: 18, borderRadius: 16 })}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>Advanced Filters</h4>
-                <div style={{ display: "flex", gap: 8 }}>
+            <div className="glass-card-inner" style={s(ani("fu", 0), { padding: "var(--space-5)", marginBottom: "var(--space-5)", borderRadius: "var(--card-radius)" })}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-4)" }}>
+                <h4 style={{ fontSize: "var(--fs-sm)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>Advanced Filters</h4>
+                <div style={{ display: "flex", gap: "var(--space-2)" }}>
                   {hasActiveFilters && (
                     <button
                       onClick={clearFilters}
-                      style={{ background: "none", border: "none", fontSize: 12, color: "var(--red)", cursor: "pointer", fontFamily: "inherit" }}
+                      className="interactive-hover"
+                      style={{ background: "none", border: "none", fontSize: "var(--fs-xs)", color: "var(--red)", cursor: "pointer", fontFamily: "inherit" }}
                     >
                       Clear All
                     </button>
                   )}
                   <button
                     onClick={() => setShowFilters(false)}
+                    className="interactive-hover"
                     style={{ background: "none", border: "none", color: "var(--t3)", cursor: "pointer", padding: 0 }}
                   >
                     <SvgX />
                   </button>
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "var(--space-4)" }}>
                 {/* Market Cap Filter */}
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 500, color: "var(--t3)", display: "block", marginBottom: 6 }}>MARKET CAP</label>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <label style={{ fontSize: "var(--fs-xs)", fontWeight: "var(--fw-medium)", color: "var(--t3)", display: "block", marginBottom: "var(--space-1)" }}>MARKET CAP</label>
+                  <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
                     <input
                       type="number"
                       placeholder="Min"
                       value={filters.minMarketCap || ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, minMarketCap: e.target.value ? parseFloat(e.target.value) : null }))}
-                      style={s(inpS, { width: "100%", height: 36, padding: "0 10px", fontSize: 12, fontFamily: "inherit" })}
+                      style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
-                    <span style={{ color: "var(--t3)", fontSize: 12 }}>to</span>
+                    <span style={{ color: "var(--t3)", fontSize: "var(--fs-xs)" }}>to</span>
                     <input
                       type="number"
                       placeholder="Max"
                       value={filters.maxMarketCap || ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, maxMarketCap: e.target.value ? parseFloat(e.target.value) : null }))}
-                      style={s(inpS, { width: "100%", height: 36, padding: "0 10px", fontSize: 12, fontFamily: "inherit" })}
+                      style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
                   </div>
                 </div>
                 {/* Holders Filter */}
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 500, color: "var(--t3)", display: "block", marginBottom: 6 }}>HOLDERS</label>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <label style={{ fontSize: "var(--fs-xs)", fontWeight: "var(--fw-medium)", color: "var(--t3)", display: "block", marginBottom: "var(--space-1)" }}>HOLDERS</label>
+                  <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
                     <input
                       type="number"
                       placeholder="Min"
                       value={filters.minHolders || ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, minHolders: e.target.value ? parseInt(e.target.value) : null }))}
-                      style={s(inpS, { width: "100%", height: 36, padding: "0 10px", fontSize: 12, fontFamily: "inherit" })}
+                      style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
-                    <span style={{ color: "var(--t3)", fontSize: 12 }}>to</span>
+                    <span style={{ color: "var(--t3)", fontSize: "var(--fs-xs)" }}>to</span>
                     <input
                       type="number"
                       placeholder="Max"
                       value={filters.maxHolders || ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, maxHolders: e.target.value ? parseInt(e.target.value) : null }))}
-                      style={s(inpS, { width: "100%", height: 36, padding: "0 10px", fontSize: 12, fontFamily: "inherit" })}
+                      style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
                   </div>
                 </div>
                 {/* Age Filter */}
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 500, color: "var(--t3)", display: "block", marginBottom: 6 }}>AGE (hours)</label>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <label style={{ fontSize: "var(--fs-xs)", fontWeight: "var(--fw-medium)", color: "var(--t3)", display: "block", marginBottom: "var(--space-1)" }}>AGE (hours)</label>
+                  <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
                     <input
                       type="number"
                       placeholder="Min"
                       value={filters.minAge || ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, minAge: e.target.value ? parseFloat(e.target.value) : null }))}
-                      style={s(inpS, { width: "100%", height: 36, padding: "0 10px", fontSize: 12, fontFamily: "inherit" })}
+                      style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
-                    <span style={{ color: "var(--t3)", fontSize: 12 }}>to</span>
+                    <span style={{ color: "var(--t3)", fontSize: "var(--fs-xs)" }}>to</span>
                     <input
                       type="number"
                       placeholder="Max"
                       value={filters.maxAge || ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, maxAge: e.target.value ? parseFloat(e.target.value) : null }))}
-                      style={s(inpS, { width: "100%", height: 36, padding: "0 10px", fontSize: 12, fontFamily: "inherit" })}
+                      style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
                   </div>
                 </div>
               </div>
               {/* Quick Filter Presets */}
-              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <div style={{ display: "flex", gap: "var(--space-2)", marginTop: "var(--space-4)" }}>
                 <button
                   onClick={() => setFilters({ minMarketCap: null, maxMarketCap: 10000, minAge: null, maxAge: null, minHolders: null, maxHolders: null })}
                   className="glass-pill"
-                  style={s(bsS, { height: 28, padding: "0 12px", fontSize: 11 })}
+                  style={s(bsS, { height: "var(--btn-sm)", padding: "0 var(--space-3)", fontSize: "var(--fs-xs)" })}
                 >
                   Low MCap (&lt;$10K)
                 </button>
                 <button
                   onClick={() => setFilters({ minMarketCap: null, maxMarketCap: null, minAge: null, maxAge: 24, minHolders: null, maxHolders: null })}
                   className="glass-pill"
-                  style={s(bsS, { height: 28, padding: "0 12px", fontSize: 11 })}
+                  style={s(bsS, { height: "var(--btn-sm)", padding: "0 var(--space-3)", fontSize: "var(--fs-xs)" })}
                 >
                   New (&lt;24h)
                 </button>
                 <button
                   onClick={() => setFilters({ minMarketCap: null, maxMarketCap: null, minAge: null, maxAge: null, minHolders: 100, maxHolders: null })}
                   className="glass-pill"
-                  style={s(bsS, { height: 28, padding: "0 12px", fontSize: 11 })}
+                  style={s(bsS, { height: "var(--btn-sm)", padding: "0 var(--space-3)", fontSize: "var(--fs-xs)" })}
                 >
                   100+ Holders
                 </button>
@@ -3375,7 +3651,7 @@ const App: React.FC = () => {
             </div>
           )}
           {tab === "all" && (
-            <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
+            <div style={{ display: "flex", gap: "var(--space-1)", marginBottom: "var(--space-4)" }}>
               {srtBtn("volume", "Volume")}
               {srtBtn("newest", "Newest")}
               {srtBtn("mcap", "Market Cap")}
@@ -3386,42 +3662,34 @@ const App: React.FC = () => {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
-                  <th style={s(thS, { textAlign: "center", width: 40 })}></th>
+                  <th style={s(thS, { textAlign: "center", width: 36 })}></th>
                   <th style={s(thS, { textAlign: "left" })}>Token</th>
                   <th style={s(thS, { textAlign: "right" })}>Price</th>
-                  <th style={s(thS, { textAlign: "center", width: 70 })}>7D</th>
                   <th style={s(thS, { textAlign: "right" })}>24h</th>
-                  <th style={s(thS, { textAlign: "right" })}>Volume</th>
                   <th style={s(thS, { textAlign: "right" })}>MCap</th>
-                  <th style={s(thS, { textAlign: "right" })}>Holders</th>
-                  <th style={s(thS, { textAlign: "right" })}>Progress</th>
-                  <th style={s(thS, { textAlign: "right" })}>Status</th>
+                  <th style={s(thS, { textAlign: "right", width: 140 })}>Progress</th>
                 </tr>
               </thead>
               <tbody>
                 {/* Loading skeleton rows */}
                 {launchesLoading && [...Array(6)].map((_, i) => (
                   <tr key={`skeleton-${i}`} className="skeleton-loading" style={{ borderBottom: "1px solid var(--glass-border)" }}>
-                    <td style={{ padding: "13px 0", textAlign: "center" }}>
-                      <Skeleton width={20} height={20} borderRadius={4} />
+                    <td style={{ padding: "12px 0", textAlign: "center" }}>
+                      <Skeleton width={18} height={18} borderRadius={4} />
                     </td>
-                    <td style={{ padding: "13px 0" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <Skeleton width={34} height={34} borderRadius={12} />
+                    <td style={{ padding: "12px 0" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2-5)" }}>
+                        <Skeleton width={32} height={32} borderRadius={10} />
                         <div>
-                          <Skeleton width={80} height={14} />
+                          <Skeleton width={80} height={13} />
                           <div style={{ marginTop: 4 }}><Skeleton width={40} height={10} /></div>
                         </div>
                       </div>
                     </td>
-                    <td style={{ textAlign: "right" }}><Skeleton width={60} height={14} /></td>
-                    <td style={{ textAlign: "center", padding: "0 8px" }}><Skeleton width={50} height={20} /></td>
-                    <td style={{ textAlign: "right" }}><Skeleton width={50} height={14} /></td>
-                    <td style={{ textAlign: "right" }}><Skeleton width={60} height={14} /></td>
-                    <td style={{ textAlign: "right" }}><Skeleton width={60} height={14} /></td>
-                    <td style={{ textAlign: "right" }}><Skeleton width={40} height={14} /></td>
-                    <td style={{ textAlign: "right" }}><Skeleton width={52} height={5} /></td>
-                    <td style={{ textAlign: "right" }}><Skeleton width={60} height={22} borderRadius={100} /></td>
+                    <td style={{ textAlign: "right" }}><Skeleton width={60} height={13} /></td>
+                    <td style={{ textAlign: "right" }}><Skeleton width={50} height={13} /></td>
+                    <td style={{ textAlign: "right" }}><Skeleton width={50} height={13} /></td>
+                    <td style={{ textAlign: "right" }}><Skeleton width={100} height={6} /></td>
                   </tr>
                 ))}
                 {/* Actual data rows */}
@@ -3429,54 +3697,52 @@ const App: React.FC = () => {
                   <tr
                     key={l.id}
                     onClick={() => go('detail', l)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('detail', l); }}}
+                    tabIndex={0}
+                    aria-label={`View ${l.name} token details`}
                     className="hoverable stagger-item table-row-hover stagger-reveal"
                     style={{
                       cursor: "pointer",
                       borderBottom: "1px solid var(--glass-border)",
                     }}
                   >
-                    <td style={{ padding: "13px 0", textAlign: "center" }}>
+                    <td style={{ padding: "12px 0", textAlign: "center" }}>
                       <button
                         onClick={(e) => toggleWatchlist(l.id, e)}
-                        className="star-btn"
+                        className="star-btn interactive-hover"
+                        aria-label={isWatchlisted(l.id) ? `Remove ${l.symbol} from watchlist` : `Add ${l.symbol} to watchlist`}
                         style={{
                           background: "none",
                           border: "none",
                           cursor: "pointer",
                           color: isWatchlisted(l.id) ? "var(--amb)" : "var(--t3)",
-                          padding: 4,
+                          padding: "var(--space-1)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           transition: "color .15s, transform .15s"
                         }}
-                        title={isWatchlisted(l.id) ? "Remove from watchlist" : "Add to watchlist"}
                       >
                         <SvgStar filled={isWatchlisted(l.id)} />
                       </button>
                     </td>
-                    <td style={{ padding: "13px 0" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <Avatar gi={l.gi} size={34} imageUrl={getTokenImageUrl(l.publicKey)} symbol={l.symbol} />
+                    <td style={{ padding: "12px 0" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2-5)" }}>
+                        <Avatar gi={l.gi} size={32} imageUrl={getTokenImageUrl(l.publicKey)} symbol={l.symbol} />
                         <div>
-                          <div style={{ fontWeight: 500, fontSize: 13, color: "var(--t1)" }}>{l.name}</div>
-                          <div style={{ fontSize: 11, color: "var(--t3)" }}>{l.symbol}</div>
+                          <div style={{ fontWeight: "var(--fw-medium)", fontSize: "var(--fs-base)", color: "var(--t1)" }}>{l.name}</div>
+                          <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>{l.symbol}</div>
                         </div>
                       </div>
                     </td>
-                    <td style={{ textAlign: "right", fontSize: 13, color: "var(--t1)", fontWeight: 500, fontFamily: "'JetBrains Mono',monospace" }}>
+                    <td style={{ textAlign: "right", fontSize: "var(--fs-base)", color: "var(--t1)", fontWeight: "var(--fw-medium)", fontFamily: "'JetBrains Mono',monospace" }}>
                       {fP(l.price)}
                     </td>
-                    <td style={{ textAlign: "center", padding: "0 8px" }}>
-                      <Sparkline data={sparklineData[l.id] || []} width={50} height={20} />
-                    </td>
                     <td style={{ textAlign: "right" }}><Chg v={l.priceChange24h} /></td>
-                    <td style={{ textAlign: "right", fontSize: 13, color: "var(--t1)" }}>{fm(l.volume24h)}</td>
-                    <td style={{ textAlign: "right", fontSize: 13, color: "var(--t1)" }}>{fm(l.marketCap)}</td>
-                    <td style={{ textAlign: "right", fontSize: 13, color: "var(--t2)" }}>{l.holders.toLocaleString()}</td>
+                    <td style={{ textAlign: "right", fontSize: "var(--fs-base)", color: "var(--t2)" }}>{fm(l.marketCap)}</td>
                     <td style={{ textAlign: "right", padding: "12px 0" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7 }}>
-                        <div style={{ width: 52, height: 5, borderRadius: 3, overflow: "hidden", background: "var(--glass2)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "var(--space-2)" }}>
+                        <div style={{ width: 80, height: 6, borderRadius: 3, overflow: "hidden", background: "var(--glass2)" }}>
                           <div
                             className="progress-animate"
                             style={{
@@ -3487,12 +3753,11 @@ const App: React.FC = () => {
                             }}
                           />
                         </div>
-                        <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "var(--t3)", minWidth: 26, textAlign: "right" }}>
+                        <span style={{ fontSize: "var(--fs-xs)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t3)", minWidth: 32, textAlign: "right" }}>
                           {l.progress}%
                         </span>
                       </div>
                     </td>
-                    <td style={{ textAlign: "right" }}><Badge status={l.status} isDark={isDark} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -3509,7 +3774,7 @@ const App: React.FC = () => {
                 right: 32,
                 width: 56,
                 height: 56,
-                borderRadius: 16,
+                borderRadius: "var(--radius-md)",
                 background: 'linear-gradient(135deg, #34d399, #16A34A)',
                 border: 'none',
                 cursor: 'pointer',
@@ -3526,38 +3791,38 @@ const App: React.FC = () => {
           </Tooltip>
           {/* Empty States */}
           {filteredLaunches.length === 0 && tab === "watchlist" && (
-            <div className="empty-state" style={{ textAlign: "center", padding: "60px 20px" }}>
-              <div style={{ marginBottom: 16, color: "var(--t3)" }}><EmptyStateIcon type="star" size={48} /></div>
-              <h3 style={{ fontSize: 18, fontWeight: 600, color: "var(--t1)", marginBottom: 8 }}>No tokens in watchlist</h3>
-              <p style={{ fontSize: 13, color: "var(--t2)", marginBottom: 20 }}>
+            <div className="empty-state" style={{ textAlign: "center", padding: "var(--space-16) var(--space-5)" }}>
+              <div style={{ marginBottom: "var(--space-4)", color: "var(--t3)" }}><EmptyStateIcon type="star" size={48} /></div>
+              <h3 style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", marginBottom: "var(--space-2)" }}>No tokens in watchlist</h3>
+              <p style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", marginBottom: "var(--space-5)" }}>
                 Click the star icon on any token to add it to your watchlist
               </p>
               <button
                 onClick={() => setTab("all")}
                 className="btn-press btn-glow"
-                style={s(bpS, { height: 40, padding: "0 24px", fontSize: 13 })}
+                style={s(bpS, { height: "var(--btn-md)", padding: "0 var(--space-6)", fontSize: "var(--fs-sm)" })}
               >
                 Browse All Tokens
               </button>
             </div>
           )}
           {filteredLaunches.length === 0 && tab !== "watchlist" && searchQuery && (
-            <div className="empty-state" style={{ textAlign: "center", padding: "60px 20px" }}>
-              <div style={{ marginBottom: 16, color: "var(--t3)" }}><EmptyStateIcon type="search" size={48} /></div>
-              <h3 style={{ fontSize: 18, fontWeight: 600, color: "var(--t1)", marginBottom: 8 }}>No results found</h3>
-              <p style={{ fontSize: 13, color: "var(--t2)", marginBottom: 20 }}>
+            <div className="empty-state" style={{ textAlign: "center", padding: "var(--space-16) var(--space-5)" }}>
+              <div style={{ marginBottom: "var(--space-4)", color: "var(--t3)" }}><EmptyStateIcon type="search" size={48} /></div>
+              <h3 style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", marginBottom: "var(--space-2)" }}>No results found</h3>
+              <p style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", marginBottom: "var(--space-5)" }}>
                 No tokens match "{searchQuery}"
               </p>
               <button
                 onClick={() => setSearchQuery('')}
-                style={s(bsS, { height: 40, padding: "0 24px", fontSize: 13 })}
+                style={s(bsS, { height: "var(--btn-md)", padding: "0 var(--space-6)", fontSize: "var(--fs-sm)" })}
                 className="glass-pill"
               >
                 Clear Search
               </button>
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16, fontSize: 12, color: "var(--t3)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "var(--space-4)", fontSize: "var(--fs-xs)", color: "var(--t3)" }}>
             <span>{filteredLaunches.length} {filteredLaunches.length === 1 ? 'launch' : 'launches'}</span>
             <span>{tab === "watchlist" ? "Watchlist" : tab === "graduated" ? "Graduated" : tab === "trending" ? "Trending" : "All markets"}</span>
           </div>
@@ -3579,49 +3844,51 @@ const App: React.FC = () => {
     const { candles, loading: chartLoading } = useLaunchChart(l?.publicKey, chartTimeframe);
 
     const thS2: React.CSSProperties = {
-      fontWeight: 600,
+      fontWeight: "var(--fw-semibold)",
       padding: "7px 0",
       borderBottom: "1px solid var(--glass-border)",
-      fontSize: 10,
+      fontSize: "var(--fs-2xs)",
       letterSpacing: 0.8,
       color: "var(--t3)",
       textTransform: "uppercase"
     };
 
     return (
-      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "36px 24px", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "var(--space-9) var(--space-6)", position: "relative", zIndex: 1 }}>
         <button
           onClick={() => go('launches')}
+          className="interactive-hover"
+          aria-label="Back to launches"
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 7,
-            fontSize: 13,
+            gap: "var(--space-2)",
+            fontSize: "var(--fs-base)",
             color: "var(--t2)",
             background: "none",
             border: "none",
             cursor: "pointer",
-            marginBottom: 22,
+            marginBottom: "var(--space-5-5)",
             padding: 0,
             fontFamily: "inherit"
           }}
         >
           <SvgBack /> Back to Launches
         </button>
-        <div className="detail-grid" style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 22, alignItems: "start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-            <div className="glass-card" style={s(ani("fu", 0), { padding: 24 })}>
+        <div className="detail-grid" style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: "var(--space-5-5)", alignItems: "start" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5-5)" }}>
+            <div className="glass-card" style={s(ani("fu", 0), { padding: "var(--space-6)" })}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
                   <div style={{ animation: "pg 3s ease-in-out infinite", borderRadius: "35%" }}>
                     <Avatar gi={l.gi} size={48} imageUrl={getTokenImageUrl(l.publicKey)} symbol={l.symbol} />
                   </div>
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--t1)" }}>{l.name}</h1>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                      <h1 style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)" }}>{l.name}</h1>
                       <Badge status={l.status} isDark={isDark} />
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--t3)", marginTop: 2 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: 2 }}>
                       <span>{l.symbol} · {l.creator}</span>
                       <Tooltip content="Copy token address" position="top">
                         <button
@@ -3630,16 +3897,17 @@ const App: React.FC = () => {
                             navigator.clipboard.writeText(l.publicKey);
                             showToast('Token address copied', 'success');
                           }}
-                          className="interactive-hover"
+                          className="interactive-hover btn-press"
+                          aria-label="Copy token address"
                           style={{
                             background: "none",
                             border: "none",
                             cursor: "pointer",
-                            padding: 4,
+                            padding: "var(--space-1)",
                             color: "var(--t3)",
                             display: "flex",
                             alignItems: "center",
-                            borderRadius: 4
+                            borderRadius: "var(--radius-xs)"
                           }}
                         >
                           <SvgCopy />
@@ -3652,7 +3920,8 @@ const App: React.FC = () => {
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="interactive-hover"
-                          style={{ color: "var(--t3)", display: "flex", alignItems: "center", padding: 4, borderRadius: 4 }}
+                          aria-label="View on Solscan"
+                          style={{ color: "var(--t3)", display: "flex", alignItems: "center", padding: "var(--space-1)", borderRadius: "var(--radius-xs)" }}
                         >
                           <SvgExternal />
                         </a>
@@ -3660,8 +3929,8 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                  <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-3)" }}>
+                  <div style={{ display: "flex", gap: "var(--space-1-5)" }}>
                     <Tooltip content={isWatchlisted(l.id) ? "Remove from watchlist" : "Add to watchlist"} position="bottom">
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleWatchlist(l.id); }}
@@ -3675,6 +3944,7 @@ const App: React.FC = () => {
                           justifyContent: "center",
                           color: isWatchlisted(l.id) ? "var(--amb)" : "var(--t2)"
                         })}
+                        aria-label={isWatchlisted(l.id) ? `Remove ${l.symbol} from watchlist` : `Add ${l.symbol} to watchlist`}
                       >
                         <SvgStar filled={isWatchlisted(l.id)} />
                       </button>
@@ -3684,20 +3954,21 @@ const App: React.FC = () => {
                         onClick={() => setShareModal(l)}
                         className="glass-pill interactive-hover btn-press"
                         style={s(bsS, { width: 36, height: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" })}
+                        aria-label={`Share ${l.symbol} token`}
                       >
                         <SvgShare />
                       </button>
                     </Tooltip>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>
+                    <div style={{ fontSize: "var(--fs-3xl)", fontWeight: "var(--fw-bold)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>
                       {fP(l.price)}
                     </div>
                     <Chg v={l.priceChange24h} />
                   </div>
                 </div>
               </div>
-              <div style={s(ani("fu", 0.06), { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginTop: 22 })} className="grid-stagger">
+              <div style={s(ani("fu", 0.06), { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "var(--space-2-5)", marginTop: 22 })} className="grid-stagger">
                 {[
                   { l: "Market Cap", v: fm(l.marketCap), icon: <SvgChart /> },
                   { l: "24h Volume", v: fm(l.volume24h), icon: <SvgActivity /> },
@@ -3706,35 +3977,35 @@ const App: React.FC = () => {
                 ].map((x) => (
                   <HoverCard key={x.l} className="glass-card-inner" style={{ padding: 12 }} glowColor="rgba(34, 197, 94, 0.1)">
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 500 }}>{x.l}</span>
+                      <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontWeight: "var(--fw-medium)" }}>{x.l}</span>
                       <span style={{ color: "var(--t3)", opacity: 0.6 }}>{x.icon}</span>
                     </div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--t1)" }}>{x.v}</div>
+                    <div style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>{x.v}</div>
                   </HoverCard>
                 ))}
               </div>
               <div style={s(ani("fu", 0.1), { marginTop: 22 })}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Graduation Progress</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                    <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>Graduation Progress</span>
                     {l.progress >= 90 && <PulseDot color="var(--amb)" size={6} />}
                   </div>
-                  <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>{l.progress}% / 85 SOL</span>
+                  <span style={{ fontSize: "var(--fs-sm)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>{l.progress}% / 85 SOL</span>
                 </div>
                 <GradientProgress value={l.progress} height={8} showGlow={true} />
                 {l.progress >= 90 && (
                   <div style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 6,
+                    gap: "var(--space-1-5)",
                     marginTop: 10,
                     padding: "8px 12px",
-                    borderRadius: 10,
+                    borderRadius: "var(--radius-md)",
                     background: "rgba(251, 191, 36, 0.1)",
                     border: "1px solid rgba(251, 191, 36, 0.2)"
                   }}>
                     <SvgFire />
-                    <span style={{ fontSize: 11, color: "var(--amb)", fontWeight: 500 }}>Almost graduated! Token will move to Orbit DLMM soon.</span>
+                    <span style={{ fontSize: "var(--fs-xs)", color: "var(--amb)", fontWeight: "var(--fw-medium)" }}>Almost graduated! Token will move to Orbit DLMM soon.</span>
                   </div>
                 )}
               </div>
@@ -3742,16 +4013,16 @@ const App: React.FC = () => {
             {/* Price Chart - Institutional Grade */}
             <div className="glass-card" style={s(ani("fu", 0.08), { padding: 0, overflow: "hidden" })}>
               {/* Chart Header */}
-              <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--glass-border)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ padding: "var(--space-5) var(--space-6)", borderBottom: "1px solid var(--glass-border)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-4)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                     <SvgChart />
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>Price Chart</span>
+                    <span style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>Price Chart</span>
                     <UpdatePulse show={true} />
                   </div>
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "var(--space-1)", alignItems: "center" }}>
                     {/* Chart type toggle */}
-                    <div style={{ display: "flex", padding: 2, borderRadius: 8, background: "var(--glass2)", marginRight: 8 }}>
+                    <div style={{ display: "flex", padding: 2, borderRadius: "var(--radius-sm)", background: "var(--glass2)", marginRight: 8 }}>
                       {[
                         { key: 'candle', icon: <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="8" y="6" width="4" height="12"/><line x1="10" y1="2" x2="10" y2="6"/><line x1="10" y1="18" x2="10" y2="22"/><rect x="16" y="10" width="4" height="6"/><line x1="18" y1="6" x2="18" y2="10"/><line x1="18" y1="16" x2="18" y2="20"/></svg> },
                         { key: 'line', icon: <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="22 12 18 8 12 14 8 10 2 16"/></svg> },
@@ -3762,7 +4033,7 @@ const App: React.FC = () => {
                           className="btn-press"
                           style={{
                             padding: "5px 8px",
-                            borderRadius: 6,
+                            borderRadius: "var(--radius-xs)",
                             border: "none",
                             background: settings.chartType === ct.key ? "var(--pb)" : "transparent",
                             color: settings.chartType === ct.key ? "var(--pt)" : "var(--t3)",
@@ -3785,8 +4056,8 @@ const App: React.FC = () => {
                         style={s(bsS, {
                           height: 26,
                           padding: "0 10px",
-                          fontSize: 10,
-                          fontWeight: 500,
+                          fontSize: "var(--fs-2xs)",
+                          fontWeight: "var(--fw-medium)",
                           background: chartTimeframe === tf ? 'var(--pb)' : 'var(--sb)',
                           color: chartTimeframe === tf ? 'var(--pt)' : 'var(--st)'
                         })}
@@ -3798,7 +4069,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* OHLC Data Bar */}
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}>
                   {[
                     { label: "Open", value: fP(l.price * 0.95), color: "var(--t1)" },
                     { label: "High", value: fP(l.price * 1.12), color: "var(--grn)" },
@@ -3807,9 +4078,9 @@ const App: React.FC = () => {
                     { label: "Change", value: fPct(15.3), color: "var(--grn)" },
                     { label: "Vol", value: fSOL(l.volume24h, false), color: "var(--t1)" }
                   ].map((stat) => (
-                    <div key={stat.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 500 }}>{stat.label}:</span>
-                      <span style={{ fontSize: 11, color: stat.color, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                    <div key={stat.label} style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
+                      <span style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", fontWeight: "var(--fw-medium)" }}>{stat.label}:</span>
+                      <span style={{ fontSize: "var(--fs-xs)", color: stat.color, fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace" }}>
                         {stat.value}
                       </span>
                     </div>
@@ -3818,7 +4089,7 @@ const App: React.FC = () => {
               </div>
 
               {/* Chart Area */}
-              <div style={{ padding: "20px 24px" }}>
+              <div style={{ padding: "var(--space-5) var(--space-6)" }}>
                 <PriceChart
                   data={candles}
                   chartType={settings.chartType}
@@ -3835,20 +4106,20 @@ const App: React.FC = () => {
                 justifyContent: "space-between",
                 alignItems: "center"
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
                     <span style={{ width: 12, height: 3, background: "var(--grn)", borderRadius: 1 }} />
-                    <span style={{ fontSize: 10, color: "var(--t3)" }}>Price</span>
+                    <span style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)" }}>Price</span>
                   </div>
                   {settings.showIndicators && (
                     <>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
                         <span style={{ width: 12, height: 3, background: "var(--amb)", borderRadius: 1 }} />
-                        <span style={{ fontSize: 10, color: "var(--t3)" }}>MA(7)</span>
+                        <span style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)" }}>MA(7)</span>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
                         <span style={{ width: 12, height: 3, background: "var(--grn)", borderRadius: 1, opacity: 0.5 }} />
-                        <span style={{ fontSize: 10, color: "var(--t3)" }}>Volume</span>
+                        <span style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)" }}>Volume</span>
                       </div>
                     </>
                   )}
@@ -3856,7 +4127,7 @@ const App: React.FC = () => {
                 <button
                   onClick={() => setSettings(prev => ({ ...prev, showIndicators: !prev.showIndicators }))}
                   className="glass-pill btn-press interactive-hover"
-                  style={s(bsS, { height: 24, padding: "0 10px", fontSize: 9, fontWeight: 500 })}
+                  style={s(bsS, { height: 24, padding: "0 10px", fontSize: "var(--fs-3xs)", fontWeight: "var(--fw-medium)" })}
                 >
                   {settings.showIndicators ? 'Hide' : 'Show'} Indicators
                 </button>
@@ -3865,22 +4136,23 @@ const App: React.FC = () => {
             <div className="glass-card" style={s(ani("fu", 0.12), { padding: 24 })}>
               <div style={{
                 display: "flex",
-                gap: 3,
-                padding: 3,
-                borderRadius: 100,
+                gap: "var(--space-0-5)",
+                padding: "var(--space-0-5)",
+                borderRadius: "var(--radius-full)",
                 width: "fit-content",
-                marginBottom: 16,
+                marginBottom: "var(--space-4)",
                 background: "var(--glass2)"
               }}>
                 {["trades", "holders"].map((x) => (
                   <button
                     key={x}
                     onClick={() => setDetailTab(x)}
+                    className="interactive-hover btn-press"
                     style={{
-                      padding: "6px 16px",
-                      borderRadius: 100,
-                      fontSize: 12,
-                      fontWeight: 500,
+                      padding: "var(--space-1-5) var(--space-4)",
+                      borderRadius: "var(--radius-full)",
+                      fontSize: "var(--fs-sm)",
+                      fontWeight: "var(--fw-medium)",
                       cursor: "pointer",
                       border: "none",
                       textTransform: "capitalize",
@@ -3908,23 +4180,23 @@ const App: React.FC = () => {
                     </thead>
                     <tbody>
                       {trades.map((r, i) => (
-                        <tr key={i} className="table-row-hover" style={s(ani("fu", i * 0.03), { borderBottom: "1px solid var(--glass-border)" })}>
+                        <tr key={r.id} className="table-row-hover" style={s(ani("fu", i * 0.03), { borderBottom: "1px solid var(--glass-border)" })}>
                           <td style={{ padding: "10px 0" }}>
                             <span style={{
-                              fontSize: 11,
-                              fontWeight: 600,
+                              fontSize: "var(--fs-xs)",
+                              fontWeight: "var(--fw-semibold)",
                               padding: "3px 8px",
-                              borderRadius: 6,
+                              borderRadius: "var(--radius-xs)",
                               background: r.type === "buy" ? "var(--gb)" : "var(--rb)",
                               color: r.type === "buy" ? "var(--grn)" : "var(--red)"
                             }}>
                               {r.type.toUpperCase()}
                             </span>
                           </td>
-                          <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--t2)" }}>{r.trader}</td>
-                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "var(--t1)" }}>{r.sol}</td>
-                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "var(--t2)" }}>{r.tokens}</td>
-                          <td style={{ textAlign: "right", fontSize: 12, color: "var(--t3)" }}>{r.time}</td>
+                          <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>{r.trader}</td>
+                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t1)" }}>{r.sol}</td>
+                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t2)" }}>{r.tokens}</td>
+                          <td style={{ textAlign: "right", fontSize: "var(--fs-sm)", color: "var(--t3)" }}>{r.time}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -3932,7 +4204,7 @@ const App: React.FC = () => {
                 ) : launchHolders.length > 0 ? (
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <span style={{ fontSize: 12, color: "var(--t3)" }}>
+                      <span style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>
                         {totalHolders.toLocaleString()} total holders
                       </span>
                     </div>
@@ -3952,16 +4224,16 @@ const App: React.FC = () => {
                             className="table-row-hover"
                             style={s(ani("fu", i * 0.03), { borderBottom: "1px solid var(--glass-border)" })}
                           >
-                            <td style={{ padding: "10px 0", fontSize: 12, color: "var(--t3)" }}>
+                            <td style={{ padding: "10px 0", fontSize: "var(--fs-sm)", color: "var(--t3)" }}>
                               {holder.rank || i + 1}
                             </td>
-                            <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: "var(--t2)" }}>
+                            <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>
                               {holder.address.slice(0, 4)}...{holder.address.slice(-4)}
                             </td>
-                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: "var(--t1)" }}>
+                            <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t1)" }}>
                               {fN(holder.balance / 1e6, 2)}M
                             </td>
-                            <td style={{ textAlign: "right", fontSize: 12, color: "var(--t2)" }}>
+                            <td style={{ textAlign: "right", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>
                               {holder.percentage.toFixed(2)}%
                             </td>
                           </tr>
@@ -3970,9 +4242,9 @@ const App: React.FC = () => {
                     </table>
                   </div>
                 ) : (
-                  <div style={{ padding: "40px 0", textAlign: "center" }}>
-                    <div style={{ marginBottom: 12, color: "var(--t3)" }}><EmptyStateIcon type="users" size={40} /></div>
-                    <p style={{ fontSize: 13, color: "var(--t3)" }}>Loading holder data...</p>
+                  <div style={{ padding: "var(--space-10) 0", textAlign: "center" }}>
+                    <div style={{ marginBottom: "var(--space-3)", color: "var(--t3)" }}><EmptyStateIcon type="users" size={48} /></div>
+                    <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>Loading holder data...</p>
                   </div>
                 )}
               </TabContent>
@@ -3982,84 +4254,22 @@ const App: React.FC = () => {
             <div
               className={`glass-card ${tradeSuccess ? 'trade-success' : ''}`}
               style={s(ani("si", 0.06), {
-                padding: 24,
+                padding: "var(--space-5)",
                 borderColor: tradeSuccess ? 'var(--grn)' : undefined,
-                transition: 'border-color 0.3s ease'
+                transition: 'border-color var(--transition-default)'
               })}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <h3 style={{ fontWeight: 600, fontSize: 16, color: "var(--t1)" }}>Trade</h3>
-                  {tradeSuccess && (
-                    <span className="success-pop" style={{
-                      fontSize: 11,
-                      fontWeight: 500,
-                      padding: "3px 8px",
-                      borderRadius: 100,
-                      background: "var(--gb)",
-                      color: "var(--grn)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4
-                    }}>
-                      <SvgCheck /> Success
-                    </span>
-                  )}
-                </div>
-                <Tooltip content={`Slippage tolerance: ${settings.defaultSlippage}%`}>
-                  <span
-                    className="glass-pill"
-                    onClick={() => go('settings')}
-                    style={{
-                      fontSize: 11,
-                      color: "var(--t2)",
-                      padding: "3px 10px",
-                      fontFamily: "'JetBrains Mono',monospace",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4
-                    }}
-                  >
-                    {settings.defaultSlippage}% slip
-                    <SvgSettings />
-                  </span>
-                </Tooltip>
-              </div>
-              <div style={{ display: "flex", gap: 3, padding: 3, borderRadius: 100, marginBottom: 18, background: "var(--glass2)" }}>
-                {(["buy", "sell"] as const).map((x) => (
-                  <button
-                    key={x}
-                    onClick={() => setTradeType(x)}
-                    style={{
-                      flex: 1,
-                      padding: "8px 0",
-                      borderRadius: 100,
-                      fontSize: 13,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                      border: "none",
-                      textTransform: "capitalize",
-                      transition: "all .15s",
-                      fontFamily: "inherit",
-                      background: tradeType === x ? (x === "buy" ? "var(--gb)" : "var(--rb)") : "transparent",
-                      color: tradeType === x ? (x === "buy" ? "var(--grn)" : "var(--red)") : "var(--t3)"
-                    }}
-                  >
-                    {x}
-                  </button>
-                ))}
-              </div>
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 7 }}>
-                  <span style={{ color: "var(--t2)", fontWeight: 500 }}>{tradeType === "buy" ? "You pay" : "You sell"}</span>
+              {/* Amount Input - Primary Focus */}
+              <div style={{ marginBottom: "var(--space-4)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-2)" }}>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>{tradeType === "buy" ? "You pay" : "You sell"}</span>
                   {wallet.connected && (
-                    <span style={{ color: "var(--t3)" }}>
-                      Balance: {tradeType === "buy" ? `${wallet.balance?.toFixed(2)} SOL` : `${userBalances?.tokenBalance ? (userBalances.tokenBalance / 1e6).toFixed(2) + "M" : "0"} ${l.symbol}`}
+                    <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>
+                      {tradeType === "buy" ? `${wallet.balance?.toFixed(2)} SOL` : `${userBalances?.tokenBalance ? (userBalances.tokenBalance / 1e6).toFixed(2) + "M" : "0"} ${l.symbol}`}
                     </span>
                   )}
                 </div>
-                <div className="amount-input-wrapper input-focus-glow" style={s(inpS, { display: "flex", alignItems: "center", gap: 8, height: 48, padding: "0 16px", borderRadius: 16, transition: "all 0.2s ease" })}>
+                <div className="amount-input-wrapper input-focus-glow" style={s(inpS, { display: "flex", alignItems: "center", gap: "var(--space-2)", height: 56, padding: "0 var(--space-4)", borderRadius: "var(--radius-lg)" })}>
                   <input
                     type="number"
                     value={tradeAmount}
@@ -4071,55 +4281,121 @@ const App: React.FC = () => {
                       background: "transparent",
                       padding: 0,
                       height: "100%",
-                      fontSize: 18,
+                      fontSize: "var(--fs-3xl)",
                       fontFamily: "'JetBrains Mono',monospace",
                       color: "var(--t1)",
                       outline: "none"
                     }}
                   />
-                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t2)" }}>
+                  <span style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t2)" }}>
                     {tradeType === "buy" ? "SOL" : l.symbol}
                   </span>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 5, marginTop: 10 }}>
-                {[10, 25, 50, 75, 100].map((pct) => {
-                  const maxBalance = tradeType === "buy" ? (wallet.balance || 0) : (userBalances?.tokenBalance ? userBalances.tokenBalance / 1e6 : 0); // Real token balance
+
+              {/* Quick percentages */}
+              <div style={{ display: "flex", gap: "var(--space-1)", marginBottom: "var(--space-4)" }}>
+                {[25, 50, 75, 100].map((pct) => {
+                  const maxBalance = tradeType === "buy" ? (wallet.balance || 0) : (userBalances?.tokenBalance ? userBalances.tokenBalance / 1e6 : 0);
                   const isActive = tradeAmount && Math.abs(parseFloat(tradeAmount) - (maxBalance * pct) / 100) < 0.01;
                   return (
                     <button
                       key={pct}
                       onClick={() => setTradeAmount(((maxBalance * pct) / 100).toFixed(2))}
-                      className={`glass-pill btn-magnetic quick-action-btn ${isActive ? 'pct-btn-active' : ''}`}
-                      style={s(bsS, { flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 500 })}
+                      className="glass-pill"
+                      style={{
+                        flex: 1,
+                        padding: "var(--space-2) 0",
+                        fontSize: "var(--fs-xs)",
+                        fontWeight: "var(--fw-medium)",
+                        border: "none",
+                        cursor: "pointer",
+                        background: isActive ? "var(--glass3)" : "var(--glass2)",
+                        color: isActive ? "var(--t1)" : "var(--t3)",
+                        borderRadius: "var(--radius-sm)"
+                      }}
                     >
                       {pct}%
                     </button>
                   );
                 })}
               </div>
-              <div style={{ display: "flex", justifyContent: "center", margin: "16px 0" }}>
-                <div className="glass-pill quick-action-btn" style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--t3)", cursor: "pointer" }}>
-                  <SvgSwap />
-                </div>
+
+              {/* Buy/Sell toggle - Secondary */}
+              <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)", background: "var(--glass2)" }}>
+                {(["buy", "sell"] as const).map((x) => (
+                  <button
+                    key={x}
+                    onClick={() => setTradeType(x)}
+                    style={{
+                      flex: 1,
+                      padding: "var(--space-3) 0",
+                      borderRadius: "var(--radius-sm)",
+                      fontSize: "var(--fs-base)",
+                      fontWeight: "var(--fw-semibold)",
+                      cursor: "pointer",
+                      border: "none",
+                      textTransform: "capitalize",
+                      transition: "all var(--transition-fast)",
+                      fontFamily: "inherit",
+                      background: tradeType === x ? (x === "buy" ? "var(--grn)" : "var(--red)") : "transparent",
+                      color: tradeType === x ? "#fff" : "var(--t3)"
+                    }}
+                  >
+                    {x}
+                  </button>
+                ))}
               </div>
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 7 }}>
-                  <span style={{ color: "var(--t2)", fontWeight: 500 }}>You receive (est.)</span>
-                  <span style={{ color: "var(--t3)", fontSize: 11 }}>~{settings.defaultSlippage}% slippage</span>
-                </div>
-                <div style={s(inpS, { display: "flex", alignItems: "center", gap: 8, height: 48, padding: "0 16px", borderRadius: 16 })}>
-                  <span style={{ flex: 1, fontSize: 18, fontFamily: "'JetBrains Mono',monospace", color: tradeAmount ? "var(--t1)" : "var(--t3)" }}>
+
+              {/* Output preview */}
+              <div style={{ marginBottom: "var(--space-4)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "var(--glass)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-2)" }}>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>You receive</span>
+                  <span style={{ fontSize: "var(--fs-lg)", fontFamily: "'JetBrains Mono',monospace", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>
                     {tradeAmount && l.price > 0
                       ? tradeType === "buy"
-                        ? ((parseFloat(tradeAmount) / l.price) * (1 - settings.defaultSlippage / 100)).toFixed(0) + "M"
-                        : (parseFloat(tradeAmount) * l.price * (1 - settings.defaultSlippage / 100) / 1e6).toFixed(4)
-                      : "0.00"
+                        ? ((parseFloat(tradeAmount) / l.price) * (1 - settings.defaultSlippage / 100)).toFixed(0) + "M " + l.symbol
+                        : (parseFloat(tradeAmount) * l.price * (1 - settings.defaultSlippage / 100) / 1e6).toFixed(4) + " SOL"
+                      : `0.00 ${tradeType === "buy" ? l.symbol : "SOL"}`
                     }
                   </span>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--t2)" }}>
-                    {tradeType === "buy" ? l.symbol : "SOL"}
-                  </span>
+                </div>
+                {/* Transaction Details - Solana-specific info */}
+                <div style={{ borderTop: "1px solid var(--glass-border)", paddingTop: "var(--space-2)", marginTop: "var(--space-2)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-1)" }}>
+                    <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>Network fee</span>
+                    <span style={{ fontSize: "var(--fs-xs)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t2)" }}>
+                      {settings.priority === 'low' ? '~0.00005' : settings.priority === 'medium' ? '~0.0001' : '~0.0005'} SOL
+                    </span>
+                  </div>
+                  {/* ATA creation cost for first-time holders */}
+                  {tradeType === 'buy' && (!userBalances?.tokenBalance || userBalances.tokenBalance === 0) && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-1)" }}>
+                      <Tooltip content="One-time cost to create your token account (rent-exempt)" position="left">
+                        <span style={{ fontSize: "var(--fs-xs)", color: "var(--amb)", display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+                          <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <circle cx={12} cy={12} r={10}/><path d="M12 16v-4M12 8h.01"/>
+                          </svg>
+                          Token account
+                        </span>
+                      </Tooltip>
+                      <span style={{ fontSize: "var(--fs-xs)", fontFamily: "'JetBrains Mono',monospace", color: "var(--amb)" }}>
+                        ~0.002 SOL
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-1)" }}>
+                    <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>Protocol fee (1%)</span>
+                    <span style={{ fontSize: "var(--fs-xs)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t2)" }}>
+                      {tradeAmount && parseFloat(tradeAmount) > 0 ? (parseFloat(tradeAmount) * 0.01).toFixed(4) : '0.0000'} SOL
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>Confirmation</span>
+                    <span style={{ fontSize: "var(--fs-xs)", color: settings.priority === 'high' ? "var(--grn)" : "var(--t2)" }}>
+                      {settings.priority === 'low' ? '~10-30s' : settings.priority === 'medium' ? '~5-10s' : '~1-5s'}
+                    </span>
+                  </div>
                 </div>
               </div>
               {(() => {
@@ -4147,9 +4423,9 @@ const App: React.FC = () => {
                     style={{
                       width: "100%",
                       height: 48,
-                      borderRadius: 100,
-                      fontSize: 14,
-                      fontWeight: 600,
+                      borderRadius: "var(--radius-full)",
+                      fontSize: "var(--fs-md)",
+                      fontWeight: "var(--fw-semibold)",
                       cursor: isDisabled ? (tradeLoading ? "wait" : "not-allowed") : "pointer",
                       border: "none",
                       transition: "all .2s var(--ease-out-quart)",
@@ -4168,7 +4444,7 @@ const App: React.FC = () => {
                     }}
                   >
                     {tradeLoading ? (
-                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--space-2)" }}>
                         <span className="loading-spinner loading-spinner-small" />
                         Processing...
                       </span>
@@ -4263,11 +4539,11 @@ const App: React.FC = () => {
     const getInputStyle = (fieldName: string, hasError?: boolean) => ({
       ...inpS,
       width: "100%",
-      height: 48,
-      padding: "0 16px",
+      height: "var(--input-height)",
+      padding: "0 var(--space-4)",
       fontFamily: "inherit",
-      borderRadius: 14,
-      fontSize: 14,
+      borderRadius: "var(--input-radius)",
+      fontSize: "var(--fs-sm)",
       transition: "all 0.2s ease",
       boxShadow: focusedField === fieldName
         ? "0 0 0 2px var(--grn), 0 0 20px rgba(34,197,94,0.15)"
@@ -4280,11 +4556,11 @@ const App: React.FC = () => {
     const getTextareaStyle = (fieldName: string) => ({
       ...inpS,
       width: "100%",
-      padding: "12px 16px",
+      padding: "var(--space-3) var(--space-4)",
       resize: "none" as const,
       fontFamily: "inherit",
-      borderRadius: 16,
-      fontSize: 14,
+      borderRadius: "var(--card-radius)",
+      fontSize: "var(--fs-sm)",
       transition: "all 0.2s ease",
       boxShadow: focusedField === fieldName
         ? "0 0 0 2px var(--grn), 0 0 20px rgba(34,197,94,0.15)"
@@ -4298,28 +4574,28 @@ const App: React.FC = () => {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 8
+        marginBottom: "var(--space-2)"
       }}>
         <label style={{
-          fontSize: 13,
-          fontWeight: 600,
+          fontSize: "var(--fs-sm)",
+          fontWeight: "var(--fw-semibold)",
           color: error ? "var(--red)" : "var(--t1)",
           display: "flex",
           alignItems: "center",
-          gap: 4,
+          gap: "var(--space-1)",
           transition: "color 0.2s ease"
         }}>
           {label}
-          {required && <span style={{ color: "var(--grn)", fontSize: 14 }}>*</span>}
+          {required && <span style={{ color: "var(--grn)", fontSize: "var(--fs-sm)" }}>*</span>}
         </label>
         {max !== undefined && (
           <span style={{
-            fontSize: 11,
+            fontSize: "var(--fs-xs)",
             color: currentLength !== undefined && currentLength >= max * 0.9
               ? currentLength >= max ? "var(--red)" : "var(--amb)"
               : "var(--t3)",
             fontFamily: "'JetBrains Mono', monospace",
-            fontWeight: 500,
+            fontWeight: "var(--fw-medium)",
             transition: "color 0.2s ease"
           }}>
             {currentLength || 0}/{max}
@@ -4332,12 +4608,12 @@ const App: React.FC = () => {
       <div
         className="validation-message"
         style={{
-          marginTop: 6,
-          fontSize: 12,
+          marginTop: "var(--space-1)",
+          fontSize: "var(--fs-xs)",
           color: "var(--red)",
           display: "flex",
           alignItems: "center",
-          gap: 4,
+          gap: "var(--space-1)",
           animation: "shake 0.4s ease-in-out"
         }}
       >
@@ -4438,19 +4714,21 @@ const App: React.FC = () => {
     };
 
     return (
-      <div style={{ maxWidth: 520, margin: "0 auto", padding: "36px 24px", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: 520, margin: "0 auto", padding: "var(--space-10) var(--space-6)", position: "relative", zIndex: 1 }}>
         <button
           onClick={() => go('launches')}
+          className="interactive-hover"
+          aria-label="Back to launches"
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 7,
-            fontSize: 13,
+            gap: "var(--space-2)",
+            fontSize: "var(--fs-sm)",
             color: "var(--t2)",
             background: "none",
             border: "none",
             cursor: "pointer",
-            marginBottom: 22,
+            marginBottom: "var(--space-6)",
             padding: 0,
             fontFamily: "inherit"
           }}
@@ -4461,15 +4739,15 @@ const App: React.FC = () => {
           {/* Creation Progress Steps */}
           {isCreating && (
             <div style={{
-              padding: "16px 32px",
+              padding: "var(--space-4) var(--space-8)",
               background: "linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05))",
               borderBottom: "1px solid var(--glass-border)"
             }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)" }}>Creating Token...</span>
-                <span style={{ fontSize: 11, color: "var(--grn)", fontWeight: 500 }}>Step {creationStep} of 3</span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-3)" }}>
+                <span style={{ fontSize: "var(--fs-xs)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>Creating Token...</span>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--grn)", fontWeight: "var(--fw-medium)" }}>Step {creationStep} of 3</span>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: "var(--space-2)" }}>
                 {[
                   { step: 1, label: 'Preparing' },
                   { step: 2, label: 'Creating' },
@@ -4478,14 +4756,14 @@ const App: React.FC = () => {
                   <div key={s.step} style={{ flex: 1 }}>
                     <div style={{
                       height: 4,
-                      borderRadius: 2,
+                      borderRadius: "var(--radius-xs)",
                       background: creationStep >= s.step ? "linear-gradient(90deg, var(--grn), #34d399)" : "var(--glass2)",
                       transition: "all 0.5s ease"
                     }} />
                     <span style={{
-                      fontSize: 9,
+                      fontSize: "var(--fs-3xs)",
                       color: creationStep >= s.step ? "var(--grn)" : "var(--t3)",
-                      marginTop: 4,
+                      marginTop: "var(--space-1)",
                       display: "block",
                       textAlign: "center"
                     }}>
@@ -4497,13 +4775,13 @@ const App: React.FC = () => {
             </div>
           )}
 
-          <div style={{ padding: "36px 32px" }}>
+          <div style={{ padding: "var(--space-10) var(--space-8)" }}>
             {/* Header */}
             <div className="create-header-animate" style={{
               display: "flex",
               alignItems: "center",
-              gap: 16,
-              marginBottom: 32
+              gap: "var(--space-4)",
+              marginBottom: "var(--space-8)"
             }}>
               <div
                 style={{
@@ -4519,20 +4797,20 @@ const App: React.FC = () => {
               </div>
               <div>
                 <h1 style={{
-                  fontSize: 26,
+                  fontSize: "var(--fs-2xl)",
                   fontWeight: 800,
                   color: "var(--t1)",
-                  letterSpacing: "-0.02em"
+                  letterSpacing: "var(--ls-tight)"
                 }}>
                   Create Launch
                 </h1>
                 <p style={{
-                  fontSize: 14,
+                  fontSize: "var(--fs-sm)",
                   color: "var(--t2)",
-                  marginTop: 4,
+                  marginTop: "var(--space-1)",
                   display: "flex",
                   alignItems: "center",
-                  gap: 6
+                  gap: "var(--space-1)"
                 }}>
                   <span style={{
                     width: 6,
@@ -4546,7 +4824,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
               {/* Token Image Upload */}
               <div className="form-field-animate" style={{ animationDelay: '0s' }}>
                 {renderLabel("Token Image", true, formErrors.image)}
@@ -4559,7 +4837,11 @@ const App: React.FC = () => {
                 />
                 <div
                   onClick={openFilePicker}
-                  className="glass-card-inner image-upload-zone"
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFilePicker(); }}}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={img ? "Change token image" : "Upload token image"}
+                  className="glass-card-inner image-upload-zone interactive-hover"
                   style={{
                     width: 100,
                     height: 100,
@@ -4594,13 +4876,13 @@ const App: React.FC = () => {
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: 6,
+                      gap: "var(--space-1-5)",
                       color: formErrors.image ? "var(--red)" : "var(--t3)"
                     }}>
                       <div style={{
                         width: 36,
                         height: 36,
-                        borderRadius: 10,
+                        borderRadius: "var(--radius-md)",
                         background: formErrors.image ? "rgba(239, 68, 68, 0.1)" : "var(--glass2)",
                         display: "flex",
                         alignItems: "center",
@@ -4608,15 +4890,15 @@ const App: React.FC = () => {
                       }}>
                         <SvgImg />
                       </div>
-                      <span style={{ fontSize: 11, fontWeight: 500 }}>Upload</span>
+                      <span style={{ fontSize: "var(--fs-xs)", fontWeight: "var(--fw-medium)" }}>Upload</span>
                     </div>
                   )}
                 </div>
                 {renderError(formErrors.image)}
                 <p style={{
-                  fontSize: 11,
+                  fontSize: "var(--fs-xs)",
                   color: "var(--t3)",
-                  marginTop: 8,
+                  marginTop: "var(--space-2)",
                   display: "flex",
                   alignItems: "center",
                   gap: 4
@@ -4687,10 +4969,10 @@ const App: React.FC = () => {
                 margin: "8px 0"
               }} />
               <p style={{
-                fontSize: 13,
-                fontWeight: 600,
+                fontSize: "var(--fs-base)",
+                fontWeight: "var(--fw-semibold)",
                 color: "var(--t2)",
-                marginTop: 12,
+                marginTop: "var(--space-3)",
                 display: "flex",
                 alignItems: "center",
                 gap: 8
@@ -4700,7 +4982,7 @@ const App: React.FC = () => {
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
                 </svg>
                 Social Links
-                <span style={{ fontSize: 11, fontWeight: 400, color: "var(--t3)" }}>(optional)</span>
+                <span style={{ fontSize: "var(--fs-xs)", fontWeight: "var(--fw-normal)", color: "var(--t3)" }}>(optional)</span>
               </p>
             </div>
 
@@ -4757,33 +5039,34 @@ const App: React.FC = () => {
               />
               {renderError(formErrors.website)}
             </div>
-            {/* Tokenomics Card */}
+            {/* Tokenomics Card - SPL Token Details */}
             <div className="glass-card-inner tokenomics-card" style={{
-              borderRadius: 18,
-              padding: 20,
+              borderRadius: "var(--radius-lg)",
+              padding: "var(--space-5)",
               background: "linear-gradient(135deg, rgba(34, 197, 94, 0.03), transparent)",
               border: "1px solid rgba(34, 197, 94, 0.1)"
             }}>
               <div style={{
-                fontSize: 13,
-                fontWeight: 700,
+                fontSize: "var(--fs-base)",
+                fontWeight: "var(--fw-bold)",
                 color: "var(--t1)",
-                marginBottom: 14,
+                marginBottom: "var(--space-3-5)",
                 display: "flex",
                 alignItems: "center",
-                gap: 8
+                gap: "var(--space-2)"
               }}>
                 <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="var(--grn)" strokeWidth={2}>
                   <circle cx={12} cy={12} r={10}/>
                   <path d="M12 6v6l4 2"/>
                 </svg>
-                Tokenomics
+                SPL Token Details
               </div>
               {[
-                { label: "Total Supply", value: "1,000,000,000", icon: "M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" },
-                { label: "Bonding Curve", value: "80%", icon: "M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.519l2.74-1.22" },
-                { label: "LP Reserve", value: "20%", icon: "M4.5 12a7.5 7.5 0 0 0 15 0m-15 0a7.5 7.5 0 1 1 15 0m-15 0H3m16.5 0H21m-1.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" },
-                { label: "Graduation", value: "85 SOL", icon: "M4.26 10.147a60.436 60.436 0 0 0-.491 6.347A48.627 48.627 0 0 1 12 20.904a48.627 48.627 0 0 1 8.232-4.41" }
+                { label: "Total Supply", value: "1,000,000,000", icon: "M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4", tooltip: "Fixed supply, no additional minting" },
+                { label: "Decimals", value: "9", icon: "M4 4h16v16H4z M8 8h8v8H8z", tooltip: "Same precision as SOL" },
+                { label: "Bonding Curve", value: "80%", icon: "M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.519l2.74-1.22", tooltip: "800M tokens available for trading" },
+                { label: "LP Reserve", value: "20%", icon: "M4.5 12a7.5 7.5 0 0 0 15 0m-15 0a7.5 7.5 0 1 1 15 0m-15 0H3m16.5 0H21m-1.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z", tooltip: "Reserved for Orbit DEX graduation" },
+                { label: "Graduation", value: "85 SOL", icon: "M4.26 10.147a60.436 60.436 0 0 0-.491 6.347A48.627 48.627 0 0 1 12 20.904a48.627 48.627 0 0 1 8.232-4.41", tooltip: "Migrates to Orbit DLMM liquidity" }
               ].map((item, i) => (
                 <div
                   key={item.label}
@@ -4796,7 +5079,7 @@ const App: React.FC = () => {
                   }}
                 >
                   <span style={{
-                    fontSize: 13,
+                    fontSize: "var(--fs-base)",
                     color: "var(--t2)",
                     display: "flex",
                     alignItems: "center",
@@ -4808,9 +5091,9 @@ const App: React.FC = () => {
                     {item.label}
                   </span>
                   <span style={{
-                    fontSize: 13,
+                    fontSize: "var(--fs-base)",
                     fontFamily: "'JetBrains Mono', monospace",
-                    fontWeight: 600,
+                    fontWeight: "var(--fw-semibold)",
                     color: "var(--grn)"
                   }}>
                     {item.value}
@@ -4827,9 +5110,9 @@ const App: React.FC = () => {
               style={s(bpS, {
                 width: "100%",
                 height: 54,
-                fontSize: 15,
-                fontWeight: 700,
-                borderRadius: 16,
+                fontSize: "var(--fs-lg)",
+                fontWeight: "var(--fw-bold)",
+                borderRadius: "var(--radius-md)",
                 boxShadow: wallet.connected
                   ? "0 8px 32px rgba(34,197,94,0.25)"
                   : "0 4px 16px rgba(0,0,0,0.1)",
@@ -4839,7 +5122,7 @@ const App: React.FC = () => {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 10,
+                gap: "var(--space-2-5)",
                 transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
                 transform: isCreating ? "scale(0.98)" : "scale(1)"
               })}
@@ -4899,11 +5182,11 @@ const App: React.FC = () => {
     if (!wallet.connected) {
       return (
         <div style={{ maxWidth: 520, margin: "0 auto", padding: "36px 24px", position: "relative", zIndex: 1 }}>
-          <div className="glass-card page-enter-smooth" style={{ padding: 48, textAlign: "center" }}>
+          <div className="glass-card page-enter-smooth" style={{ padding: "var(--space-12)", textAlign: "center" }}>
             <div style={{
               width: 80,
               height: 80,
-              borderRadius: 20,
+              borderRadius: "var(--radius-lg)",
               background: "linear-gradient(135deg, var(--glass2), var(--glass3))",
               display: "flex",
               alignItems: "center",
@@ -4913,14 +5196,14 @@ const App: React.FC = () => {
             }}>
               <SvgWallet />
             </div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>Connect Your Wallet</h2>
-            <p style={{ fontSize: 14, color: "var(--t2)", marginBottom: 24, lineHeight: 1.6 }}>
+            <h2 style={{ fontSize: "var(--fs-3xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)", marginBottom: 8 }}>Connect Your Wallet</h2>
+            <p style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", marginBottom: "var(--space-6)", lineHeight: "var(--lh-relaxed)" }}>
               Connect your wallet to view your portfolio, positions, and trading history.
             </p>
             <button
               onClick={() => wallet.connect()}
               className="btn-press interactive-hover"
-              style={s(bpS, { height: 48, padding: "0 32px", fontSize: 14, fontWeight: 600 })}
+              style={s(bpS, { height: "var(--btn-lg)", padding: "0 var(--space-8)", fontSize: "var(--fs-sm)", fontWeight: "var(--fw-semibold)" })}
             >
               Connect Wallet
             </button>
@@ -4935,10 +5218,10 @@ const App: React.FC = () => {
         onClick={() => setProfileTab(k)}
         className="btn-press"
         style={{
-          padding: "8px 18px",
-          borderRadius: 100,
-          fontSize: 12,
-          fontWeight: 600,
+          padding: "var(--space-2) var(--space-5)",
+          borderRadius: "var(--radius-full)",
+          fontSize: "var(--fs-xs)",
+          fontWeight: "var(--fw-semibold)",
           cursor: "pointer",
           border: "none",
           transition: "all .2s var(--ease-out-quart)",
@@ -4953,9 +5236,9 @@ const App: React.FC = () => {
         {l}
         {count !== undefined && (
           <span style={{
-            fontSize: 10,
+            fontSize: "var(--fs-2xs)",
             padding: "2px 7px",
-            borderRadius: 100,
+            borderRadius: "var(--radius-full)",
             background: profileTab === k ? "rgba(0,0,0,0.2)" : "var(--glass2)",
             color: profileTab === k ? "var(--pt)" : "var(--t3)",
             fontWeight: 600
@@ -5009,22 +5292,23 @@ const App: React.FC = () => {
     };
 
     return (
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "36px 24px", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "var(--space-9) var(--space-6)", position: "relative", zIndex: 1 }}>
         <button
           onClick={() => go('home')}
           className="btn-press interactive-hover"
+          aria-label="Go back"
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 7,
-            fontSize: 13,
+            gap: "var(--space-2)",
+            fontSize: "var(--fs-base)",
             color: "var(--t2)",
             background: "var(--glass)",
             border: "1px solid var(--glass-border)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-sm)",
             cursor: "pointer",
-            marginBottom: 22,
-            padding: "8px 14px",
+            marginBottom: "var(--space-5-5)",
+            padding: "var(--space-2) var(--space-3-5)",
             fontFamily: "inherit"
           }}
         >
@@ -5077,10 +5361,10 @@ const App: React.FC = () => {
 
                 {/* Profile Info */}
                 <div style={{ paddingBottom: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2-5)", marginBottom: 8 }}>
                     <h1 style={{
-                      fontSize: 24,
-                      fontWeight: 700,
+                      fontSize: "var(--fs-3xl)",
+                      fontWeight: "var(--fw-bold)",
                       color: "var(--t1)",
                       fontFamily: "'JetBrains Mono', monospace",
                       letterSpacing: -0.5
@@ -5090,18 +5374,19 @@ const App: React.FC = () => {
                     <button
                       onClick={handleCopy}
                       className="btn-press interactive-hover"
+                      aria-label={copied ? "Address copied" : "Copy wallet address"}
                       style={{
                         background: copied ? "var(--gb)" : "var(--glass2)",
                         border: copied ? "1px solid var(--grn)" : "1px solid var(--glass-border)",
-                        borderRadius: 8,
+                        borderRadius: "var(--radius-sm)",
                         padding: "6px 12px",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
+                        gap: "var(--space-1-5)",
                         color: copied ? "var(--grn)" : "var(--t3)",
-                        fontSize: 11,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-xs)",
+                        fontWeight: "var(--fw-semibold)",
                         transition: "all .2s var(--ease-out-quart)"
                       }}
                     >
@@ -5112,19 +5397,19 @@ const App: React.FC = () => {
                   <div style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 16,
-                    fontSize: 13,
+                    gap: "var(--space-4)",
+                    fontSize: "var(--fs-base)",
                     color: "var(--t2)"
                   }}>
                     <span style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 6,
+                      gap: "var(--space-1-5)",
                       padding: "4px 10px",
-                      borderRadius: 100,
+                      borderRadius: "var(--radius-full)",
                       background: "var(--gb)",
                       color: "var(--grn)",
-                      fontSize: 12,
+                      fontSize: "var(--fs-sm)",
                       fontWeight: 600
                     }}>
                       <PulseDot color="var(--grn)" size={6} />
@@ -5135,7 +5420,7 @@ const App: React.FC = () => {
                       alignItems: "center",
                       gap: 5,
                       fontFamily: "'JetBrains Mono', monospace",
-                      fontWeight: 600,
+                      fontWeight: "var(--fw-semibold)",
                       color: "var(--t1)"
                     }}>
                       <span style={{ color: "var(--t3)" }}>Balance:</span>
@@ -5146,15 +5431,15 @@ const App: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: "flex", gap: 10, paddingBottom: 4 }}>
+              <div style={{ display: "flex", gap: "var(--space-2-5)", paddingBottom: 4 }}>
                 <button
                   onClick={() => go('settings')}
                   className="glass-pill btn-press interactive-hover"
                   style={s(bsS, {
                     height: 40,
                     padding: "0 16px",
-                    fontSize: 12,
-                    fontWeight: 500,
+                    fontSize: "var(--fs-sm)",
+                    fontWeight: "var(--fw-medium)",
                     display: "flex",
                     alignItems: "center",
                     gap: 7
@@ -5168,8 +5453,8 @@ const App: React.FC = () => {
                   style={s(bsS, {
                     height: 40,
                     padding: "0 16px",
-                    fontSize: 12,
-                    fontWeight: 500,
+                    fontSize: "var(--fs-sm)",
+                    fontWeight: "var(--fw-medium)",
                     display: "flex",
                     alignItems: "center",
                     gap: 7,
@@ -5187,7 +5472,7 @@ const App: React.FC = () => {
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-            gap: 12,
+            gap: "var(--space-3)",
             marginTop: 24,
             padding: "0 28px 28px"
           }}>
@@ -5201,31 +5486,31 @@ const App: React.FC = () => {
                 key={stat.l}
                 className="glass-card-inner stat-card stagger-item"
                 style={{
-                  padding: 16,
+                  padding: "var(--space-4)",
                   position: "relative",
                   overflow: "hidden",
-                  borderRadius: 14,
+                  borderRadius: "var(--radius-lg)",
                   border: stat.highlight ? "1px solid rgba(34, 197, 94, 0.2)" : undefined,
                   background: stat.highlight ? "linear-gradient(135deg, var(--glass2), var(--glass3))" : undefined
                 }}
               >
                 <div style={{
-                  fontSize: 10,
+                  fontSize: "var(--fs-2xs)",
                   color: "var(--t3)",
-                  fontWeight: 700,
-                  marginBottom: 8,
+                  fontWeight: "var(--fw-bold)",
+                  marginBottom: "var(--space-2)",
                   letterSpacing: 0.5,
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: "var(--space-1-5)",
                   textTransform: "uppercase"
                 }}>
                   <StatIcon type={stat.iconType} size={13} />
                   {stat.l}
                 </div>
                 <div style={{
-                  fontSize: 22,
-                  fontWeight: 700,
+                  fontSize: "var(--fs-2xl)",
+                  fontWeight: "var(--fw-bold)",
                   color: stat.isProfit !== undefined ? (stat.isProfit ? "var(--grn)" : "var(--red)") : "var(--t1)",
                   fontFamily: "'JetBrains Mono', monospace",
                   lineHeight: 1.2
@@ -5234,10 +5519,10 @@ const App: React.FC = () => {
                 </div>
                 {stat.sub && (
                   <div style={{
-                    fontSize: 11,
+                    fontSize: "var(--fs-xs)",
                     color: "var(--t3)",
                     marginTop: 6,
-                    fontWeight: 500,
+                    fontWeight: "var(--fw-medium)",
                     display: "flex",
                     alignItems: "center",
                     gap: 4
@@ -5265,25 +5550,25 @@ const App: React.FC = () => {
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: 12,
+            gap: "var(--space-3)",
             padding: "0 28px 28px"
           }}>
             {/* Win Rate Card */}
-            <div className="glass-card-inner" style={{ padding: 16, borderRadius: 14 }}>
+            <div className="glass-card-inner" style={{ padding: "var(--space-4)", borderRadius: "var(--radius-lg)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Win Rate</span>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontWeight: "var(--fw-semibold)", textTransform: "uppercase", letterSpacing: 0.5 }}>Win Rate</span>
                 <StatIcon type="trophy" size={14} color="var(--t3)" />
               </div>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
-                <span style={{ fontSize: 28, fontWeight: 700, color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: "var(--space-2)" }}>
+                <span style={{ fontSize: "var(--fs-3xl)", fontWeight: "var(--fw-bold)", color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
                   {userPositions.length > 0 ? Math.round((userPositions.filter(p => p.pnl >= 0).length / userPositions.length) * 100) : 0}%
                 </span>
-                <span style={{ fontSize: 11, color: "var(--t3)", marginBottom: 4 }}>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginBottom: 4 }}>
                   {userPositions.filter(p => p.pnl >= 0).length}W / {userPositions.filter(p => p.pnl < 0).length}L
                 </span>
               </div>
               {/* Win rate bar */}
-              <div style={{ marginTop: 12, height: 6, borderRadius: 3, background: "var(--glass2)", overflow: "hidden" }}>
+              <div style={{ marginTop: "var(--space-3)", height: 6, borderRadius: 3, background: "var(--glass2)", overflow: "hidden" }}>
                 <div style={{
                   width: `${userPositions.length > 0 ? (userPositions.filter(p => p.pnl >= 0).length / userPositions.length) * 100 : 0}%`,
                   height: "100%",
@@ -5295,34 +5580,34 @@ const App: React.FC = () => {
             </div>
 
             {/* Average Trade Size */}
-            <div className="glass-card-inner" style={{ padding: 16, borderRadius: 14 }}>
+            <div className="glass-card-inner" style={{ padding: "var(--space-4)", borderRadius: "var(--radius-lg)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Avg Trade Size</span>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontWeight: "var(--fw-semibold)", textTransform: "uppercase", letterSpacing: 0.5 }}>Avg Trade Size</span>
                 <StatIcon type="chart" size={14} color="var(--t3)" />
               </div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+              <div style={{ fontSize: "var(--fs-3xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                 {userActivity.length > 0 ? (userActivity.reduce((sum, a) => sum + a.sol, 0) / userActivity.length).toFixed(2) : "0.00"} SOL
               </div>
-              <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 6 }}>
+              <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginTop: 6 }}>
                 ≈ ${userActivity.length > 0 ? ((userActivity.reduce((sum, a) => sum + a.sol, 0) / userActivity.length) * (Number(solPrice) || 150)).toFixed(0) : "0"} USD
               </div>
             </div>
 
             {/* Best Position */}
-            <div className="glass-card-inner" style={{ padding: 16, borderRadius: 14 }}>
+            <div className="glass-card-inner" style={{ padding: "var(--space-4)", borderRadius: "var(--radius-lg)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Best Position</span>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontWeight: "var(--fw-semibold)", textTransform: "uppercase", letterSpacing: 0.5 }}>Best Position</span>
                 <StatIcon type="trending-up" size={14} color="var(--grn)" />
               </div>
               {userPositions.length > 0 ? (() => {
                 const best = [...userPositions].sort((a, b) => b.pnlPercent - a.pnlPercent)[0];
                 return (
                   <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2-5)" }}>
                       <Avatar gi={best.launch.gi} size={32} imageUrl={getTokenImageUrl(best.launch.publicKey)} symbol={best.launch.symbol} />
                       <div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>{best.launch.symbol}</div>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
+                        <div style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>{best.launch.symbol}</div>
+                        <div style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
                           +{fPct(best.pnlPercent, false)}
                         </div>
                       </div>
@@ -5330,42 +5615,42 @@ const App: React.FC = () => {
                   </>
                 );
               })() : (
-                <div style={{ fontSize: 13, color: "var(--t3)" }}>No positions yet</div>
+                <div style={{ fontSize: "var(--fs-base)", color: "var(--t3)" }}>No positions yet</div>
               )}
             </div>
           </div>
 
           {/* Performance Chart - Enhanced with Timeframes */}
           <div className="glass-card-inner" style={{
-            margin: "0 28px 28px",
-            padding: 20,
-            borderRadius: 16,
+            margin: "0 var(--space-7) var(--space-7)",
+            padding: "var(--space-5)",
+            borderRadius: "var(--radius-md)",
             background: "linear-gradient(135deg, var(--glass), var(--glass2))"
           }}>
             <div style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: 16,
+              marginBottom: "var(--space-4)",
               flexWrap: "wrap",
-              gap: 12
+              gap: "var(--space-3)"
             }}>
               <div>
                 <span style={{
-                  fontSize: 13,
-                  fontWeight: 600,
+                  fontSize: "var(--fs-base)",
+                  fontWeight: "var(--fw-semibold)",
                   color: "var(--t1)",
                   display: "block"
                 }}>
                   Portfolio Performance
                 </span>
-                <span style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginTop: 2 }}>
                   Value over time
                 </span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                 {/* Timeframe pills */}
-                <div style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "var(--glass2)" }}>
+                <div style={{ display: "flex", gap: "var(--space-1)", padding: 3, borderRadius: "var(--radius-md)", background: "var(--glass2)" }}>
                   {['7D', '14D', '30D', '90D'].map((tf) => (
                     <button
                       key={tf}
@@ -5373,8 +5658,8 @@ const App: React.FC = () => {
                       style={{
                         padding: "5px 10px",
                         borderRadius: 7,
-                        fontSize: 10,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-2xs)",
+                        fontWeight: "var(--fw-semibold)",
                         cursor: "pointer",
                         border: "none",
                         background: tf === '14D' ? "var(--pb)" : "transparent",
@@ -5390,17 +5675,17 @@ const App: React.FC = () => {
                 <div style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: "var(--space-1-5)",
                   padding: "6px 12px",
-                  borderRadius: 8,
+                  borderRadius: "var(--radius-sm)",
                   background: performanceData[performanceData.length - 1].value >= performanceData[0].value
                     ? "var(--gb)"
                     : "var(--rb)"
                 }}>
                   {performanceData[performanceData.length - 1].value >= performanceData[0].value ? <SvgUp /> : <SvgDn />}
                   <span style={{
-                    fontSize: 13,
-                    fontWeight: 700,
+                    fontSize: "var(--fs-base)",
+                    fontWeight: "var(--fw-bold)",
                     color: performanceData[performanceData.length - 1].value >= performanceData[0].value ? "var(--grn)" : "var(--red)"
                   }}>
                     {performanceData[performanceData.length - 1].value >= performanceData[0].value ? '+' : ''}
@@ -5415,8 +5700,8 @@ const App: React.FC = () => {
               <div style={{
                 display: "flex",
                 justifyContent: "space-between",
-                marginTop: 8,
-                fontSize: 10,
+                marginTop: "var(--space-2)",
+                fontSize: "var(--fs-2xs)",
                 color: "var(--t3)"
               }}>
                 <span>14d ago</span>
@@ -5430,7 +5715,7 @@ const App: React.FC = () => {
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 10,
+            gap: "var(--space-2-5)",
             margin: "0 28px 28px"
           }}>
             {[
@@ -5439,11 +5724,11 @@ const App: React.FC = () => {
               { label: 'Sells', value: userActivity.filter(a => a.type === 'sell').length, color: 'var(--red)' },
               { label: 'Created', value: myCreatedLaunches.length, color: 'var(--amb)' },
             ].map((stat) => (
-              <div key={stat.label} className="glass-card-inner" style={{ padding: 12, borderRadius: 10, textAlign: "center" }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: stat.color, fontFamily: "'JetBrains Mono', monospace" }}>
+              <div key={stat.label} className="glass-card-inner" style={{ padding: "var(--space-3)", borderRadius: "var(--radius-md)", textAlign: "center" }}>
+                <div style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: stat.color, fontFamily: "'JetBrains Mono', monospace" }}>
                   {stat.value}
                 </div>
-                <div style={{ fontSize: 10, color: "var(--t3)", marginTop: 4, fontWeight: 500 }}>
+                <div style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", marginTop: 4, fontWeight: "var(--fw-medium)" }}>
                   {stat.label}
                 </div>
               </div>
@@ -5455,9 +5740,9 @@ const App: React.FC = () => {
         {/* Tabs */}
         <div style={{
           display: "flex",
-          gap: 4,
+          gap: "var(--space-1)",
           padding: 4,
-          borderRadius: 100,
+          borderRadius: "var(--radius-full)",
           width: "fit-content",
           marginBottom: 18,
           background: "var(--glass2)",
@@ -5475,49 +5760,53 @@ const App: React.FC = () => {
           {profileTab === 'positions' && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--t1)" }}>Your Positions</h3>
+                <h3 style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>Your Positions</h3>
                 {userPositions.length > 0 && (
-                  <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 500 }}>
+                  <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontWeight: "var(--fw-medium)" }}>
                     Total: {userPositions.reduce((acc, p) => acc + p.currentValue, 0).toFixed(4)} SOL
                   </span>
                 )}
               </div>
               {userPositions.length === 0 ? (
-                <div className="empty-state" style={{ textAlign: "center", padding: "48px 0" }}>
-                  <div style={{ marginBottom: 16 }}><EmptyStateIcon type="inbox" size={56} /></div>
-                  <p style={{ fontSize: 15, color: "var(--t2)", marginBottom: 20, fontWeight: 500 }}>No positions yet</p>
-                  <button onClick={() => go('launches')} className="btn-press interactive-hover" style={s(bpS, { height: 42, padding: "0 24px", fontSize: 13 })}>
+                <div className="empty-state" style={{ textAlign: "center", padding: "var(--space-12) 0" }}>
+                  <div style={{ marginBottom: "var(--space-4)" }}><EmptyStateIcon type="inbox" size={56} /></div>
+                  <p style={{ fontSize: "var(--fs-base)", color: "var(--t2)", marginBottom: "var(--space-5)", fontWeight: "var(--fw-medium)" }}>No positions yet</p>
+                  <button onClick={() => go('launches')} className="btn-press interactive-hover" style={s(bpS, { height: "var(--btn-md)", padding: "0 var(--space-6)", fontSize: "var(--fs-sm)" })}>
                     Explore Launches
                   </button>
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2-5)" }}>
                   {userPositions.map((pos, i) => (
                     <div
                       key={pos.launch.id}
                       onClick={() => go('detail', pos.launch)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('detail', pos.launch); }}}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View ${pos.launch.name} position`}
                       className="glass-card-inner table-row-hover btn-press stagger-reveal hover-scale-premium"
                       style={s(ani("fu", i * 0.04), {
-                        padding: 18,
+                        padding: "var(--space-4-5)",
                         cursor: "pointer",
-                        borderRadius: 14
+                        borderRadius: "var(--radius-lg)"
                       })}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3-5)" }}>
                           <Avatar gi={pos.launch.gi} size={44} imageUrl={getTokenImageUrl(pos.launch.publicKey)} symbol={pos.launch.symbol} />
                           <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontWeight: 600, fontSize: 15, color: "var(--t1)" }}>{pos.launch.name}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                              <span style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-lg)", color: "var(--t1)" }}>{pos.launch.name}</span>
                               <Badge status={pos.launch.status} isDark={isDark} />
                             </div>
-                            <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
+                            <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
                               {fN(pos.tokenBalance / 1e6, 1)}M {pos.launch.symbol}
                             </div>
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 15, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--t1)" }}>
+                          <div style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace", color: "var(--t1)" }}>
                             {fSOL(pos.currentValue)}
                           </div>
                           <div style={{
@@ -5525,8 +5814,8 @@ const App: React.FC = () => {
                             alignItems: "center",
                             justifyContent: "flex-end",
                             gap: 5,
-                            fontSize: 12,
-                            fontWeight: 600,
+                            fontSize: "var(--fs-sm)",
+                            fontWeight: "var(--fw-semibold)",
                             color: pos.pnl >= 0 ? "var(--grn)" : "var(--red)",
                             marginTop: 3
                           }}>
@@ -5545,19 +5834,19 @@ const App: React.FC = () => {
           {profileTab === 'activity' && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--t1)" }}>Transaction History</h3>
-                <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 500 }}>Click tx to view on Solscan</span>
+                <h3 style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>Transaction History</h3>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontWeight: "var(--fw-medium)" }}>Click tx to view on Solscan</span>
               </div>
               {detailedTransactions.length === 0 ? (
-                <div className="empty-state" style={{ textAlign: "center", padding: "48px 0" }}>
-                  <div style={{ marginBottom: 16 }}><EmptyStateIcon type="chart" size={48} /></div>
-                  <p style={{ fontSize: 15, color: "var(--t2)", fontWeight: 500 }}>No transactions yet</p>
+                <div className="empty-state" style={{ textAlign: "center", padding: "var(--space-12) 0" }}>
+                  <div style={{ marginBottom: "var(--space-4)" }}><EmptyStateIcon type="chart" size={48} /></div>
+                  <p style={{ fontSize: "var(--fs-base)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>No transactions yet</p>
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {detailedTransactions.map((tx, i) => (
                     <div
-                      key={i}
+                      key={tx.txSignature}
                       style={s(ani("fu", i * 0.03), {
                         display: "flex",
                         justifyContent: "space-between",
@@ -5566,11 +5855,11 @@ const App: React.FC = () => {
                         borderBottom: i < detailedTransactions.length - 1 ? "1px solid var(--glass-border)" : "none"
                       })}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3-5)" }}>
                         <div style={{
                           width: 40,
                           height: 40,
-                          borderRadius: 12,
+                          borderRadius: "var(--radius-md)",
                           background: tx.type === 'buy' ? "var(--gb)" : tx.type === 'sell' ? "var(--rb)" : "var(--glass2)",
                           display: "flex",
                           alignItems: "center",
@@ -5585,29 +5874,29 @@ const App: React.FC = () => {
                           )}
                         </div>
                         <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                             <span style={{
-                              fontSize: 11,
-                              fontWeight: 700,
+                              fontSize: "var(--fs-xs)",
+                              fontWeight: "var(--fw-bold)",
                               color: tx.type === 'buy' ? "var(--grn)" : tx.type === 'sell' ? "var(--red)" : "var(--t1)",
                               textTransform: "uppercase",
                               letterSpacing: 0.5
                             }}>
                               {tx.type === 'create' ? 'Created' : tx.type}
                             </span>
-                            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>{tx.launch}</span>
+                            <span style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>{tx.launch}</span>
                           </div>
-                          <div style={{ fontSize: 12, color: "var(--t3)", marginTop: 3 }}>
+                          <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: 3 }}>
                             {tx.type !== 'create' && `${(tx.amount / 1e6).toFixed(0)}M ${tx.symbol} · `}
                             {tx.time}
                           </div>
                         </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3-5)" }}>
                         <div style={{ textAlign: "right" }}>
                           <div style={{
-                            fontSize: 14,
-                            fontWeight: 600,
+                            fontSize: "var(--fs-md)",
+                            fontWeight: "var(--fw-semibold)",
                             fontFamily: "'JetBrains Mono', monospace",
                             color: tx.type === 'buy' ? "var(--red)" : tx.type === 'sell' ? "var(--grn)" : "var(--t1)"
                           }}>
@@ -5625,11 +5914,11 @@ const App: React.FC = () => {
                             alignItems: "center",
                             gap: 5,
                             padding: "7px 12px",
-                            borderRadius: 10,
+                            borderRadius: "var(--radius-md)",
                             background: "var(--glass2)",
                             border: "1px solid var(--glass-border)",
                             color: "var(--t2)",
-                            fontSize: 11,
+                            fontSize: "var(--fs-xs)",
                             textDecoration: "none",
                             fontWeight: 500
                           }}
@@ -5650,54 +5939,58 @@ const App: React.FC = () => {
 
           {profileTab === 'created' && (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--t1)" }}>Your Launches</h3>
-                <button onClick={() => go('create')} className="btn-press interactive-hover" style={s(bpS, { height: 34, padding: "0 16px", fontSize: 12, display: "flex", alignItems: "center", gap: 5 })}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-5)" }}>
+                <h3 style={{ fontSize: "var(--fs-base)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>Your Launches</h3>
+                <button onClick={() => go('create')} className="btn-press interactive-hover" style={s(bpS, { height: "var(--btn-sm)", padding: "0 var(--space-4)", fontSize: "var(--fs-xs)", display: "flex", alignItems: "center", gap: "var(--space-1)" })}>
                   <SvgPlus /> Create
                 </button>
               </div>
               {myCreatedLaunches.length === 0 ? (
-                <div className="empty-state" style={{ textAlign: "center", padding: "48px 0" }}>
-                  <div style={{ marginBottom: 16 }}><EmptyStateIcon type="rocket" size={56} /></div>
-                  <p style={{ fontSize: 15, color: "var(--t2)", marginBottom: 20, fontWeight: 500 }}>You haven't created any launches yet</p>
-                  <button onClick={() => go('create')} className="btn-press interactive-hover" style={s(bpS, { height: 42, padding: "0 24px", fontSize: 13 })}>
+                <div className="empty-state" style={{ textAlign: "center", padding: "var(--space-12) 0" }}>
+                  <div style={{ marginBottom: "var(--space-4)" }}><EmptyStateIcon type="rocket" size={56} /></div>
+                  <p style={{ fontSize: "var(--fs-base)", color: "var(--t2)", marginBottom: "var(--space-5)", fontWeight: "var(--fw-medium)" }}>You haven't created any launches yet</p>
+                  <button onClick={() => go('create')} className="btn-press interactive-hover" style={s(bpS, { height: "var(--btn-md)", padding: "0 var(--space-6)", fontSize: "var(--fs-sm)" })}>
                     Create Your First Launch
                   </button>
                 </div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3-5)" }}>
                   {myCreatedLaunches.map((launch, i) => (
                     <div
                       key={launch.id}
                       onClick={() => go('detail', launch)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('detail', launch); }}}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View ${launch.name} token`}
                       className="glass-card-inner table-row-hover btn-press stagger-reveal hover-scale-premium"
                       style={s(ani("fu", i * 0.04), {
-                        padding: 18,
+                        padding: "var(--space-4-5)",
                         cursor: "pointer",
-                        borderRadius: 14
+                        borderRadius: "var(--radius-lg)"
                       })}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: 14 }}>
                         <Avatar gi={launch.gi} size={40} />
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--t1)" }}>{launch.name}</div>
-                          <div style={{ fontSize: 11, color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace" }}>{launch.symbol}</div>
+                          <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-md)", color: "var(--t1)" }}>{launch.name}</div>
+                          <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace" }}>{launch.symbol}</div>
                         </div>
                         <Badge status={launch.status} isDark={isDark} />
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-2-5)" }}>
                         <div>
-                          <div style={{ fontSize: 10, color: "var(--t3)", marginBottom: 4, fontWeight: 600, letterSpacing: 0.3 }}>PROGRESS</div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", marginBottom: 4, fontWeight: "var(--fw-semibold)", letterSpacing: 0.3 }}>PROGRESS</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                             <div style={{ flex: 1, height: 5, borderRadius: 3, background: "var(--glass2)", overflow: "hidden" }}>
                               <div className="progress-animate" style={{ width: `${launch.progress}%`, height: "100%", background: "var(--grn)", borderRadius: 3 }} />
                             </div>
-                            <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600 }}>{launch.progress}%</span>
+                            <span style={{ fontSize: "var(--fs-sm)", color: "var(--t1)", fontWeight: "var(--fw-semibold)" }}>{launch.progress}%</span>
                           </div>
                         </div>
                         <div>
-                          <div style={{ fontSize: 10, color: "var(--t3)", marginBottom: 4, fontWeight: 600, letterSpacing: 0.3 }}>HOLDERS</div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>{launch.holders}</div>
+                          <div style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", marginBottom: 4, fontWeight: "var(--fw-semibold)", letterSpacing: 0.3 }}>HOLDERS</div>
+                          <div style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>{launch.holders}</div>
                         </div>
                       </div>
                     </div>
@@ -5744,9 +6037,9 @@ const App: React.FC = () => {
     }, [launches]);
 
     const mockUserActivity = useMemo(() => [
-      { type: 'buy' as const, token: launches[0]?.name || 'SAMPLE', amount: 0.5, time: '2h ago', value: Math.random() * 1000 },
-      { type: 'sell' as const, token: launches[1]?.name || 'TOKEN', amount: 0.3, time: '5h ago', value: Math.random() * 500 },
-      { type: 'buy' as const, token: launches[2]?.name || 'COIN', amount: 1.2, time: '1d ago', value: Math.random() * 2000 },
+      { id: 'profile-act-1', type: 'buy' as const, token: launches[0]?.name || 'SAMPLE', amount: 0.5, time: '2h ago', value: Math.random() * 1000 },
+      { id: 'profile-act-2', type: 'sell' as const, token: launches[1]?.name || 'TOKEN', amount: 0.3, time: '5h ago', value: Math.random() * 500 },
+      { id: 'profile-act-3', type: 'buy' as const, token: launches[2]?.name || 'COIN', amount: 1.2, time: '1d ago', value: Math.random() * 2000 },
     ], [launches]);
 
     const mockCreatedLaunches = useMemo(() => {
@@ -5760,9 +6053,9 @@ const App: React.FC = () => {
         className="btn-press"
         style={{
           padding: "8px 18px",
-          borderRadius: 100,
-          fontSize: 12,
-          fontWeight: 600,
+          borderRadius: "var(--radius-full)",
+          fontSize: "var(--fs-sm)",
+          fontWeight: "var(--fw-semibold)",
           cursor: "pointer",
           border: "none",
           transition: "all .2s var(--ease-out-quart)",
@@ -5777,9 +6070,9 @@ const App: React.FC = () => {
         {l}
         {count !== undefined && (
           <span style={{
-            fontSize: 10,
+            fontSize: "var(--fs-2xs)",
             padding: "2px 7px",
-            borderRadius: 100,
+            borderRadius: "var(--radius-full)",
             background: userProfileTab === k ? "rgba(0,0,0,0.2)" : "var(--glass2)",
             color: userProfileTab === k ? "var(--pt)" : "var(--t3)",
             fontWeight: 600
@@ -5799,22 +6092,23 @@ const App: React.FC = () => {
     }, [address]);
 
     return (
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "36px 24px", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "var(--space-9) var(--space-6)", position: "relative", zIndex: 1 }}>
         <button
           onClick={() => go('home')}
           className="btn-press interactive-hover"
+          aria-label="Go back"
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 7,
-            fontSize: 13,
+            gap: "var(--space-2)",
+            fontSize: "var(--fs-base)",
             color: "var(--t2)",
             background: "var(--glass)",
             border: "1px solid var(--glass-border)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-sm)",
             cursor: "pointer",
-            marginBottom: 22,
-            padding: "8px 14px",
+            marginBottom: "var(--space-5-5)",
+            padding: "var(--space-2) var(--space-3-5)",
             fontFamily: "inherit"
           }}
         >
@@ -5855,10 +6149,10 @@ const App: React.FC = () => {
 
                 {/* Profile Info */}
                 <div style={{ paddingBottom: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2-5)", marginBottom: 8 }}>
                     <h1 style={{
-                      fontSize: 24,
-                      fontWeight: 700,
+                      fontSize: "var(--fs-3xl)",
+                      fontWeight: "var(--fw-bold)",
                       color: "var(--t1)",
                       fontFamily: "'JetBrains Mono', monospace",
                       letterSpacing: -0.5
@@ -5868,18 +6162,19 @@ const App: React.FC = () => {
                     <button
                       onClick={handleUserCopy}
                       className="btn-press interactive-hover"
+                      aria-label={userCopied ? "Address copied" : "Copy user address"}
                       style={{
                         background: userCopied ? "var(--gb)" : "var(--glass2)",
                         border: userCopied ? "1px solid var(--grn)" : "1px solid var(--glass-border)",
-                        borderRadius: 8,
+                        borderRadius: "var(--radius-sm)",
                         padding: "6px 12px",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
-                        gap: 6,
+                        gap: "var(--space-1-5)",
                         color: userCopied ? "var(--grn)" : "var(--t3)",
-                        fontSize: 11,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-xs)",
+                        fontWeight: "var(--fw-semibold)",
                         transition: "all .2s var(--ease-out-quart)"
                       }}
                     >
@@ -5890,15 +6185,15 @@ const App: React.FC = () => {
                   <div style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 16,
+                    gap: "var(--space-4)",
                     color: "var(--t3)",
                     fontSize: 13
                   }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
                       <StatIcon type="target" size={13} color="var(--t3)" />
                       {mockUserStats.tradesCount} trades
                     </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
                       <StatIcon type="chart" size={13} color="var(--t3)" />
                       {mockUserStats.winRate}% win rate
                     </span>
@@ -5907,28 +6202,28 @@ const App: React.FC = () => {
               </div>
 
               {/* Stats badges */}
-              <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ display: "flex", gap: "var(--space-3)" }}>
                 <div style={{
                   padding: "12px 18px",
-                  borderRadius: 14,
+                  borderRadius: "var(--radius-lg)",
                   background: "var(--glass2)",
                   border: "1px solid var(--glass-border)"
                 }}>
-                  <div style={{ fontSize: 11, color: "var(--t3)", marginBottom: 4 }}>Portfolio</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>
+                  <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginBottom: 4 }}>Portfolio</div>
+                  <div style={{ fontSize: "var(--fs-xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)" }}>
                     {mockUserStats.totalValue.toFixed(2)} SOL
                   </div>
                 </div>
                 <div style={{
                   padding: "12px 18px",
-                  borderRadius: 14,
+                  borderRadius: "var(--radius-lg)",
                   background: mockUserStats.pnl >= 0 ? "var(--gb)" : "var(--rb)",
                   border: `1px solid ${mockUserStats.pnl >= 0 ? "var(--grn)" : "var(--red)"}`
                 }}>
-                  <div style={{ fontSize: 11, color: "var(--t3)", marginBottom: 4 }}>All-time P&L</div>
+                  <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginBottom: 4 }}>All-time P&L</div>
                   <div style={{
-                    fontSize: 18,
-                    fontWeight: 700,
+                    fontSize: "var(--fs-xl)",
+                    fontWeight: "var(--fw-bold)",
                     color: mockUserStats.pnl >= 0 ? "var(--grn)" : "var(--red)"
                   }}>
                     {mockUserStats.pnl >= 0 ? "+" : ""}{mockUserStats.pnlPercent.toFixed(1)}%
@@ -5942,9 +6237,9 @@ const App: React.FC = () => {
         {/* Tabs */}
         <div style={{
           display: "flex",
-          gap: 4,
+          gap: "var(--space-1)",
           padding: 4,
-          borderRadius: 100,
+          borderRadius: "var(--radius-full)",
           width: "fit-content",
           marginBottom: 18,
           background: "var(--glass2)",
@@ -5958,39 +6253,43 @@ const App: React.FC = () => {
         <div className="glass-card page-enter-smooth" style={{ padding: 0, overflow: "hidden" }}>
           {userProfileTab === 'positions' && (
             mockUserPositions.length === 0 ? (
-              <div style={{ padding: 48, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{ marginBottom: 16 }}><EmptyStateIcon type="inbox" size={48} /></div>
-                <p style={{ color: "var(--t3)", fontSize: 14 }}>No positions yet</p>
+              <div style={{ padding: "var(--space-12)", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ marginBottom: "var(--space-4)" }}><EmptyStateIcon type="inbox" size={48} /></div>
+                <p style={{ color: "var(--t3)", fontSize: "var(--fs-sm)" }}>No positions yet</p>
               </div>
             ) : (
               <div>
                 {mockUserPositions.map((pos, i) => (
                   <div
-                    key={i}
+                    key={pos.id}
                     onClick={() => go('detail', pos)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('detail', pos); }}}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View ${pos.name} position`}
                     className="interactive-hover btn-press"
                     style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      padding: "16px 20px",
+                      padding: "var(--space-4) var(--space-5)",
                       borderBottom: i < mockUserPositions.length - 1 ? "1px solid var(--glass-border)" : "none",
                       cursor: "pointer",
                       transition: "background .15s ease"
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3-5)" }}>
                       <Avatar gi={pos.gi} size={42} />
                       <div>
-                        <div style={{ fontWeight: 600, color: "var(--t1)", marginBottom: 3 }}>{pos.name}</div>
-                        <div style={{ fontSize: 12, color: "var(--t3)" }}>{pos.tokens.toLocaleString()} tokens</div>
+                        <div style={{ fontWeight: "var(--fw-semibold)", color: "var(--t1)", marginBottom: 3 }}>{pos.name}</div>
+                        <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>{pos.tokens.toLocaleString()} tokens</div>
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontWeight: 600, color: "var(--t1)", marginBottom: 3 }}>{pos.value.toFixed(2)} SOL</div>
+                      <div style={{ fontWeight: "var(--fw-semibold)", color: "var(--t1)", marginBottom: 3 }}>{pos.value.toFixed(2)} SOL</div>
                       <div style={{
-                        fontSize: 12,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-sm)",
+                        fontWeight: "var(--fw-semibold)",
                         color: pos.pnl >= 0 ? "var(--grn)" : "var(--red)"
                       }}>
                         {pos.pnl >= 0 ? "+" : ""}{pos.pnl.toFixed(1)}%
@@ -6004,15 +6303,15 @@ const App: React.FC = () => {
 
           {userProfileTab === 'activity' && (
             mockUserActivity.length === 0 ? (
-              <div style={{ padding: 48, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{ marginBottom: 16 }}><EmptyStateIcon type="activity" size={48} /></div>
-                <p style={{ color: "var(--t3)", fontSize: 14 }}>No activity yet</p>
+              <div style={{ padding: "var(--space-12)", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ marginBottom: "var(--space-4)" }}><EmptyStateIcon type="activity" size={48} /></div>
+                <p style={{ color: "var(--t3)", fontSize: "var(--fs-sm)" }}>No activity yet</p>
               </div>
             ) : (
               <div>
                 {mockUserActivity.map((act, i) => (
                   <div
-                    key={i}
+                    key={act.id}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -6021,18 +6320,18 @@ const App: React.FC = () => {
                       borderBottom: i < mockUserActivity.length - 1 ? "1px solid var(--glass-border)" : "none"
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3-5)" }}>
                       <TradeIcon type={act.type} size={40} />
                       <div>
-                        <div style={{ fontWeight: 600, color: "var(--t1)", marginBottom: 3 }}>
+                        <div style={{ fontWeight: "var(--fw-semibold)", color: "var(--t1)", marginBottom: 3 }}>
                           {act.type === 'buy' ? 'Bought' : 'Sold'} {act.token}
                         </div>
-                        <div style={{ fontSize: 12, color: "var(--t3)" }}>{act.time}</div>
+                        <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>{act.time}</div>
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontWeight: 600, color: "var(--t1)", marginBottom: 3 }}>{act.amount} SOL</div>
-                      <div style={{ fontSize: 12, color: "var(--t3)" }}>{act.value.toLocaleString()} tokens</div>
+                      <div style={{ fontWeight: "var(--fw-semibold)", color: "var(--t1)", marginBottom: 3 }}>{act.amount} SOL</div>
+                      <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>{act.value.toLocaleString()} tokens</div>
                     </div>
                   </div>
                 ))}
@@ -6042,9 +6341,9 @@ const App: React.FC = () => {
 
           {userProfileTab === 'created' && (
             mockCreatedLaunches.length === 0 ? (
-              <div style={{ padding: 48, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                <div style={{ marginBottom: 16 }}><EmptyStateIcon type="rocket" size={48} /></div>
-                <p style={{ color: "var(--t3)", fontSize: 14 }}>No tokens created yet</p>
+              <div style={{ padding: "var(--space-12)", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ marginBottom: "var(--space-4)" }}><EmptyStateIcon type="rocket" size={48} /></div>
+                <p style={{ color: "var(--t3)", fontSize: "var(--fs-sm)" }}>No tokens created yet</p>
               </div>
             ) : (
               <div>
@@ -6052,29 +6351,33 @@ const App: React.FC = () => {
                   <div
                     key={launch.id}
                     onClick={() => go('detail', launch)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('detail', launch); }}}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View ${launch.name} token`}
                     className="interactive-hover btn-press"
                     style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      padding: "16px 20px",
+                      padding: "var(--space-4) var(--space-5)",
                       borderBottom: i < mockCreatedLaunches.length - 1 ? "1px solid var(--glass-border)" : "none",
                       cursor: "pointer",
                       transition: "background .15s ease"
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3-5)" }}>
                       <Avatar gi={launch.gi} size={42} />
                       <div>
-                        <div style={{ fontWeight: 600, color: "var(--t1)", marginBottom: 3 }}>{launch.name}</div>
-                        <div style={{ fontSize: 12, color: "var(--t3)" }}>${launch.symbol}</div>
+                        <div style={{ fontWeight: "var(--fw-semibold)", color: "var(--t1)", marginBottom: 3 }}>{launch.name}</div>
+                        <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>${launch.symbol}</div>
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontWeight: 600, color: "var(--t1)", marginBottom: 3 }}>${(launch.marketCap / 1000).toFixed(1)}K</div>
+                      <div style={{ fontWeight: "var(--fw-semibold)", color: "var(--t1)", marginBottom: 3 }}>${(launch.marketCap / 1000).toFixed(1)}K</div>
                       <div style={{
-                        fontSize: 12,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-sm)",
+                        fontWeight: "var(--fw-semibold)",
                         color: launch.priceChange24h >= 0 ? "var(--grn)" : "var(--red)"
                       }}>
                         {launch.priceChange24h >= 0 ? "+" : ""}{launch.priceChange24h.toFixed(1)}%
@@ -6132,16 +6435,16 @@ const App: React.FC = () => {
       >
         <div style={{ flex: 1, paddingRight: 16 }}>
           <span style={{
-            fontSize: 14,
+            fontSize: "var(--fs-md)",
             color: "var(--t1)",
-            fontWeight: 500,
+            fontWeight: "var(--fw-medium)",
             display: "block"
           }}>
             {label}
           </span>
           {description && (
             <p style={{
-              fontSize: 12,
+              fontSize: "var(--fs-sm)",
               color: "var(--t3)",
               marginTop: 4,
               lineHeight: 1.4
@@ -6157,7 +6460,7 @@ const App: React.FC = () => {
           style={{
             width: 52,
             height: 28,
-            borderRadius: 14,
+            borderRadius: "var(--radius-lg)",
             background: checked
               ? "linear-gradient(135deg, #34d399, #22C55E)"
               : "var(--glass2)",
@@ -6191,13 +6494,13 @@ const App: React.FC = () => {
         <div style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: "var(--space-2)",
           marginBottom: 14
         }}>
-          {icon && <span style={{ fontSize: 14 }}>{icon}</span>}
+          {icon && <span style={{ fontSize: "var(--fs-md)" }}>{icon}</span>}
           <h3 style={{
-            fontSize: 11,
-            fontWeight: 700,
+            fontSize: "var(--fs-xs)",
+            fontWeight: "var(--fw-bold)",
             color: "var(--t3)",
             letterSpacing: 0.8,
             textTransform: "uppercase"
@@ -6206,8 +6509,8 @@ const App: React.FC = () => {
           </h3>
         </div>
         <div className="glass-card-inner" style={{
-          borderRadius: 16,
-          padding: 20,
+          borderRadius: "var(--radius-md)",
+          padding: "var(--space-5)",
           background: "linear-gradient(135deg, var(--glass), var(--glass2))"
         }}>
           {children}
@@ -6222,11 +6525,11 @@ const App: React.FC = () => {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: "var(--space-2)",
           padding: "10px 16px",
-          borderRadius: 10,
-          fontSize: 13,
-          fontWeight: 600,
+          borderRadius: "var(--radius-md)",
+          fontSize: "var(--fs-base)",
+          fontWeight: "var(--fw-semibold)",
           cursor: "pointer",
           border: "1px solid",
           borderColor: settingsTab === k ? "var(--grn)" : "transparent",
@@ -6236,28 +6539,29 @@ const App: React.FC = () => {
           transition: "all .2s var(--ease-out-quart)"
         }}
       >
-        <span style={{ fontSize: 14 }}>{icon}</span>
+        <span style={{ fontSize: "var(--fs-md)" }}>{icon}</span>
         {label}
       </button>
     );
 
     return (
-      <div style={{ maxWidth: 700, margin: "0 auto", padding: "36px 24px", position: "relative", zIndex: 1 }}>
+      <div style={{ maxWidth: 700, margin: "0 auto", padding: "var(--space-9) var(--space-6)", position: "relative", zIndex: 1 }}>
         <button
           onClick={() => go('home')}
           className="btn-press interactive-hover"
+          aria-label="Go back"
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 7,
-            fontSize: 13,
+            gap: "var(--space-2)",
+            fontSize: "var(--fs-base)",
             color: "var(--t2)",
             background: "var(--glass)",
             border: "1px solid var(--glass-border)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-sm)",
             cursor: "pointer",
-            marginBottom: 22,
-            padding: "8px 14px",
+            marginBottom: "var(--space-5-5)",
+            padding: "var(--space-2) var(--space-3-5)",
             fontFamily: "inherit"
           }}
         >
@@ -6267,7 +6571,7 @@ const App: React.FC = () => {
         {/* Header - Enhanced */}
         <div className="glass-card page-enter-smooth" style={{
           padding: 0,
-          marginBottom: 20,
+          marginBottom: "var(--space-5)",
           overflow: "hidden"
         }}>
           {/* Header gradient banner */}
@@ -6275,11 +6579,11 @@ const App: React.FC = () => {
             padding: "28px 28px 0",
             background: "linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.05))",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", marginBottom: 24 }}>
               <div style={{
                 width: 60,
                 height: 60,
-                borderRadius: 18,
+                borderRadius: "var(--radius-lg)",
                 background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
                 display: "flex",
                 alignItems: "center",
@@ -6290,15 +6594,15 @@ const App: React.FC = () => {
               </div>
               <div>
                 <h1 style={{
-                  fontSize: 26,
-                  fontWeight: 700,
+                  fontSize: "var(--fs-3xl)",
+                  fontWeight: "var(--fw-bold)",
                   color: "var(--t1)",
                   letterSpacing: -0.5
                 }}>
                   Settings
                 </h1>
                 <p style={{
-                  fontSize: 13,
+                  fontSize: "var(--fs-base)",
                   color: "var(--t2)",
                   marginTop: 4
                 }}>
@@ -6329,16 +6633,16 @@ const App: React.FC = () => {
                 <button
                   key={k}
                   onClick={() => setSettingsTab(k)}
-                  className="btn-press"
+                  className="btn-press interactive-hover"
                   style={{
                     flex: 1,
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    gap: 4,
-                    padding: "14px 8px",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    gap: "var(--space-1)",
+                    padding: "var(--space-3-5) var(--space-2)",
+                    fontSize: "var(--fs-sm)",
+                    fontWeight: "var(--fw-semibold)",
                     cursor: "pointer",
                     border: "none",
                     borderBottom: isActive ? "2px solid var(--grn)" : "2px solid transparent",
@@ -6348,14 +6652,14 @@ const App: React.FC = () => {
                     transition: "all .2s var(--ease-out-quart)"
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
                     <StatIcon type={tab.iconType} size={14} color={isActive ? "var(--t1)" : "var(--t2)"} />
                     {tab.label}
                   </div>
                   <span style={{
-                    fontSize: 9,
+                    fontSize: "var(--fs-3xs)",
                     color: isActive ? "var(--t3)" : "var(--t3)",
-                    fontWeight: 400,
+                    fontWeight: "var(--fw-normal)",
                     opacity: isActive ? 1 : 0.6
                   }}>
                     {tab.desc}
@@ -6372,8 +6676,8 @@ const App: React.FC = () => {
             <>
               {/* Appearance */}
               <SettingSection title="Appearance">
-                <label style={{ fontSize: 12, color: "var(--t2)", display: "block", marginBottom: 10, fontWeight: 500 }}>Theme</label>
-                <div style={{ display: "flex", gap: 10 }}>
+                <label style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", display: "block", marginBottom: 10, fontWeight: "var(--fw-medium)" }}>Theme</label>
+                <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
                   {[
                     { key: 'dark' as const, label: 'Dark', icon: <SvgMoon />, desc: 'Easy on the eyes' },
                     { key: 'light' as const, label: 'Light', icon: <SvgSun />, desc: 'Classic look' },
@@ -6388,19 +6692,19 @@ const App: React.FC = () => {
                       style={s(bsS, {
                         flex: 1,
                         height: 56,
-                        fontSize: 14,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-md)",
+                        fontWeight: "var(--fw-semibold)",
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: 4,
+                        gap: "var(--space-1)",
                         background: settings.theme === theme.key ? "var(--pb)" : "var(--sb)",
                         color: settings.theme === theme.key ? "var(--pt)" : "var(--st)",
                         border: settings.theme === theme.key ? "2px solid var(--grn)" : "2px solid transparent"
                       })}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
                         {theme.icon}
                         {theme.label}
                       </div>
@@ -6411,7 +6715,7 @@ const App: React.FC = () => {
 
               {/* Display Currency */}
               <SettingSection title="Display Currency">
-                <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
                   {(['USD', 'SOL'] as const).map((curr) => (
                     <button
                       key={curr}
@@ -6420,8 +6724,8 @@ const App: React.FC = () => {
                       style={s(bsS, {
                         flex: 1,
                         height: 44,
-                        fontSize: 14,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-md)",
+                        fontWeight: "var(--fw-semibold)",
                         background: settings.currency === curr ? "var(--pb)" : "var(--sb)",
                         color: settings.currency === curr ? "var(--pt)" : "var(--st)",
                         border: settings.currency === curr ? "2px solid var(--grn)" : "2px solid transparent"
@@ -6435,10 +6739,10 @@ const App: React.FC = () => {
 
               {/* Display Density */}
               <SettingSection title="Display Density">
-                <p style={{ fontSize: 12, color: "var(--t3)", marginBottom: 14, lineHeight: 1.5 }}>
+                <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginBottom: "var(--space-3-5)", lineHeight: 1.5 }}>
                   Adjust the information density throughout the interface.
                 </p>
-                <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
                   {[
                     { key: 'compact' as const, label: 'Compact', desc: 'More info, less space' },
                     { key: 'comfortable' as const, label: 'Comfortable', desc: 'Balanced layout' },
@@ -6451,13 +6755,13 @@ const App: React.FC = () => {
                       style={s(bsS, {
                         flex: 1,
                         height: 56,
-                        fontSize: 12,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-sm)",
+                        fontWeight: "var(--fw-semibold)",
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: 4,
+                        gap: "var(--space-1)",
                         background: settings.displayDensity === density.key ? "var(--pb)" : "var(--sb)",
                         color: settings.displayDensity === density.key ? "var(--pt)" : "var(--st)",
                         border: settings.displayDensity === density.key ? "2px solid var(--grn)" : "2px solid transparent"
@@ -6523,10 +6827,10 @@ const App: React.FC = () => {
             <>
               {/* Slippage */}
               <SettingSection title="Default Slippage Tolerance">
-                <p style={{ fontSize: 12, color: "var(--t3)", marginBottom: 14, lineHeight: 1.5 }}>
+                <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginBottom: "var(--space-3-5)", lineHeight: 1.5 }}>
                   Maximum price change you're willing to accept. Higher = more likely to execute but may get worse price.
                 </p>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: "var(--space-2)" }}>
                   {[0.5, 1, 2, 3, 5, 10].map((slip) => (
                     <button
                       key={slip}
@@ -6535,8 +6839,8 @@ const App: React.FC = () => {
                       style={s(bsS, {
                         flex: 1,
                         height: 42,
-                        fontSize: 13,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-base)",
+                        fontWeight: "var(--fw-semibold)",
                         background: settings.defaultSlippage === slip ? "var(--pb)" : "var(--sb)",
                         color: settings.defaultSlippage === slip ? "var(--pt)" : "var(--st)",
                         border: settings.defaultSlippage === slip ? "2px solid var(--grn)" : "2px solid transparent"
@@ -6546,17 +6850,17 @@ const App: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <p style={{ fontSize: 11, color: "var(--t3)", marginTop: 10 }}>
-                  Current: <span style={{ color: "var(--grn)", fontWeight: 600 }}>{settings.defaultSlippage}%</span> slippage tolerance
+                <p style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginTop: 10 }}>
+                  Current: <span style={{ color: "var(--grn)", fontWeight: "var(--fw-semibold)" }}>{settings.defaultSlippage}%</span> slippage tolerance
                 </p>
               </SettingSection>
 
               {/* Quick Trade Amounts */}
               <SettingSection title="Quick Trade Amounts">
-                <p style={{ fontSize: 12, color: "var(--t3)", marginBottom: 14, lineHeight: 1.5 }}>
+                <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginBottom: "var(--space-3-5)", lineHeight: 1.5 }}>
                   Preset amounts for faster trading. Click to set default.
                 </p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-2)" }}>
                   {[0.1, 0.25, 0.5, 1, 2, 5, 10, 25].map((amt, i) => (
                     <div
                       key={amt}
@@ -6564,13 +6868,13 @@ const App: React.FC = () => {
                       style={{
                         padding: "12px 8px",
                         textAlign: "center",
-                        borderRadius: 10,
+                        borderRadius: "var(--radius-md)",
                         cursor: "pointer",
                         transition: "all .15s"
                       }}
                     >
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>{amt}</div>
-                      <div style={{ fontSize: 10, color: "var(--t3)", marginTop: 2 }}>SOL</div>
+                      <div style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-bold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>{amt}</div>
+                      <div style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", marginTop: 2 }}>SOL</div>
                     </div>
                   ))}
                 </div>
@@ -6578,36 +6882,56 @@ const App: React.FC = () => {
 
               {/* Priority Fee */}
               <SettingSection title="Transaction Priority">
-                <p style={{ fontSize: 12, color: "var(--t3)", marginBottom: 14, lineHeight: 1.5 }}>
-                  Higher priority = faster confirmation but costs more in fees.
+                <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginBottom: "var(--space-2)", lineHeight: 1.5 }}>
+                  Priority fees incentivize validators to include your transaction faster. Choose based on network congestion and urgency.
                 </p>
-                <div style={{ display: "flex", gap: 10 }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-2)",
+                  padding: "var(--space-2) var(--space-3)",
+                  marginBottom: "var(--space-3)",
+                  borderRadius: "var(--radius-sm)",
+                  background: "var(--glass)",
+                  border: "1px solid var(--glass-border)"
+                }}>
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--grn)" strokeWidth={2}>
+                    <circle cx={12} cy={12} r={10}/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                  <span style={{ fontSize: "var(--fs-xs)", color: "var(--t2)" }}>
+                    Solana averages ~400ms block times with ~$0.00025 base fees
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
                   {[
-                    { key: 'low', label: 'Standard', desc: 'Lower fees', fee: '~0.00005 SOL' },
-                    { key: 'medium', label: 'Fast', desc: 'Balanced', fee: '~0.0001 SOL' },
-                    { key: 'high', label: 'Turbo', desc: 'Fastest', fee: '~0.0005 SOL' },
+                    { key: 'low', label: 'Standard', time: '10-30s', fee: '~0.00005 SOL' },
+                    { key: 'medium', label: 'Fast', time: '5-10s', fee: '~0.0001 SOL' },
+                    { key: 'high', label: 'Turbo', time: '1-5s', fee: '~0.0005 SOL' },
                   ].map((priority) => (
                     <button
                       key={priority.key}
                       onClick={() => updateSettings({ priority: priority.key as 'low' | 'medium' | 'high' })}
                       className="glass-pill btn-press interactive-hover"
+                      aria-label={`${priority.label} priority: ${priority.time} confirmation, ${priority.fee}`}
                       style={s(bsS, {
                         flex: 1,
-                        height: 64,
-                        fontSize: 12,
-                        fontWeight: 600,
+                        height: 76,
+                        fontSize: "var(--fs-sm)",
+                        fontWeight: "var(--fw-semibold)",
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: 4,
+                        gap: "var(--space-0-5)",
                         background: settings.priority === priority.key ? "var(--pb)" : "var(--sb)",
                         color: settings.priority === priority.key ? "var(--pt)" : "var(--st)",
                         border: settings.priority === priority.key ? "2px solid var(--grn)" : "2px solid transparent"
                       })}
                     >
                       <span>{priority.label}</span>
-                      <span style={{ fontSize: 10, opacity: 0.7 }}>{priority.fee}</span>
+                      <span style={{ fontSize: "var(--fs-2xs)", opacity: 0.7 }}>{priority.time}</span>
+                      <span style={{ fontSize: "var(--fs-3xs)", opacity: 0.5 }}>{priority.fee}</span>
                     </button>
                   ))}
                 </div>
@@ -6626,12 +6950,12 @@ const App: React.FC = () => {
                     <div style={{ borderBottom: "1px solid var(--glass-border)", margin: "8px 0" }} />
                     <div style={{ marginTop: 16 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Max Trade Size</span>
-                        <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                        <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>Max Trade Size</span>
+                        <span style={{ fontSize: "var(--fs-sm)", color: "var(--t1)", fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace" }}>
                           {settings.tradingLimits.maxTradeSize} SOL
                         </span>
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ display: "flex", gap: "var(--space-2)" }}>
                         {[10, 25, 50, 100, 250].map((amt) => (
                           <button
                             key={amt}
@@ -6640,8 +6964,8 @@ const App: React.FC = () => {
                             style={s(bsS, {
                               flex: 1,
                               height: 36,
-                              fontSize: 11,
-                              fontWeight: 600,
+                              fontSize: "var(--fs-xs)",
+                              fontWeight: "var(--fw-semibold)",
                               background: settings.tradingLimits.maxTradeSize === amt ? "var(--pb)" : "var(--sb)",
                               color: settings.tradingLimits.maxTradeSize === amt ? "var(--pt)" : "var(--st)",
                               border: settings.tradingLimits.maxTradeSize === amt ? "2px solid var(--grn)" : "2px solid transparent"
@@ -6654,12 +6978,12 @@ const App: React.FC = () => {
                     </div>
                     <div style={{ marginTop: 20 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Daily Trading Limit</span>
-                        <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                        <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>Daily Trading Limit</span>
+                        <span style={{ fontSize: "var(--fs-sm)", color: "var(--t1)", fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace" }}>
                           {settings.tradingLimits.dailyLimit} SOL
                         </span>
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ display: "flex", gap: "var(--space-2)" }}>
                         {[100, 250, 500, 1000, 2500].map((amt) => (
                           <button
                             key={amt}
@@ -6668,8 +6992,8 @@ const App: React.FC = () => {
                             style={s(bsS, {
                               flex: 1,
                               height: 36,
-                              fontSize: 11,
-                              fontWeight: 600,
+                              fontSize: "var(--fs-xs)",
+                              fontWeight: "var(--fw-semibold)",
                               background: settings.tradingLimits.dailyLimit === amt ? "var(--pb)" : "var(--sb)",
                               color: settings.tradingLimits.dailyLimit === amt ? "var(--pt)" : "var(--st)",
                               border: settings.tradingLimits.dailyLimit === amt ? "2px solid var(--grn)" : "2px solid transparent"
@@ -6687,8 +7011,8 @@ const App: React.FC = () => {
               {/* Chart Preferences */}
               <SettingSection title="Chart Preferences">
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 12, color: "var(--t2)", display: "block", marginBottom: 10, fontWeight: 500 }}>Chart Type</label>
-                  <div style={{ display: "flex", gap: 10 }}>
+                  <label style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", display: "block", marginBottom: 10, fontWeight: "var(--fw-medium)" }}>Chart Type</label>
+                  <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
                     {[
                       { key: 'candle' as const, label: 'Candlestick' },
                       { key: 'line' as const, label: 'Line' },
@@ -6701,8 +7025,8 @@ const App: React.FC = () => {
                         style={s(bsS, {
                           flex: 1,
                           height: 42,
-                          fontSize: 12,
-                          fontWeight: 600,
+                          fontSize: "var(--fs-sm)",
+                          fontWeight: "var(--fw-semibold)",
                           background: settings.chartType === chart.key ? "var(--pb)" : "var(--sb)",
                           color: settings.chartType === chart.key ? "var(--pt)" : "var(--st)",
                           border: settings.chartType === chart.key ? "2px solid var(--grn)" : "2px solid transparent"
@@ -6729,15 +7053,15 @@ const App: React.FC = () => {
               <SettingSection title="Session Security">
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Auto-Lock Timeout</span>
-                    <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                    <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>Auto-Lock Timeout</span>
+                    <span style={{ fontSize: "var(--fs-sm)", color: "var(--t1)", fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace" }}>
                       {settings.sessionTimeout} min
                     </span>
                   </div>
-                  <p style={{ fontSize: 11, color: "var(--t3)", marginBottom: 12 }}>
+                  <p style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginBottom: 12 }}>
                     Automatically lock wallet connection after inactivity.
                   </p>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ display: "flex", gap: "var(--space-2)" }}>
                     {[15, 30, 60, 120, 0].map((timeout) => (
                       <button
                         key={timeout}
@@ -6746,8 +7070,8 @@ const App: React.FC = () => {
                         style={s(bsS, {
                           flex: 1,
                           height: 36,
-                          fontSize: 11,
-                          fontWeight: 600,
+                          fontSize: "var(--fs-xs)",
+                          fontWeight: "var(--fw-semibold)",
                           background: settings.sessionTimeout === timeout ? "var(--pb)" : "var(--sb)",
                           color: settings.sessionTimeout === timeout ? "var(--pt)" : "var(--st)",
                           border: settings.sessionTimeout === timeout ? "2px solid var(--grn)" : "2px solid transparent"
@@ -6774,12 +7098,12 @@ const App: React.FC = () => {
                   description="Require additional confirmation for large trades"
                 />
                 {settings.twoFactorEnabled && (
-                  <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: "var(--gb)", border: "1px solid rgba(34,197,94,0.2)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <div style={{ marginTop: "var(--space-4)", padding: "var(--space-3-5)", borderRadius: "var(--radius-md)", background: "var(--gb)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: 6 }}>
                       <SvgCheck />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--grn)" }}>2FA Active</span>
+                      <span style={{ fontSize: "var(--fs-sm)", fontWeight: "var(--fw-semibold)", color: "var(--grn)" }}>2FA Active</span>
                     </div>
-                    <p style={{ fontSize: 11, color: "var(--t2)" }}>
+                    <p style={{ fontSize: "var(--fs-xs)", color: "var(--t2)" }}>
                       Trades above your max trade size will require wallet signature confirmation.
                     </p>
                   </div>
@@ -6789,13 +7113,13 @@ const App: React.FC = () => {
               {/* Connected Wallet */}
               <SettingSection title="Connected Wallet">
                 {wallet.connected ? (
-                  <div className="glass-card-inner" style={{ padding: 16, borderRadius: 12 }}>
+                  <div className="glass-card-inner" style={{ padding: "var(--space-4)", borderRadius: "var(--radius-md)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2-5)" }}>
                         <div style={{
                           width: 36,
                           height: 36,
-                          borderRadius: 10,
+                          borderRadius: "var(--radius-md)",
                           background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
                           display: "flex",
                           alignItems: "center",
@@ -6804,24 +7128,24 @@ const App: React.FC = () => {
                           <SvgWallet />
                         </div>
                         <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                          <div style={{ fontSize: "var(--fs-base)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                             {wallet.address?.slice(0, 6)}...{wallet.address?.slice(-4)}
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--t3)" }}>Connected via Phantom</div>
+                          <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>Connected via Phantom</div>
                         </div>
                       </div>
                       <span style={{
                         padding: "4px 10px",
-                        borderRadius: 100,
+                        borderRadius: "var(--radius-full)",
                         background: "var(--gb)",
                         color: "var(--grn)",
-                        fontSize: 10,
+                        fontSize: "var(--fs-2xs)",
                         fontWeight: 600
                       }}>
                         Active
                       </span>
                     </div>
-                    <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
                       <button
                         onClick={() => {
                           if (wallet.address) {
@@ -6830,14 +7154,14 @@ const App: React.FC = () => {
                           }
                         }}
                         className="glass-pill btn-press interactive-hover"
-                        style={s(bsS, { flex: 1, height: 36, fontSize: 11 })}
+                        style={s(bsS, { flex: 1, height: 36, fontSize: "var(--fs-xs)" })}
                       >
                         Copy Address
                       </button>
                       <button
                         onClick={() => wallet.disconnect()}
                         className="glass-pill btn-press interactive-hover"
-                        style={s(bsS, { flex: 1, height: 36, fontSize: 11, color: "var(--red)" })}
+                        style={s(bsS, { flex: 1, height: 36, fontSize: "var(--fs-xs)", color: "var(--red)" })}
                       >
                         Disconnect
                       </button>
@@ -6845,11 +7169,11 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   <div style={{ textAlign: "center", padding: "24px 0" }}>
-                    <p style={{ fontSize: 13, color: "var(--t2)", marginBottom: 16 }}>No wallet connected</p>
+                    <p style={{ fontSize: "var(--fs-base)", color: "var(--t2)", marginBottom: 16 }}>No wallet connected</p>
                     <button
                       onClick={() => wallet.connect()}
                       className="btn-press interactive-hover"
-                      style={s(bpS, { height: 40, padding: "0 24px", fontSize: 13 })}
+                      style={s(bpS, { height: 40, padding: "0 24px", fontSize: "var(--fs-base)" })}
                     >
                       Connect Wallet
                     </button>
@@ -6859,7 +7183,7 @@ const App: React.FC = () => {
 
               {/* Keyboard Shortcuts */}
               <SettingSection title="Keyboard Shortcuts">
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                   {[
                     { key: 'H', action: 'Go to Home' },
                     { key: 'L', action: 'View Launches' },
@@ -6868,14 +7192,14 @@ const App: React.FC = () => {
                     { key: 'Esc', action: 'Close Modal' },
                   ].map((shortcut) => (
                     <div key={shortcut.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
-                      <span style={{ fontSize: 12, color: "var(--t2)" }}>{shortcut.action}</span>
+                      <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)" }}>{shortcut.action}</span>
                       <kbd style={{
                         padding: "4px 10px",
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-xs)",
                         background: "var(--glass2)",
                         border: "1px solid var(--glass-border)",
-                        fontSize: 11,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-xs)",
+                        fontWeight: "var(--fw-semibold)",
                         color: "var(--t1)",
                         fontFamily: "'JetBrains Mono', monospace"
                       }}>
@@ -6892,10 +7216,10 @@ const App: React.FC = () => {
             <>
               {/* RPC Settings */}
               <SettingSection title="RPC Endpoint">
-                <p style={{ fontSize: 12, color: "var(--t3)", marginBottom: 14, lineHeight: 1.5 }}>
+                <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginBottom: "var(--space-3-5)", lineHeight: 1.5 }}>
                   Choose your Solana RPC provider for best performance in your region.
                 </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                   {[
                     { key: 'helius' as const, name: 'Helius', endpoint: 'https://mainnet.helius-rpc.com', status: 'Fast' },
                     { key: 'quicknode' as const, name: 'Quicknode', endpoint: 'https://solana-mainnet.quiknode.pro', status: 'Fast' },
@@ -6906,8 +7230,8 @@ const App: React.FC = () => {
                       onClick={() => updateSettings({ rpc: rpc.key })}
                       className="glass-card-inner btn-press interactive-hover"
                       style={{
-                        padding: 14,
-                        borderRadius: 10,
+                        padding: "var(--space-3-5)",
+                        borderRadius: "var(--radius-md)",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
@@ -6917,12 +7241,12 @@ const App: React.FC = () => {
                       }}
                     >
                       <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{rpc.name}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                          <div style={{ fontSize: "var(--fs-base)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>{rpc.name}</div>
                           {settings.rpc === rpc.key && (
                             <span style={{
-                              fontSize: 9,
-                              fontWeight: 600,
+                              fontSize: "var(--fs-3xs)",
+                              fontWeight: "var(--fw-semibold)",
                               padding: "2px 6px",
                               borderRadius: 4,
                               background: "var(--gb)",
@@ -6933,15 +7257,15 @@ const App: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
+                        <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
                           {rpc.endpoint.slice(0, 35)}...
                         </div>
                       </div>
                       <span style={{
-                        fontSize: 10,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-2xs)",
+                        fontWeight: "var(--fw-semibold)",
                         padding: "4px 8px",
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-xs)",
                         background: rpc.status === 'Fast' ? "var(--gb)" : "var(--glass2)",
                         color: rpc.status === 'Fast' ? "var(--grn)" : "var(--t3)"
                       }}>
@@ -6965,12 +7289,12 @@ const App: React.FC = () => {
                     <div style={{ borderBottom: "1px solid var(--glass-border)", margin: "8px 0" }} />
                     <div style={{ marginTop: 12 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <span style={{ fontSize: 12, color: "var(--t2)", fontWeight: 500 }}>Refresh Interval</span>
-                        <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                        <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>Refresh Interval</span>
+                        <span style={{ fontSize: "var(--fs-sm)", color: "var(--t1)", fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace" }}>
                           {settings.refreshInterval}s
                         </span>
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ display: "flex", gap: "var(--space-2)" }}>
                         {[10, 15, 30, 60, 120].map((interval) => (
                           <button
                             key={interval}
@@ -6979,8 +7303,8 @@ const App: React.FC = () => {
                             style={s(bsS, {
                               flex: 1,
                               height: 36,
-                              fontSize: 11,
-                              fontWeight: 600,
+                              fontSize: "var(--fs-xs)",
+                              fontWeight: "var(--fw-semibold)",
                               background: settings.refreshInterval === interval ? "var(--pb)" : "var(--sb)",
                               color: settings.refreshInterval === interval ? "var(--pt)" : "var(--st)",
                               border: settings.refreshInterval === interval ? "2px solid var(--grn)" : "2px solid transparent"
@@ -7004,8 +7328,8 @@ const App: React.FC = () => {
                   description="Show additional technical information and debug data"
                 />
                 {settings.advancedMode && (
-                  <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: "rgba(251, 191, 36, 0.1)", border: "1px solid rgba(251, 191, 36, 0.2)" }}>
-                    <p style={{ fontSize: 11, color: "var(--amb)" }}>
+                  <div style={{ marginTop: "var(--space-3)", padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "rgba(251, 191, 36, 0.1)", border: "1px solid rgba(251, 191, 36, 0.2)" }}>
+                    <p style={{ fontSize: "var(--fs-xs)", color: "var(--amb)" }}>
                       Advanced mode enabled. You'll see additional debugging info, raw transaction data, and program account details.
                     </p>
                   </div>
@@ -7023,8 +7347,8 @@ const App: React.FC = () => {
                 <div style={{ borderBottom: "1px solid var(--glass-border)" }} />
                 <div style={{ padding: "14px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <span style={{ fontSize: 13, color: "var(--t1)", fontWeight: 500 }}>Export Data</span>
-                    <p style={{ fontSize: 11, color: "var(--t3)", marginTop: 3 }}>Download your trading history</p>
+                    <span style={{ fontSize: "var(--fs-base)", color: "var(--t1)", fontWeight: "var(--fw-medium)" }}>Export Data</span>
+                    <p style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginTop: 3 }}>Download your trading history</p>
                   </div>
                   <button
                     className="glass-pill btn-press interactive-hover"
@@ -7043,7 +7367,7 @@ const App: React.FC = () => {
                       URL.revokeObjectURL(url);
                       showToast('Trading history exported', 'success');
                     }}
-                    style={s(bsS, { height: 34, padding: "0 14px", fontSize: 12, fontWeight: 500 })}
+                    style={s(bsS, { height: 34, padding: "0 14px", fontSize: "var(--fs-sm)", fontWeight: "var(--fw-medium)" })}
                   >
                     Export CSV
                   </button>
@@ -7051,12 +7375,12 @@ const App: React.FC = () => {
                 <div style={{ borderBottom: "1px solid var(--glass-border)" }} />
                 <div style={{ padding: "14px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <span style={{ fontSize: 13, color: "var(--t1)", fontWeight: 500 }}>Clear Cache</span>
-                    <p style={{ fontSize: 11, color: "var(--t3)", marginTop: 3 }}>Clear local storage and cached data</p>
+                    <span style={{ fontSize: "var(--fs-base)", color: "var(--t1)", fontWeight: "var(--fw-medium)" }}>Clear Cache</span>
+                    <p style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginTop: 3 }}>Clear local storage and cached data</p>
                   </div>
                   <button
                     className="glass-pill btn-press interactive-hover"
-                    style={s(bsS, { height: 34, padding: "0 14px", fontSize: 12, fontWeight: 500, color: "var(--red)" })}
+                    style={s(bsS, { height: 34, padding: "0 14px", fontSize: "var(--fs-sm)", fontWeight: "var(--fw-medium)", color: "var(--red)" })}
                     onClick={() => {
                       localStorage.clear();
                       showToast('Cache cleared. Refresh the page to apply.', 'success');
@@ -7070,19 +7394,19 @@ const App: React.FC = () => {
               {/* About */}
               <SettingSection title="About">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, color: "var(--t2)" }}>Version</span>
-                  <span style={{ fontSize: 12, color: "var(--t1)", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>1.0.0-beta</span>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)" }}>Version</span>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "var(--t1)", fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace" }}>1.0.0-beta</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, color: "var(--t2)" }}>Network</span>
-                  <span style={{ fontSize: 12, color: "var(--amb)", fontWeight: 600 }}>Devnet</span>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)" }}>Network</span>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "var(--amb)", fontWeight: "var(--fw-semibold)" }}>Devnet</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, color: "var(--t2)" }}>Build</span>
-                  <span style={{ fontSize: 12, color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace" }}>{new Date().toISOString().split('T')[0]}</span>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)" }}>Build</span>
+                  <span style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", fontFamily: "'JetBrains Mono', monospace" }}>{new Date().toISOString().split('T')[0]}</span>
                 </div>
-                <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--glass-border)" }}>
-                  <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ marginTop: "var(--space-4)", paddingTop: 16, borderTop: "1px solid var(--glass-border)" }}>
+                  <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
                     <a
                       href="https://launchr.app/docs"
                       target="_blank"
@@ -7091,10 +7415,10 @@ const App: React.FC = () => {
                       style={{
                         flex: 1,
                         padding: "10px 14px",
-                        borderRadius: 8,
+                        borderRadius: "var(--radius-sm)",
                         background: "var(--glass)",
                         border: "1px solid var(--glass-border)",
-                        fontSize: 12,
+                        fontSize: "var(--fs-sm)",
                         color: "var(--t2)",
                         textDecoration: "none",
                         textAlign: "center",
@@ -7111,10 +7435,10 @@ const App: React.FC = () => {
                       style={{
                         flex: 1,
                         padding: "10px 14px",
-                        borderRadius: 8,
+                        borderRadius: "var(--radius-sm)",
                         background: "var(--glass)",
                         border: "1px solid var(--glass-border)",
-                        fontSize: 12,
+                        fontSize: "var(--fs-sm)",
                         color: "var(--t2)",
                         textDecoration: "none",
                         textAlign: "center",
@@ -7131,10 +7455,10 @@ const App: React.FC = () => {
                       style={{
                         flex: 1,
                         padding: "10px 14px",
-                        borderRadius: 8,
+                        borderRadius: "var(--radius-sm)",
                         background: "var(--glass)",
                         border: "1px solid var(--glass-border)",
-                        fontSize: 12,
+                        fontSize: "var(--fs-sm)",
                         color: "var(--t2)",
                         textDecoration: "none",
                         textAlign: "center",
@@ -7169,9 +7493,9 @@ const App: React.FC = () => {
         className="btn-press"
         style={{
           padding: "10px 20px",
-          borderRadius: 100,
-          fontSize: 13,
-          fontWeight: 600,
+          borderRadius: "var(--radius-full)",
+          fontSize: "var(--fs-base)",
+          fontWeight: "var(--fw-semibold)",
           cursor: "pointer",
           border: "none",
           transition: "all .2s var(--ease-out-quart)",
@@ -7195,9 +7519,9 @@ const App: React.FC = () => {
         className="btn-press"
         style={{
           padding: "6px 12px",
-          borderRadius: 8,
-          fontSize: 11,
-          fontWeight: 600,
+          borderRadius: "var(--radius-sm)",
+          fontSize: "var(--fs-xs)",
+          fontWeight: "var(--fw-semibold)",
           cursor: "pointer",
           border: "1px solid",
           borderColor: timePeriod === k ? "var(--grn)" : "transparent",
@@ -7282,8 +7606,8 @@ const App: React.FC = () => {
           display: "flex",
           justifyContent: "center",
           alignItems: "flex-end",
-          gap: 16,
-          marginBottom: 32,
+          gap: "var(--space-4)",
+          marginBottom: "var(--space-8)",
           paddingTop: 24,
           position: "relative"
         }}>
@@ -7308,7 +7632,7 @@ const App: React.FC = () => {
 
             return (
               <div
-                key={idx}
+                key={isTrader ? (item as typeof leaderboardData[0]).address : (item as typeof topLaunches[0]).id}
                 onClick={isTrader ? () => go('userProfile', undefined, (item as typeof leaderboardData[0]).address.replace('...', '1234567890')) : undefined}
                 className="bounce-in"
                 style={{
@@ -7374,7 +7698,7 @@ const App: React.FC = () => {
                 {/* Name */}
                 <div style={{
                   fontSize: isWinner ? 15 : 13,
-                  fontWeight: 700,
+                  fontWeight: "var(--fw-bold)",
                   color: "var(--t1)",
                   fontFamily: "'JetBrains Mono', monospace",
                   marginBottom: 6,
@@ -7390,14 +7714,14 @@ const App: React.FC = () => {
                 {/* Value with badge */}
                 <div style={{
                   fontSize: isWinner ? 15 : 12,
-                  fontWeight: 700,
+                  fontWeight: "var(--fw-bold)",
                   color: isTrader
                     ? ((item as typeof leaderboardData[0]).totalPnl >= 0 ? "var(--grn)" : "var(--red)")
                     : "var(--t1)",
                   fontFamily: "'JetBrains Mono', monospace",
-                  marginBottom: 12,
+                  marginBottom: "var(--space-3)",
                   padding: "4px 10px",
-                  borderRadius: 8,
+                  borderRadius: "var(--radius-sm)",
                   background: isTrader && (item as typeof leaderboardData[0]).totalPnl >= 0
                     ? "var(--gb)"
                     : "var(--glass2)"
@@ -7457,11 +7781,11 @@ const App: React.FC = () => {
             display: "flex",
             alignItems: "center",
             gap: 7,
-            fontSize: 13,
+            fontSize: "var(--fs-base)",
             color: "var(--t2)",
             background: "var(--glass)",
             border: "1px solid var(--glass-border)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-sm)",
             cursor: "pointer",
             marginBottom: 22,
             padding: "8px 14px",
@@ -7474,12 +7798,12 @@ const App: React.FC = () => {
         {/* Header - Enhanced */}
         <div className="glass-card page-enter-smooth" style={{
           padding: 0,
-          marginBottom: 20,
+          marginBottom: "var(--space-5)",
           overflow: "hidden"
         }}>
           {/* Header with gradient banner */}
           <div style={{
-            padding: 28,
+            padding: "var(--space-7)",
             background: "linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.05), transparent)",
             position: "relative"
           }}>
@@ -7498,14 +7822,14 @@ const App: React.FC = () => {
               justifyContent: "space-between",
               alignItems: "flex-start",
               flexWrap: "wrap",
-              gap: 20,
+              gap: "var(--space-5)",
               position: "relative"
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
                 <div style={{
                   width: 64,
                   height: 64,
-                  borderRadius: 20,
+                  borderRadius: "var(--radius-lg)",
                   background: "linear-gradient(135deg, #f59e0b, #d97706)",
                   display: "flex",
                   alignItems: "center",
@@ -7518,15 +7842,15 @@ const App: React.FC = () => {
                 </div>
                 <div>
                   <h1 style={{
-                    fontSize: 28,
-                    fontWeight: 700,
+                    fontSize: "var(--fs-3xl)",
+                    fontWeight: "var(--fw-bold)",
                     color: "var(--t1)",
                     letterSpacing: -0.5
                   }}>
                     Leaderboard
                   </h1>
                   <p style={{
-                    fontSize: 14,
+                    fontSize: "var(--fs-md)",
                     color: "var(--t2)",
                     marginTop: 4
                   }}>
@@ -7541,7 +7865,7 @@ const App: React.FC = () => {
                 gap: 0,
                 background: "var(--glass2)",
                 padding: 4,
-                borderRadius: 12,
+                borderRadius: "var(--radius-md)",
                 border: "1px solid var(--glass-border)"
               }}>
                 {(['24h', '7d', '30d', 'all'] as const).map((k) => {
@@ -7554,9 +7878,9 @@ const App: React.FC = () => {
                       className="btn-press"
                       style={{
                         padding: "8px 14px",
-                        borderRadius: 8,
-                        fontSize: 12,
-                        fontWeight: 600,
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "var(--fs-sm)",
+                        fontWeight: "var(--fw-semibold)",
                         cursor: "pointer",
                         border: "none",
                         transition: "all .2s var(--ease-out-quart)",
@@ -7590,7 +7914,7 @@ const App: React.FC = () => {
                 key={stat.label}
                 className="stagger-item"
                 style={{
-                  padding: 18,
+                  padding: "var(--space-4-5)",
                   background: "var(--bg-card)",
                   position: "relative"
                 }}
@@ -7598,13 +7922,13 @@ const App: React.FC = () => {
                 <div style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: "var(--space-2)",
                   marginBottom: 8
                 }}>
                   <StatIcon type={stat.iconType} size={14} color="var(--t3)" />
                   <span style={{
-                    fontSize: 10,
-                    fontWeight: 700,
+                    fontSize: "var(--fs-2xs)",
+                    fontWeight: "var(--fw-bold)",
                     color: "var(--t3)",
                     letterSpacing: 0.5,
                     textTransform: "uppercase"
@@ -7612,10 +7936,10 @@ const App: React.FC = () => {
                     {stat.label}
                   </span>
                 </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)" }}>
                   <span style={{
-                    fontSize: 20,
-                    fontWeight: 700,
+                    fontSize: "var(--fs-2xl)",
+                    fontWeight: "var(--fw-bold)",
                     color: stat.isProfit ? "var(--grn)" : "var(--t1)",
                     fontFamily: "'JetBrains Mono', monospace"
                   }}>
@@ -7623,8 +7947,8 @@ const App: React.FC = () => {
                   </span>
                   {stat.change && (
                     <span style={{
-                      fontSize: 11,
-                      fontWeight: 600,
+                      fontSize: "var(--fs-xs)",
+                      fontWeight: "var(--fw-semibold)",
                       color: "var(--grn)",
                       display: "flex",
                       alignItems: "center",
@@ -7645,11 +7969,11 @@ const App: React.FC = () => {
           {/* Tab Switcher */}
           <div style={{
             display: "flex",
-            gap: 4,
+            gap: "var(--space-1)",
             padding: 4,
-            borderRadius: 100,
+            borderRadius: "var(--radius-full)",
             width: "fit-content",
-            marginBottom: 24,
+            marginBottom: "var(--space-6)",
             background: "var(--glass2)",
             border: "1px solid var(--glass-border)"
           }}>
@@ -7663,16 +7987,16 @@ const App: React.FC = () => {
           {/* List */}
           <div className="tab-content-enter" key={`${leaderboardTab}-${timePeriod}`}>
             {leaderboardTab === 'traders' ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                 {/* Header Row */}
                 <div style={{
                   display: "grid",
                   gridTemplateColumns: "50px 1fr 100px 100px 120px",
-                  gap: 12,
+                  gap: "var(--space-3)",
                   padding: "0 16px 12px",
                   borderBottom: "1px solid var(--glass-border)",
-                  fontSize: 10,
-                  fontWeight: 700,
+                  fontSize: "var(--fs-2xs)",
+                  fontWeight: "var(--fw-bold)",
                   color: "var(--t3)",
                   letterSpacing: 0.5,
                   textTransform: "uppercase"
@@ -7690,47 +8014,47 @@ const App: React.FC = () => {
                     onClick={() => go('userProfile', undefined, trader.address.replace('...', '1234567890'))}
                     className="glass-card-inner table-row-hover btn-press"
                     style={s(ani("fu", i * 0.03), {
-                      padding: 16,
+                      padding: "var(--space-4)",
                       display: "grid",
                       gridTemplateColumns: "50px 1fr 100px 100px 120px",
                       alignItems: "center",
-                      gap: 12,
-                      borderRadius: 12,
+                      gap: "var(--space-3)",
+                      borderRadius: "var(--radius-md)",
                       cursor: "pointer"
                     })}
                   >
                     <div style={{
                       width: 32,
                       height: 32,
-                      borderRadius: 8,
+                      borderRadius: "var(--radius-sm)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontWeight: 700,
-                      fontSize: 13,
+                      fontWeight: "var(--fw-bold)",
+                      fontSize: "var(--fs-base)",
                       background: "var(--glass2)",
                       color: "var(--t2)"
                     }}>
                       {trader.rank}
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
                       <Avatar gi={trader.avatar} size={38} />
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                      <div style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                         {trader.address}
                       </div>
                     </div>
 
-                    <div style={{ textAlign: "right", fontSize: 13, color: "var(--t2)", fontWeight: 500 }}>
+                    <div style={{ textAlign: "right", fontSize: "var(--fs-base)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>
                       {trader.trades}
                     </div>
 
                     <div style={{ textAlign: "right" }}>
                       <span style={{
-                        fontSize: 12,
-                        fontWeight: 600,
+                        fontSize: "var(--fs-sm)",
+                        fontWeight: "var(--fw-semibold)",
                         padding: "4px 8px",
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-xs)",
                         background: trader.winRate >= 60 ? "var(--gb)" : trader.winRate >= 50 ? "var(--glass2)" : "var(--rb)",
                         color: trader.winRate >= 60 ? "var(--grn)" : trader.winRate >= 50 ? "var(--t2)" : "var(--red)"
                       }}>
@@ -7740,8 +8064,8 @@ const App: React.FC = () => {
 
                     <div style={{ textAlign: "right" }}>
                       <div style={{
-                        fontSize: 15,
-                        fontWeight: 700,
+                        fontSize: "var(--fs-lg)",
+                        fontWeight: "var(--fw-bold)",
                         color: trader.totalPnl >= 0 ? "var(--grn)" : "var(--red)",
                         fontFamily: "'JetBrains Mono', monospace"
                       }}>
@@ -7752,16 +8076,16 @@ const App: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                 {/* Header Row */}
                 <div style={{
                   display: "grid",
                   gridTemplateColumns: "50px 1fr 100px 100px 100px",
-                  gap: 12,
+                  gap: "var(--space-3)",
                   padding: "0 16px 12px",
                   borderBottom: "1px solid var(--glass-border)",
-                  fontSize: 10,
-                  fontWeight: 700,
+                  fontSize: "var(--fs-2xs)",
+                  fontWeight: "var(--fw-bold)",
                   color: "var(--t3)",
                   letterSpacing: 0.5,
                   textTransform: "uppercase"
@@ -7777,54 +8101,58 @@ const App: React.FC = () => {
                   <div
                     key={launch.id}
                     onClick={() => go('detail', launch)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('detail', launch); }}}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View ${launch.name} token details`}
                     className="glass-card-inner table-row-hover btn-press"
                     style={s(ani("fu", i * 0.03), {
-                      padding: 16,
+                      padding: "var(--space-4)",
                       display: "grid",
                       gridTemplateColumns: "50px 1fr 100px 100px 100px",
                       alignItems: "center",
-                      gap: 12,
-                      borderRadius: 12,
+                      gap: "var(--space-3)",
+                      borderRadius: "var(--radius-md)",
                       cursor: "pointer"
                     })}
                   >
                     <div style={{
                       width: 32,
                       height: 32,
-                      borderRadius: 8,
+                      borderRadius: "var(--radius-sm)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontWeight: 700,
-                      fontSize: 13,
+                      fontWeight: "var(--fw-bold)",
+                      fontSize: "var(--fs-base)",
                       background: "var(--glass2)",
                       color: "var(--t2)"
                     }}>
                       {launch.rank}
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
                       <Avatar gi={launch.gi} size={38} imageUrl={getTokenImageUrl(launch.publicKey)} symbol={launch.symbol} />
                       <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--t1)" }}>{launch.name}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                          <span style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>{launch.name}</span>
                           <Badge status={launch.status} isDark={isDark} />
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
+                        <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
                           {launch.symbol}
                         </div>
                       </div>
                     </div>
 
-                    <div style={{ textAlign: "right", fontSize: 13, color: "var(--t2)", fontWeight: 500 }}>
+                    <div style={{ textAlign: "right", fontSize: "var(--fs-base)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>
                       {launch.holders}
                     </div>
 
-                    <div style={{ textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    <div style={{ textAlign: "right", fontSize: "var(--fs-base)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                       {fm(launch.volume24h)}
                     </div>
 
-                    <div style={{ textAlign: "right", fontSize: 14, fontWeight: 700, color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
+                    <div style={{ textAlign: "right", fontSize: "var(--fs-md)", fontWeight: "var(--fw-bold)", color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
                       {fm(launch.marketCap)}
                     </div>
                   </div>
@@ -7839,7 +8167,7 @@ const App: React.FC = () => {
               <button
                 onClick={loadMore}
                 className="glass-pill btn-press interactive-hover"
-                style={s(bsS, { height: 42, padding: "0 28px", fontSize: 13, fontWeight: 600 })}
+                style={s(bsS, { height: 42, padding: "0 28px", fontSize: "var(--fs-base)", fontWeight: "var(--fw-semibold)" })}
               >
                 Load More
               </button>
@@ -7885,13 +8213,15 @@ const App: React.FC = () => {
         <div
           onClick={(e) => e.stopPropagation()}
           className="glass-card"
-          style={s(ani("si", 0), { padding: 28, maxWidth: 420, width: "100%" })}
+          style={s(ani("si", 0), { padding: "var(--space-7)", maxWidth: 420, width: "100%" })}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>Share {l.name}</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-5)" }}>
+            <h3 style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-bold)", color: "var(--t1)" }}>Share {l.name}</h3>
             <button
               onClick={() => setShareModal(null)}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t2)", padding: 4 }}
+              className="interactive-hover"
+              aria-label="Close share modal"
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t2)", padding: "var(--space-1)" }}
             >
               <SvgX />
             </button>
@@ -7901,29 +8231,29 @@ const App: React.FC = () => {
           <div
             className="glass-card-inner"
             style={{
-              padding: 20,
-              borderRadius: 16,
-              marginBottom: 20,
+              padding: "var(--space-5)",
+              borderRadius: "var(--radius-md)",
+              marginBottom: "var(--space-5)",
               background: "linear-gradient(135deg, var(--glass), var(--glass2))"
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-4)" }}>
               <Avatar gi={l.gi} size={48} imageUrl={getTokenImageUrl(l.publicKey)} symbol={l.symbol} />
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)" }}>{l.name}</div>
-                <div style={{ fontSize: 13, color: "var(--t2)" }}>${l.symbol}</div>
+                <div style={{ fontSize: "var(--fs-xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)" }}>{l.name}</div>
+                <div style={{ fontSize: "var(--fs-base)", color: "var(--t2)" }}>${l.symbol}</div>
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
               <div className="glass-card-inner" style={{ padding: 12 }}>
-                <div style={{ fontSize: 10, color: "var(--t3)", marginBottom: 4 }}>PRICE</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                <div style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", marginBottom: 4 }}>PRICE</div>
+                <div style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-bold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                   {fP(l.price)}
                 </div>
               </div>
               <div className="glass-card-inner" style={{ padding: 12 }}>
-                <div style={{ fontSize: 10, color: "var(--t3)", marginBottom: 4 }}>MCAP</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
+                <div style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", marginBottom: 4 }}>MCAP</div>
+                <div style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-bold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
                   {fm(l.marketCap)}
                 </div>
               </div>
@@ -7932,9 +8262,9 @@ const App: React.FC = () => {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 6,
-              marginTop: 16,
-              fontSize: 11,
+              gap: "var(--space-1-5)",
+              marginTop: "var(--space-4)",
+              fontSize: "var(--fs-xs)",
               color: "var(--t3)"
             }}>
               <SvgLogo size={12} />
@@ -7943,14 +8273,14 @@ const App: React.FC = () => {
           </div>
 
           {/* Share Actions */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2-5)" }}>
             <button
               onClick={copyShareLink}
               style={s(bsS, {
                 width: "100%",
                 height: 44,
-                fontSize: 13,
-                fontWeight: 500,
+                fontSize: "var(--fs-base)",
+                fontWeight: "var(--fw-medium)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -7961,7 +8291,7 @@ const App: React.FC = () => {
               {copied ? <SvgCheck /> : <SvgCopy />}
               {copied ? "Copied!" : "Copy Link"}
             </button>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
               <a
                 href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`}
                 target="_blank"
@@ -7969,12 +8299,12 @@ const App: React.FC = () => {
                 style={s(bsS, {
                   flex: 1,
                   height: 44,
-                  fontSize: 13,
-                  fontWeight: 500,
+                  fontSize: "var(--fs-base)",
+                  fontWeight: "var(--fw-medium)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 8,
+                  gap: "var(--space-2)",
                   textDecoration: "none"
                 })}
                 className="glass-pill"
@@ -7988,12 +8318,12 @@ const App: React.FC = () => {
                 style={s(bsS, {
                   flex: 1,
                   height: 44,
-                  fontSize: 13,
-                  fontWeight: 500,
+                  fontSize: "var(--fs-base)",
+                  fontWeight: "var(--fw-medium)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 8,
+                  gap: "var(--space-2)",
                   textDecoration: "none"
                 })}
                 className="glass-pill"
@@ -8025,7 +8355,7 @@ const App: React.FC = () => {
         <div
           style={{
             textAlign: "center",
-            fontSize: 12,
+            fontSize: "var(--fs-sm)",
             padding: "6px 0",
             background: "rgba(217, 119, 6, 0.1)",
             borderBottom: "1px solid rgba(217, 119, 6, 0.2)",
@@ -8062,21 +8392,26 @@ const App: React.FC = () => {
               <div
                 key={`${l.id}-${i}`}
                 onClick={() => go('detail', l)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('detail', l); }}}
+                role="button"
+                tabIndex={0}
+                aria-label={`View ${l.symbol} token`}
+                className="interactive-hover"
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: "var(--space-2)",
                   cursor: "pointer",
-                  padding: "0 4px"
+                  padding: "0 var(--space-1)"
                 }}
               >
                 <Avatar gi={l.gi} size={20} />
-                <span style={{ fontSize: 12, fontWeight: 500, color: "var(--t1)" }}>{l.symbol}</span>
-                <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--t2)" }}>
+                <span style={{ fontSize: "var(--fs-sm)", fontWeight: "var(--fw-medium)", color: "var(--t1)" }}>{l.symbol}</span>
+                <span style={{ fontSize: "var(--fs-sm)", fontFamily: "'JetBrains Mono', monospace", color: "var(--t2)" }}>
                   {fP(l.price)}
                 </span>
                 <span style={{
-                  fontSize: 11,
+                  fontSize: "var(--fs-xs)",
                   color: l.priceChange24h >= 0 ? "var(--grn)" : "var(--red)",
                   display: "flex",
                   alignItems: "center",
@@ -8096,7 +8431,7 @@ const App: React.FC = () => {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
             <div style={{ textAlign: "center" }}>
               <div className="loading-spinner loading-spinner-large" style={{ margin: "0 auto 16px", color: "var(--grn)" }} />
-              <p style={{ color: "var(--t2)", fontSize: 14 }}>Loading...</p>
+              <p style={{ color: "var(--t2)", fontSize: "var(--fs-md)" }}>Loading...</p>
             </div>
           </div>
         ) : (
@@ -8143,9 +8478,31 @@ const App: React.FC = () => {
         open={tradeConfirm.open}
         title={`Confirm ${tradeConfirm.type === 'buy' ? 'Buy' : 'Sell'}`}
         message={
-          tradeConfirm.launch
-            ? `You are about to ${tradeConfirm.type} ${tradeConfirm.amount} ${tradeConfirm.type === 'buy' ? 'SOL worth of' : ''} ${tradeConfirm.launch.symbol}. This transaction will be submitted to the network.`
-            : ''
+          tradeConfirm.launch ? (
+            <div>
+              <p style={{ marginBottom: "var(--space-3)" }}>
+                You are about to {tradeConfirm.type} <strong>{tradeConfirm.amount}</strong> {tradeConfirm.type === 'buy' ? 'SOL worth of' : ''} <strong>{tradeConfirm.launch.symbol}</strong>.
+              </p>
+              {/* Transaction timing notice */}
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                padding: "var(--space-2) var(--space-3)",
+                borderRadius: "var(--radius-sm)",
+                background: "rgba(251, 191, 36, 0.1)",
+                border: "1px solid rgba(251, 191, 36, 0.2)"
+              }}>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--amb)" strokeWidth={2}>
+                  <circle cx={12} cy={12} r={10}/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                <span style={{ fontSize: "var(--fs-xs)", color: "var(--amb)" }}>
+                  Sign within ~60 seconds or transaction will expire
+                </span>
+              </div>
+            </div>
+          ) : null
         }
         confirmText={tradeConfirm.type === 'buy' ? 'Buy Now' : 'Sell Now'}
         type={tradeConfirm.type === 'buy' ? 'success' : 'danger'}
@@ -8164,7 +8521,7 @@ const App: React.FC = () => {
           right: 24,
           display: "flex",
           flexDirection: "column",
-          gap: 10,
+          gap: "var(--space-2-5)",
           zIndex: 200,
           pointerEvents: "none"
         }}
@@ -8177,15 +8534,15 @@ const App: React.FC = () => {
             aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
             style={{
               padding: 0,
-              borderRadius: 14,
+              borderRadius: "var(--radius-lg)",
               background: toast.type === 'success'
-                ? "linear-gradient(135deg, rgba(34,197,94,0.98), rgba(22,163,74,0.98))"
+                ? "var(--toast-success)"
                 : toast.type === 'error'
-                  ? "linear-gradient(135deg, rgba(239,68,68,0.98), rgba(220,38,38,0.98))"
-                  : "linear-gradient(135deg, rgba(99,102,241,0.98), rgba(79,70,229,0.98))",
+                  ? "var(--toast-error)"
+                  : "var(--toast-info)",
               color: "#fff",
-              fontSize: 13,
-              fontWeight: 500,
+              fontSize: "var(--fs-sm)",
+              fontWeight: "var(--fw-medium)",
               boxShadow: "0 12px 40px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.15) inset",
               backdropFilter: "blur(24px)",
               WebkitBackdropFilter: "blur(24px)",
@@ -8194,13 +8551,13 @@ const App: React.FC = () => {
               minWidth: 200
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2-5)", padding: "14px 18px" }}>
               {toast.type === 'success' && (
                 <div style={{
                   width: 22,
                   height: 22,
                   borderRadius: "50%",
-                  background: "rgba(255,255,255,0.2)",
+                  background: "var(--toast-icon-bg)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center"
@@ -8215,7 +8572,7 @@ const App: React.FC = () => {
                   width: 22,
                   height: 22,
                   borderRadius: "50%",
-                  background: "rgba(255,255,255,0.2)",
+                  background: "var(--toast-icon-bg)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center"
@@ -8231,7 +8588,7 @@ const App: React.FC = () => {
                   width: 22,
                   height: 22,
                   borderRadius: "50%",
-                  background: "rgba(255,255,255,0.2)",
+                  background: "var(--toast-icon-bg)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center"
@@ -8295,7 +8652,7 @@ const App: React.FC = () => {
             className="glass-card graduation-modal"
             onClick={(e) => e.stopPropagation()}
             style={{
-              padding: 32,
+              padding: "var(--space-8)",
               maxWidth: 420,
               width: "90%",
               textAlign: "center",
@@ -8321,10 +8678,10 @@ const App: React.FC = () => {
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
               </div>
-              <h2 style={{ fontSize: 24, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>
+              <h2 style={{ fontSize: "var(--fs-3xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)", marginBottom: 8 }}>
                 Graduation!
               </h2>
-              <p style={{ fontSize: 14, color: "var(--t2)", marginBottom: 16 }}>
+              <p style={{ fontSize: "var(--fs-md)", color: "var(--t2)", marginBottom: 16 }}>
                 <strong style={{ color: "var(--grn)" }}>{graduatedLaunch.name}</strong> (${graduatedLaunch.symbol}) has reached the graduation threshold and is now live on <strong>Orbit Finance DLMM</strong>!
               </p>
             </div>
@@ -8332,26 +8689,26 @@ const App: React.FC = () => {
             <div
               className="glass-card-inner"
               style={{
-                padding: 16,
-                borderRadius: 12,
-                marginBottom: 20,
+                padding: "var(--space-4)",
+                borderRadius: "var(--radius-md)",
+                marginBottom: "var(--space-5)",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: "var(--t3)" }}>Final Price</span>
-                <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--grn)" }}>
+                <span style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>Final Price</span>
+                <span style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace", color: "var(--grn)" }}>
                   ${(graduatedLaunch.price * 1e9).toFixed(8)}
                 </span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12, color: "var(--t3)" }}>Market Cap</span>
-                <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--t1)" }}>
+                <span style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>Market Cap</span>
+                <span style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", fontFamily: "'JetBrains Mono', monospace", color: "var(--t1)" }}>
                   ${graduatedLaunch.marketCap.toLocaleString()}
                 </span>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: "var(--space-2-5)" }}>
               <button
                 onClick={() => {
                   setShowGraduation(false);
@@ -8361,8 +8718,8 @@ const App: React.FC = () => {
                 style={{
                   flex: 1,
                   height: 44,
-                  fontSize: 14,
-                  fontWeight: 500,
+                  fontSize: "var(--fs-md)",
+                  fontWeight: "var(--fw-medium)",
                   cursor: "pointer",
                   border: "none",
                   fontFamily: "inherit",
@@ -8380,11 +8737,11 @@ const App: React.FC = () => {
                 style={{
                   flex: 1,
                   height: 44,
-                  fontSize: 14,
-                  fontWeight: 600,
+                  fontSize: "var(--fs-md)",
+                  fontWeight: "var(--fw-semibold)",
                   cursor: "pointer",
                   border: "none",
-                  borderRadius: 100,
+                  borderRadius: "var(--radius-full)",
                   background: "linear-gradient(135deg, #34d399, #16A34A)",
                   color: "#fff",
                   boxShadow: "0 4px 16px rgba(34, 197, 94, 0.3)",
