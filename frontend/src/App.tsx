@@ -1706,6 +1706,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 interface LaunchItem {
   id: string;
   publicKey: string;
+  mint: string;
   name: string;
   symbol: string;
   creator: string;
@@ -2305,6 +2306,7 @@ const App: React.FC = () => {
       return {
         id: l.publicKey,
         publicKey: l.publicKey,
+        mint: l.mint,
         name: l.name,
         symbol: l.symbol,
         creator: l.creator?.slice(0, 4) + "..." + l.creator?.slice(-4) || 'Unknown',
@@ -2322,11 +2324,23 @@ const App: React.FC = () => {
     });
   }, [rawLaunches]);
 
-  // Fetch token metadata for Metaplex images (skip in mock mode)
+  // Fetch token metadata for Metaplex images using mint addresses
   const launchMintAddresses = useMemo(() => {
-    return USE_MOCKS ? [] : launches.map(l => l.publicKey);
+    return launches.map(l => l.mint).filter(Boolean);
   }, [launches]);
-  const { metadataMap: tokenMetadataMap } = useMultipleTokenMetadata(launchMintAddresses);
+  const { metadataMap: rawMetadataMap } = useMultipleTokenMetadata(launchMintAddresses);
+
+  // Remap metadata from mint→data to publicKey→data for easy lookup
+  const tokenMetadataMap = useMemo(() => {
+    const map = new Map<string, { image?: string }>();
+    launches.forEach(l => {
+      const meta = rawMetadataMap.get(l.mint);
+      if (meta?.image) {
+        map.set(l.publicKey, meta);
+      }
+    });
+    return map;
+  }, [rawMetadataMap, launches]);
 
   // Helper function to get token image URL
   const getTokenImageUrl = useCallback((publicKey: string): string | undefined => {
@@ -2386,6 +2400,7 @@ const App: React.FC = () => {
           setGraduatedLaunch(fullLaunch || {
             id: launch.publicKey,
             publicKey: launch.publicKey,
+            mint: launch.mint || '',
             name: launch.name || 'Unknown',
             symbol: launch.symbol || '???',
             gi: 0,
@@ -2630,6 +2645,7 @@ const App: React.FC = () => {
         const launch: LaunchItem = fullLaunch || {
           id: pos.launch.id || pos.launch.publicKey,
           publicKey: pos.launch.publicKey,
+          mint: pos.launch.mint || '',
           name: pos.launch.name,
           symbol: pos.launch.symbol,
           gi: pos.launch.gi ?? 0,

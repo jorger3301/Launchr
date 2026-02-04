@@ -623,43 +623,42 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
       const localPreview = URL.createObjectURL(file);
       setPreviewUrl(localPreview);
 
-      // Upload to a free image hosting service (imgbb or similar)
-      // For production, you'd use IPFS (Pinata, NFT.Storage, etc.)
-      const formData = new FormData();
-      formData.append('image', file);
-
-      // Using imgbb free API (you can replace with your preferred service)
-      const response = await fetch('https://api.imgbb.com/1/upload?key=demo', {
-        method: 'POST',
-        body: formData,
+      // Convert to base64 for reliable backend upload
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
       });
 
-      if (!response.ok) {
-        // Fallback: use the local blob URL and inform user
-        // In production, integrate with IPFS/Arweave
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = reader.result as string;
-          setPreviewUrl(base64);
-          // For demo purposes, just use the preview
-          // In production, this would upload to IPFS
-          onChange(localPreview);
-        };
-        reader.readAsDataURL(file);
-        return;
+      // Try external image hosting first
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const response = await fetch('https://api.imgbb.com/1/upload?key=demo', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data?.url) {
+            setPreviewUrl(data.data.url);
+            onChange(data.data.url);
+            return;
+          }
+        }
+      } catch {
+        // External upload failed, fall through to base64
       }
 
-      const data = await response.json();
-      if (data.success && data.data?.url) {
-        setPreviewUrl(data.data.url);
-        onChange(data.data.url);
-      } else {
-        throw new Error('Upload failed');
-      }
+      // Fallback: use base64 data URL (backend decodes and saves to disk)
+      setPreviewUrl(base64);
+      onChange(base64);
     } catch (err) {
       console.error('Upload error:', err);
-      // Use local preview as fallback
-      setUploadError('Upload service unavailable. Using local preview.');
+      setUploadError('Failed to process image. Please try again.');
     } finally {
       setIsUploading(false);
     }
