@@ -2130,6 +2130,15 @@ const App: React.FC = () => {
   const [profileTab, setProfileTab] = useState<'positions' | 'activity' | 'created'>('positions');
   const [copied, setCopied] = useState(false);
 
+  // Lifted from inner components to prevent focus loss (inner arrow functions
+  // are recreated on every render; React unmounts/remounts <Component /> when
+  // the function identity changes, destroying input focus).
+  const [chartTimeframe, setChartTimeframe] = useState<'1H' | '4H' | '1D' | '7D' | '30D'>('1D');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'trading' | 'security' | 'advanced'>('general');
+  const [lbTimePeriod, setLbTimePeriod] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
+  const [lbVisibleTraders, setLbVisibleTraders] = useState(5);
+  const [lbVisibleLaunches, setLbVisibleLaunches] = useState(5);
+
   // Create token form state (lifted to App to survive Create component re-mounts)
   const [createNm, setCreateNm] = useState('');
   const [createSy, setCreateSy] = useState('');
@@ -2341,6 +2350,9 @@ const App: React.FC = () => {
 
   // User stats for profile
   const { stats: userProfileStats } = useUserStats(userAddress ?? undefined);
+
+  // Chart data for detail page (lifted from Detail component)
+  const { candles, loading: chartLoading } = useLaunchChart(currentLaunchPk, chartTimeframe);
 
   // Transform launches to our format
   const launches: LaunchItem[] = useMemo(() => {
@@ -2813,6 +2825,17 @@ const App: React.FC = () => {
     const pnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
     return { totalValue, totalPnl, pnlPercent, positionCount: userPositions.length };
   }, [userPositions]);
+
+  // Performance chart data for profile (lifted from Profile component)
+  const performanceData = useMemo(() => {
+    const days = 14;
+    let value = portfolioStats.totalValue * 0.7;
+    return Array.from({ length: days }, (_, i) => {
+      const change = (Math.random() - 0.4) * value * 0.08;
+      value = Math.max(0.1, value + change);
+      return { day: i, value };
+    });
+  }, [portfolioStats.totalValue]);
 
   // Time ago helper
   function getTimeAgo(timestamp: number): string {
@@ -4014,9 +4037,7 @@ const App: React.FC = () => {
     const l = route.launch;
     const ld = launchDetail.launch; // Full LaunchData with social links, timestamps
 
-    // Fetch real chart data
-    const [chartTimeframe, setChartTimeframe] = useState<'1H' | '4H' | '1D' | '7D' | '30D'>('1D');
-    const { candles, loading: chartLoading } = useLaunchChart(l?.publicKey, chartTimeframe);
+    // chartTimeframe / setChartTimeframe / candles / chartLoading are lifted to App level
 
     const thS2: React.CSSProperties = {
       fontWeight: "var(--fw-semibold)",
@@ -4966,9 +4987,17 @@ const App: React.FC = () => {
         } else if (errorMessage.includes('insufficient') || errorMessage.includes('balance')) {
           showToast('Insufficient SOL balance for transaction fees.', 'error');
         } else if (errorMessage.includes('simulation')) {
-          showToast('Transaction simulation failed. Please check your inputs and try again.', 'error');
-        } else if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
+          // Extract the inner simulation error for debugging
+          const simDetail = errorMessage.replace('transaction simulation failed:', '').trim();
+          showToast(`Transaction simulation failed: ${simDetail || 'Please check your inputs and try again.'}`, 'error');
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('network') || errorMessage.includes('failed to fetch')) {
           showToast('Network error. Please check your connection and try again.', 'error');
+        } else if (errorMessage.includes('blockhash') || errorMessage.includes('expired')) {
+          showToast('Transaction expired. Please try again.', 'error');
+        } else if (errorMessage.includes('not connected') || errorMessage.includes('wallet')) {
+          showToast('Please connect your wallet first.', 'error');
+        } else if (errorMessage.includes('security') || errorMessage.includes('unauthorized')) {
+          showToast('Transaction security check failed. Please try again.', 'error');
         } else {
           showToast(`Failed to create token: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
         }
@@ -5437,16 +5466,7 @@ const App: React.FC = () => {
       }
     };
 
-    // Mock performance data for chart
-    const performanceData = useMemo(() => {
-      const days = 14;
-      let value = portfolioStats.totalValue * 0.7;
-      return Array.from({ length: days }, (_, i) => {
-        const change = (Math.random() - 0.4) * value * 0.08;
-        value = Math.max(0.1, value + change);
-        return { day: i, value };
-      });
-    }, [portfolioStats.totalValue]);
+    // performanceData is lifted to App level
 
     if (!wallet.connected) {
       return (
@@ -6678,7 +6698,7 @@ const App: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const Settings = () => {
-    const [settingsTab, setSettingsTab] = useState<'general' | 'trading' | 'security' | 'advanced'>('general');
+    // settingsTab / setSettingsTab lifted to App level
 
     const updateSettings = (updates: Partial<UserSettings>) => {
       setSettings(prev => ({ ...prev, ...updates }));
@@ -7749,9 +7769,10 @@ const App: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const Leaderboard = () => {
-    const [timePeriod, setTimePeriod] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
-    const [visibleTraders, setVisibleTraders] = useState(5);
-    const [visibleLaunches, setVisibleLaunches] = useState(5);
+    // These were lifted to App level (prefixed with lb) to avoid hooks in inline components
+    const timePeriod = lbTimePeriod, setTimePeriod = setLbTimePeriod;
+    const visibleTraders = lbVisibleTraders, setVisibleTraders = setLbVisibleTraders;
+    const visibleLaunches = lbVisibleLaunches, setVisibleLaunches = setLbVisibleLaunches;
 
     const tabBtn = (k: 'traders' | 'launches', l: string, icon: React.ReactNode) => (
       <button
@@ -8634,7 +8655,7 @@ const App: React.FC = () => {
           Mock Mode — Using fake data for UI testing. Remove REACT_APP_USE_MOCKS to connect to Solana.
         </div>
       )}
-      <Nav />
+      {Nav()}
       <OfflineIndicator isOnline={isOnline} />
 
       {/* Live Price Ticker */}
@@ -8703,19 +8724,19 @@ const App: React.FC = () => {
           </div>
         ) : (
           <>
-            {route.type === 'home' && <Home />}
-            {route.type === 'launches' && <Launches />}
-            {route.type === 'detail' && <Detail />}
-            {route.type === 'create' && <Create />}
-            {route.type === 'profile' && <Profile />}
+            {route.type === 'home' && Home()}
+            {route.type === 'launches' && Launches()}
+            {route.type === 'detail' && Detail()}
+            {route.type === 'create' && Create()}
+            {route.type === 'profile' && Profile()}
             {route.type === 'userProfile' && <UserProfile address={route.address} />}
-            {route.type === 'settings' && <Settings />}
-            {route.type === 'leaderboard' && <Leaderboard />}
+            {route.type === 'settings' && Settings()}
+            {route.type === 'leaderboard' && Leaderboard()}
           </>
         )}
       </main>
-      <Foot />
-      <ShareModal />
+      {Foot()}
+      {ShareModal()}
 
       {/* Wallet Selector Modal */}
       <WalletSelector
