@@ -130,13 +130,18 @@ async function prepareAndSimulateTransaction(
   });
 
   if (simulation.value.err) {
-    const classified = classifyError(
-      simDetails.error || JSON.stringify(simulation.value.err)
+    const rawError = simDetails.error || JSON.stringify(simulation.value.err);
+    const classified = classifyError(rawError);
+
+    // Log full details for DevTools debugging (don't put logs in thrown message —
+    // they can contain keywords that cause false matches in UI error handlers)
+    if (simDetails.logs.length > 0) {
+      console.error('[LAUNCHR_TX] Simulation program logs:', simDetails.logs);
+    }
+
+    throw new Error(
+      `Transaction simulation failed: ${classified.userMessage} [${rawError}]`
     );
-    const logSuffix = simDetails.logs.length > 0
-      ? `\nProgram logs:\n${simDetails.logs.slice(-5).join('\n')}`
-      : '';
-    throw new Error(`Transaction simulation failed: ${classified.userMessage}${logSuffix}`);
   }
 
   return { transaction, blockhash, lastValidBlockHeight };
@@ -194,14 +199,14 @@ async function sendAndConfirmTransactionWithRetry(
         errorBucket: classified.bucket,
       });
 
-      // Non-retryable errors: bail immediately
+      // Non-retryable errors: bail immediately — preserve raw error for debugging
       if (!classified.retryable) {
-        throw new Error(classified.userMessage);
+        throw err;
       }
 
       // Check if we should retry
       if (retries >= maxRetries) {
-        throw new Error(classified.userMessage);
+        throw err;
       }
 
       // Wait before retry (exponential backoff)

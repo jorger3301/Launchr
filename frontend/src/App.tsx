@@ -34,6 +34,7 @@ import {
 
 import { WalletSelector, PriceChart, OfflineIndicator, type LaunchStatus } from './components/molecules';
 import { api, wsClient, NormalizedMessage } from './services/api';
+import { classifyError } from './lib/tx-logger';
 
 import {
   useMockWallet,
@@ -4977,30 +4978,9 @@ const App: React.FC = () => {
           go('launches');
         }, 2000);
       } catch (err) {
-        const errorMessage = (err instanceof Error ? err.message : 'Unknown error').toLowerCase();
         console.error('Token creation failed:', err);
-
-        if (errorMessage.includes('reject') || errorMessage.includes('denied') || errorMessage.includes('cancelled') || errorMessage.includes('canceled')) {
-          showToast('Transaction was rejected by wallet.', 'error');
-        } else if (errorMessage.includes('upload') || errorMessage.includes('metadata')) {
-          showToast('Failed to upload token metadata. Please try again.', 'error');
-        } else if (errorMessage.includes('insufficient') || errorMessage.includes('balance')) {
-          showToast('Insufficient SOL balance for transaction fees.', 'error');
-        } else if (errorMessage.includes('simulation')) {
-          // Extract the inner simulation error for debugging
-          const simDetail = errorMessage.replace('transaction simulation failed:', '').trim();
-          showToast(`Transaction simulation failed: ${simDetail || 'Please check your inputs and try again.'}`, 'error');
-        } else if (errorMessage.includes('timeout') || errorMessage.includes('network') || errorMessage.includes('failed to fetch')) {
-          showToast('Network error. Please check your connection and try again.', 'error');
-        } else if (errorMessage.includes('blockhash') || errorMessage.includes('expired')) {
-          showToast('Transaction expired. Please try again.', 'error');
-        } else if (errorMessage.includes('not connected') || errorMessage.includes('wallet')) {
-          showToast('Please connect your wallet first.', 'error');
-        } else if (errorMessage.includes('security') || errorMessage.includes('unauthorized')) {
-          showToast('Transaction security check failed. Please try again.', 'error');
-        } else {
-          showToast(`Failed to create token: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
-        }
+        const classified = classifyError(err);
+        showToast(classified.userMessage, 'error');
         setCreationStep(0);
       } finally {
         setIsCreating(false);

@@ -147,7 +147,7 @@ export function classifyError(err: unknown): ClassifiedError {
   }
 
   // 7. Missing rent / ATA
-  if (lower.includes('account not found') || lower.includes('could not find account') || lower.includes('insufficient funds for rent') || lower.includes('insufficient lamports')) {
+  if (lower.includes('accountnotfound') || lower.includes('account not found') || lower.includes('could not find account') || lower.includes('insufficient funds for rent') || lower.includes('insufficient lamports')) {
     return { bucket: 'missing_rent_or_ata', userMessage: 'An account is missing or has insufficient SOL for rent. Ensure your wallet has enough SOL.', retryable: false, raw };
   }
 
