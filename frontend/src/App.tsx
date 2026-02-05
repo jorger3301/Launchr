@@ -2129,6 +2129,28 @@ const App: React.FC = () => {
   const [profileTab, setProfileTab] = useState<'positions' | 'activity' | 'created'>('positions');
   const [copied, setCopied] = useState(false);
 
+  // Create token form state (lifted to App to survive Create component re-mounts)
+  const [createNm, setCreateNm] = useState('');
+  const [createSy, setCreateSy] = useState('');
+  const [createDs, setCreateDs] = useState('');
+  const [createTw, setCreateTw] = useState('');
+  const [createTg, setCreateTg] = useState('');
+  const [createWs, setCreateWs] = useState('');
+  const [createImg, setCreateImg] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [creationStep, setCreationStep] = useState(0);
+  const [createFormErrors, setCreateFormErrors] = useState<{
+    name?: string;
+    symbol?: string;
+    description?: string;
+    image?: string;
+    twitter?: string;
+    telegram?: string;
+    website?: string;
+  }>({});
+  const [createFocusedField, setCreateFocusedField] = useState<string | null>(null);
+  const createFileInputRef = useRef<HTMLInputElement>(null);
+
   // Watchlist state with localStorage persistence
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     try {
@@ -4677,27 +4699,17 @@ const App: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const Create = () => {
-    // Form state
-    const [nm, setNm] = useState('');
-    const [sy, setSy] = useState('');
-    const [ds, setDs] = useState('');
-    const [tw, setTw] = useState('');
-    const [tg, setTg] = useState('');
-    const [ws, setWs] = useState('');
-    const [img, setImg] = useState<string | null>(null);
-    const [isCreating, setIsCreating] = useState(false);
-    const [creationStep, setCreationStep] = useState(0);
-    const [formErrors, setFormErrors] = useState<{
-      name?: string;
-      symbol?: string;
-      description?: string;
-      image?: string;
-      twitter?: string;
-      telegram?: string;
-      website?: string;
-    }>({});
-    const [focusedField, setFocusedField] = useState<string | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    // Form state is lifted to App level to survive component re-mounts
+    const nm = createNm, setNm = setCreateNm;
+    const sy = createSy, setSy = setCreateSy;
+    const ds = createDs, setDs = setCreateDs;
+    const tw = createTw, setTw = setCreateTw;
+    const tg = createTg, setTg = setCreateTg;
+    const ws = createWs, setWs = setCreateWs;
+    const img = createImg, setImg = setCreateImg;
+    const formErrors = createFormErrors, setFormErrors = setCreateFormErrors;
+    const focusedField = createFocusedField, setFocusedField = setCreateFocusedField;
+    const fileInputRef = createFileInputRef;
 
     // File picker
     const openFilePicker = () => {
