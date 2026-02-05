@@ -163,7 +163,12 @@ app.locals.monitoring = monitoringService;
 // =============================================================================
 
 // Static file serving for uploads
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Override Helmet's Cross-Origin-Resource-Policy so the Vercel frontend
+// can load images cross-origin via <img> tags.
+app.use('/uploads', (_req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/launches', launchRoutes);
 app.use('/api/trades', tradeRoutes);
