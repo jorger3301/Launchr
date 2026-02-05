@@ -2246,13 +2246,17 @@ const App: React.FC = () => {
   }, []);
 
   // Refresh data
-  const handleRefresh = useCallback(() => {
+  const refreshDataRef = useRef<() => Promise<void>>();
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    // Simulate refresh - in real mode this would refetch data
-    setTimeout(() => {
-      setIsRefreshing(false);
+    try {
+      await refreshDataRef.current?.();
       showToast('Data refreshed', 'success');
-    }, 1000);
+    } catch {
+      showToast('Refresh failed', 'error');
+    } finally {
+      setIsRefreshing(false);
+    }
   }, [showToast]);
 
   // Persist watchlist
@@ -2298,6 +2302,11 @@ const App: React.FC = () => {
   // SOL Price from Pyth Oracle
   const { solPrice } = useSolPrice(15000); // Refresh every 15 seconds
 
+  // Wire up refresh ref now that data hooks are available
+  refreshDataRef.current = async () => {
+    await launchesData.refetch?.();
+    await statsData.refetch?.();
+  };
 
   // Available wallets for selector
   const availableWallets = useAvailableWallets();
@@ -2340,7 +2349,7 @@ const App: React.FC = () => {
         mint: l.mint,
         name: l.name,
         symbol: l.symbol,
-        creator: l.creator?.slice(0, 4) + "..." + l.creator?.slice(-4) || 'Unknown',
+        creator: l.creator ? l.creator.slice(0, 4) + "..." + l.creator.slice(-4) : 'Unknown',
         status: l.status,
         price: l.currentPrice || 0,
         priceChange24h: l.priceChange24h ?? 0,
@@ -2479,7 +2488,7 @@ const App: React.FC = () => {
     return (rawTrades || []).map((t, i) => ({
       id: t.txSignature || `trade-${t.timestamp}-${i}`,
       type: t.type as 'buy' | 'sell',
-      trader: t.user?.slice(0, 4) + "..." + t.user?.slice(-4) || 'Unknown',
+      trader: t.user ? t.user.slice(0, 4) + "..." + t.user.slice(-4) : 'Unknown',
       sol: t.solAmount || 0,
       tokens: fTok(t.amount || 0),
       price: t.price || 0,
@@ -2669,17 +2678,21 @@ const App: React.FC = () => {
         if (tradeConfirm.open) setTradeConfirm({ open: false, type: 'buy', amount: '', launch: null });
       }
 
-      // Quick navigation shortcuts
-      if (e.key === 'h' && !e.metaKey && !e.ctrlKey) {
+      // Quick navigation shortcuts (Alt+key to avoid conflicts with typing)
+      if (e.altKey && e.key === 'h') {
+        e.preventDefault();
         go('home');
       }
-      if (e.key === 'l' && !e.metaKey && !e.ctrlKey) {
+      if (e.altKey && e.key === 'l') {
+        e.preventDefault();
         go('launches');
       }
-      if (e.key === 'c' && !e.metaKey && !e.ctrlKey) {
+      if (e.altKey && e.key === 'c') {
+        e.preventDefault();
         go('create');
       }
-      if (e.key === 'r' && !e.metaKey && !e.ctrlKey) {
+      if (e.altKey && e.key === 'r') {
+        e.preventDefault();
         handleRefresh();
       }
     };
@@ -2790,6 +2803,7 @@ const App: React.FC = () => {
   // Time ago helper
   function getTimeAgo(timestamp: number): string {
     const diff = Date.now() - timestamp;
+    if (diff < 0) return 'just now';
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `${mins}m ago`;
     const hours = Math.floor(mins / 60);
@@ -2898,6 +2912,41 @@ const App: React.FC = () => {
   }
 
   // Handlers
+  const executeTradeRef = useRef<() => void>();
+
+  const executeTrade = useCallback(async () => {
+    if (!currentLaunchPk || !tradeAmount || tradeLoading) return;
+    const amount = parseFloat(tradeAmount);
+    if (isNaN(amount) || amount <= 0) return;
+
+    setTradeLoading(true);
+    setTradeSuccess(false);
+    try {
+      tradeType === 'buy'
+        ? await trade.buy(currentLaunchPk, amount, settings.defaultSlippage)
+        : await trade.sell(currentLaunchPk, amount, settings.defaultSlippage);
+      setTradeAmount('');
+      setTradeConfirm({ open: false, type: 'buy', amount: '', launch: null });
+      setTradeSuccess(true);
+      showToast(
+        `${tradeType === 'buy' ? 'Bought' : 'Sold'} ${amount} ${tradeType === 'buy' ? 'SOL worth' : 'tokens'}`,
+        'success'
+      );
+      // Reset success state after animation
+      setTimeout(() => setTradeSuccess(false), 2000);
+    } catch (err) {
+      const { message, detail } = parseTransactionError(err);
+      // Show detailed message for better UX - Solana transactions are atomic (all-or-nothing)
+      showToast(detail ? `${message}: ${detail}` : message, 'error');
+      console.error('Trade error:', err);
+    } finally {
+      setTradeLoading(false);
+    }
+  }, [currentLaunchPk, tradeAmount, tradeType, trade, settings.defaultSlippage, showToast, tradeLoading]);
+
+  // Wire up executeTradeRef for use in initiateTransaction
+  executeTradeRef.current = executeTrade;
+
   const initiateTransaction = useCallback(() => {
     if (!currentLaunchPk || !tradeAmount) return;
     const amount = parseFloat(tradeAmount);
@@ -2927,39 +2976,9 @@ const App: React.FC = () => {
         launch: route.launch
       });
     } else {
-      executeTrade();
+      executeTradeRef.current?.();
     }
-  }, [currentLaunchPk, tradeAmount, tradeType, route, settings.notifications.tradeConfirmations]);
-
-  const executeTrade = useCallback(async () => {
-    if (!currentLaunchPk || !tradeAmount || tradeLoading) return;
-    const amount = parseFloat(tradeAmount);
-    if (isNaN(amount) || amount <= 0) return;
-
-    setTradeLoading(true);
-    setTradeSuccess(false);
-    try {
-      tradeType === 'buy'
-        ? await trade.buy(currentLaunchPk, amount, settings.defaultSlippage)
-        : await trade.sell(currentLaunchPk, amount * 1e6, settings.defaultSlippage);
-      setTradeAmount('');
-      setTradeConfirm({ open: false, type: 'buy', amount: '', launch: null });
-      setTradeSuccess(true);
-      showToast(
-        `${tradeType === 'buy' ? 'Bought' : 'Sold'} ${amount} ${tradeType === 'buy' ? 'SOL worth' : 'tokens'}`,
-        'success'
-      );
-      // Reset success state after animation
-      setTimeout(() => setTradeSuccess(false), 2000);
-    } catch (err) {
-      const { message, detail } = parseTransactionError(err);
-      // Show detailed message for better UX - Solana transactions are atomic (all-or-nothing)
-      showToast(detail ? `${message}: ${detail}` : message, 'error');
-      console.error('Trade error:', err);
-    } finally {
-      setTradeLoading(false);
-    }
-  }, [currentLaunchPk, tradeAmount, tradeType, trade, settings.defaultSlippage, showToast, tradeLoading]);
+  }, [currentLaunchPk, tradeAmount, tradeType, route, settings.notifications.tradeConfirmations, settings.tradingLimits, showToast]);
 
   const handleCreateLaunch = useCallback(async (data: {
     name: string;
@@ -3708,7 +3727,7 @@ const App: React.FC = () => {
                     <input
                       type="number"
                       placeholder="Min"
-                      value={filters.minMarketCap || ''}
+                      value={filters.minMarketCap ?? ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, minMarketCap: e.target.value ? parseFloat(e.target.value) : null }))}
                       style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
@@ -3716,7 +3735,7 @@ const App: React.FC = () => {
                     <input
                       type="number"
                       placeholder="Max"
-                      value={filters.maxMarketCap || ''}
+                      value={filters.maxMarketCap ?? ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, maxMarketCap: e.target.value ? parseFloat(e.target.value) : null }))}
                       style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
@@ -3729,7 +3748,7 @@ const App: React.FC = () => {
                     <input
                       type="number"
                       placeholder="Min"
-                      value={filters.minHolders || ''}
+                      value={filters.minHolders ?? ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, minHolders: e.target.value ? parseInt(e.target.value) : null }))}
                       style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
@@ -3737,7 +3756,7 @@ const App: React.FC = () => {
                     <input
                       type="number"
                       placeholder="Max"
-                      value={filters.maxHolders || ''}
+                      value={filters.maxHolders ?? ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, maxHolders: e.target.value ? parseInt(e.target.value) : null }))}
                       style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
@@ -3750,7 +3769,7 @@ const App: React.FC = () => {
                     <input
                       type="number"
                       placeholder="Min"
-                      value={filters.minAge || ''}
+                      value={filters.minAge ?? ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, minAge: e.target.value ? parseFloat(e.target.value) : null }))}
                       style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
@@ -3758,7 +3777,7 @@ const App: React.FC = () => {
                     <input
                       type="number"
                       placeholder="Max"
-                      value={filters.maxAge || ''}
+                      value={filters.maxAge ?? ''}
                       onChange={(e) => setFilters(prev => ({ ...prev, maxAge: e.target.value ? parseFloat(e.target.value) : null }))}
                       style={s(inpS, { width: "100%", height: "var(--btn-sm)", padding: "0 var(--space-2)", fontSize: "var(--fs-xs)", fontFamily: "inherit" })}
                     />
@@ -4565,7 +4584,7 @@ const App: React.FC = () => {
                   creatorFeeBps: ld.creatorFeeBps || 0,
                 } : undefined;
                 const buyEst = ctx && amt > 0 && tradeType === "buy" ? trade.estimateBuy(amt, ctx) : null;
-                const sellEst = ctx && amt > 0 && tradeType === "sell" ? trade.estimateSell(amt * 1e6, ctx) : null;
+                const sellEst = ctx && amt > 0 && tradeType === "sell" ? trade.estimateSell(amt, ctx) : null;
                 const priceImpact = buyEst?.priceImpact ?? sellEst?.priceImpact ?? 0;
 
                 return (
@@ -5483,7 +5502,7 @@ const App: React.FC = () => {
     );
 
     const myCreatedLaunches = launches.filter(l =>
-      l.creator.includes(wallet.address?.slice(0, 4) || '') || Math.random() > 0.7
+      wallet.address && l.creator.includes(wallet.address.slice(0, 4))
     ).slice(0, 2);
 
     // Mini sparkline for performance
@@ -5710,7 +5729,7 @@ const App: React.FC = () => {
             padding: "0 28px 28px"
           }}>
             {([
-              { l: "Portfolio Value", v: fSOL(portfolioStats.totalValue), sub: `≈ $${fN(portfolioStats.totalValue * (Number(solPrice) || 150), 2)}`, iconType: "wallet", highlight: true },
+              { l: "Portfolio Value", v: fSOL(portfolioStats.totalValue), sub: `≈ $${fN(portfolioStats.totalValue * (solPrice?.price || 150), 2)}`, iconType: "wallet", highlight: true },
               { l: "Total P&L", v: `${portfolioStats.totalPnl >= 0 ? '+' : ''}${fSOL(portfolioStats.totalPnl)}`, isProfit: portfolioStats.totalPnl >= 0, iconType: portfolioStats.totalPnl >= 0 ? "trending-up" : "trending-down" },
               { l: "ROI", v: fPct(portfolioStats.pnlPercent), isProfit: portfolioStats.pnlPercent >= 0, iconType: "percent" },
               { l: "Positions", v: fN(portfolioStats.positionCount), sub: "Active", iconType: "layers" }
@@ -5822,7 +5841,7 @@ const App: React.FC = () => {
                 {userActivity.length > 0 ? (userActivity.reduce((sum, a) => sum + a.sol, 0) / userActivity.length).toFixed(2) : "0.00"} SOL
               </div>
               <div style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", marginTop: 6 }}>
-                ≈ ${userActivity.length > 0 ? ((userActivity.reduce((sum, a) => sum + a.sol, 0) / userActivity.length) * (Number(solPrice) || 150)).toFixed(0) : "0"} USD
+                ≈ ${userActivity.length > 0 ? ((userActivity.reduce((sum, a) => sum + a.sol, 0) / userActivity.length) * (solPrice?.price || 150)).toFixed(0) : "0"} USD
               </div>
             </div>
 

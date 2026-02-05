@@ -99,13 +99,17 @@ export interface LaunchAccount {
 export interface UserPositionAccount {
   launch: PublicKey;
   user: PublicKey;
+  tokensBought: BN;
+  tokensSold: BN;
   tokenBalance: BN;
-  totalBought: BN;
-  totalSold: BN;
-  totalSolSpent: BN;
-  totalSolReceived: BN;
+  solSpent: BN;
+  solReceived: BN;
   firstTradeAt: BN;
   lastTradeAt: BN;
+  buyCount: number;
+  sellCount: number;
+  avgBuyPrice: BN;
+  costBasis: BN;
   bump: number;
 }
 

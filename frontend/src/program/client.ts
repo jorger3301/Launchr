@@ -31,6 +31,7 @@ import {
   SellParams,
   GraduateParams,
   LaunchAccount,
+  LaunchStatus,
   ConfigAccount,
   CONSTANTS,
 } from './idl';
@@ -309,25 +310,86 @@ export class LaunchrClient {
   // ---------------------------------------------------------------------------
 
   /**
-   * Fetch config account
+   * Fetch and deserialize config account
    */
   async fetchConfig(): Promise<ConfigAccount | null> {
     const [configPda] = this.pdas.config();
     const accountInfo = await this.connection.getAccountInfo(configPda);
     if (!accountInfo) return null;
-    // Note: Full deserialization would require Anchor's BorshCoder
-    // For now, return raw data indication
-    return accountInfo.data as any;
+
+    const data = Buffer.from(accountInfo.data);
+    let off = 8; // skip discriminator
+    const admin = new PublicKey(data.slice(off, off + 32)); off += 32;
+    const feeAuthority = new PublicKey(data.slice(off, off + 32)); off += 32;
+    const protocolFeeBps = data.readUInt16LE(off); off += 2;
+    const graduationThreshold = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const quoteMint = new PublicKey(data.slice(off, off + 32)); off += 32;
+    const orbitProgramId = new PublicKey(data.slice(off, off + 32)); off += 32;
+    const defaultBinStepBps = data.readUInt16LE(off); off += 2;
+    const defaultBaseFeeBps = data.readUInt16LE(off); off += 2;
+    const launchesPaused = data[off] !== 0; off += 1;
+    const tradingPaused = data[off] !== 0; off += 1;
+    const totalLaunches = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const totalGraduations = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const totalVolumeLamports = new BN(data.slice(off, off + 16), 'le'); off += 16;
+    const totalFeesCollected = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const bump = data[off]; off += 1;
+
+    return {
+      admin, feeAuthority, protocolFeeBps, graduationThreshold,
+      quoteMint, orbitProgramId, defaultBinStepBps, defaultBaseFeeBps,
+      launchesPaused, tradingPaused, totalLaunches, totalGraduations,
+      totalVolumeLamports, totalFeesCollected, bump,
+    };
   }
 
   /**
-   * Fetch launch account
+   * Fetch and deserialize launch account
    */
   async fetchLaunch(mint: PublicKey): Promise<LaunchAccount | null> {
     const [launchPda] = this.pdas.launch(mint);
     const accountInfo = await this.connection.getAccountInfo(launchPda);
     if (!accountInfo) return null;
-    return accountInfo.data as any;
+
+    const data = Buffer.from(accountInfo.data);
+    let off = 8; // skip discriminator
+    const mintPk = new PublicKey(data.slice(off, off + 32)); off += 32;
+    const creator = new PublicKey(data.slice(off, off + 32)); off += 32;
+    const status = data[off] as LaunchStatus; off += 1;
+    const totalSupply = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const tokensSold = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const graduationTokens = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const creatorTokens = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const virtualSolReserve = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const virtualTokenReserve = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const realSolReserve = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const realTokenReserve = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const graduationThreshold = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const createdAt = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const graduatedAt = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const buyVolume = new BN(data.slice(off, off + 16), 'le'); off += 16;
+    const sellVolume = new BN(data.slice(off, off + 16), 'le'); off += 16;
+    const tradeCount = new BN(data.slice(off, off + 8), 'le'); off += 8;
+    const holderCount = data.readUInt32LE(off); off += 4;
+    const orbitPool = new PublicKey(data.slice(off, off + 32)); off += 32;
+    const creatorFeeBps = data.readUInt16LE(off); off += 2;
+    const name = Array.from(data.slice(off, off + 32)); off += 32;
+    const symbol = Array.from(data.slice(off, off + 10)); off += 10;
+    const uri = Array.from(data.slice(off, off + 200)); off += 200;
+    const twitter = Array.from(data.slice(off, off + 64)); off += 64;
+    const telegram = Array.from(data.slice(off, off + 64)); off += 64;
+    const website = Array.from(data.slice(off, off + 64)); off += 64;
+    const bump = data[off]; off += 1;
+    const authorityBump = data[off]; off += 1;
+
+    return {
+      mint: mintPk, creator, status, totalSupply, tokensSold,
+      graduationTokens, creatorTokens, virtualSolReserve, virtualTokenReserve,
+      realSolReserve, realTokenReserve, graduationThreshold, createdAt,
+      graduatedAt, buyVolume, sellVolume, tradeCount, holderCount,
+      orbitPool, creatorFeeBps, name, symbol, uri, twitter, telegram,
+      website, bump, authorityBump,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -523,63 +585,63 @@ export class LaunchrClient {
       orbitProgramId
     );
 
-    // Registry PDA: [registry] from Orbit program
+    // Registry PDA: [registry, base_mint, quote_mint] from Orbit program
     const [orbitRegistry] = PublicKey.findProgramAddressSync(
-      [Buffer.from('registry')],
+      [Buffer.from('registry'), canonicalBase, canonicalQuote],
       orbitProgramId
     );
 
-    // Base vault PDA: [pool, "base_vault"]
+    // Base vault PDA: ["vault", pool, "base"]
     const [orbitBaseVault] = PublicKey.findProgramAddressSync(
-      [orbitPool.toBuffer(), Buffer.from('base_vault')],
+      [Buffer.from('vault'), orbitPool.toBuffer(), Buffer.from('base')],
       orbitProgramId
     );
 
-    // Quote vault PDA: [pool, "quote_vault"]
+    // Quote vault PDA: ["vault", pool, "quote"]
     const [orbitQuoteVault] = PublicKey.findProgramAddressSync(
-      [orbitPool.toBuffer(), Buffer.from('quote_vault')],
+      [Buffer.from('vault'), orbitPool.toBuffer(), Buffer.from('quote')],
       orbitProgramId
     );
 
-    // Creator fee vault PDA: [pool, "creator_fee_vault"]
+    // Creator fee vault PDA: ["vault", pool, "creator_fee"]
     const [orbitCreatorFeeVault] = PublicKey.findProgramAddressSync(
-      [orbitPool.toBuffer(), Buffer.from('creator_fee_vault')],
+      [Buffer.from('vault'), orbitPool.toBuffer(), Buffer.from('creator_fee')],
       orbitProgramId
     );
 
-    // Holders fee vault PDA: [pool, "holders_fee_vault"]
+    // Holders fee vault PDA: ["vault", pool, "holders_fee"]
     const [orbitHoldersFeeVault] = PublicKey.findProgramAddressSync(
-      [orbitPool.toBuffer(), Buffer.from('holders_fee_vault')],
+      [Buffer.from('vault'), orbitPool.toBuffer(), Buffer.from('holders_fee')],
       orbitProgramId
     );
 
-    // NFT fee vault PDA: [pool, "nft_fee_vault"]
+    // NFT fee vault PDA: ["vault", pool, "nft_fee"]
     const [orbitNftFeeVault] = PublicKey.findProgramAddressSync(
-      [orbitPool.toBuffer(), Buffer.from('nft_fee_vault')],
+      [Buffer.from('vault'), orbitPool.toBuffer(), Buffer.from('nft_fee')],
       orbitProgramId
     );
 
-    // Protocol fee vault PDA: [pool, "protocol_fee_vault"]
+    // Protocol fee vault PDA: ["vault", pool, "protocol_fee"]
     const [orbitProtocolFeeVault] = PublicKey.findProgramAddressSync(
-      [orbitPool.toBuffer(), Buffer.from('protocol_fee_vault')],
+      [Buffer.from('vault'), orbitPool.toBuffer(), Buffer.from('protocol_fee')],
       orbitProgramId
     );
 
-    // Bin array PDA: [pool, "bin_array", bin_array_index]
+    // Bin array PDA: ["bin_array", pool, bin_array_index]
     // For initial graduation, we use bin_array_index = 0
     const binArrayIndex = Buffer.alloc(4);
     binArrayIndex.writeInt32LE(0, 0);
     const [orbitBinArray] = PublicKey.findProgramAddressSync(
-      [orbitPool.toBuffer(), Buffer.from('bin_array'), binArrayIndex],
+      [Buffer.from('bin_array'), orbitPool.toBuffer(), binArrayIndex],
       orbitProgramId
     );
 
-    // Position PDA: [pool, owner, nonce]
+    // Position PDA: ["position", pool, owner, nonce]
     // For graduation, owner is launch_authority and nonce is 0
     const positionNonce = Buffer.alloc(8);
     positionNonce.writeBigUInt64LE(BigInt(0), 0);
     const [orbitPosition] = PublicKey.findProgramAddressSync(
-      [orbitPool.toBuffer(), launchAuthority.toBuffer(), positionNonce],
+      [Buffer.from('position'), orbitPool.toBuffer(), launchAuthority.toBuffer(), positionNonce],
       orbitProgramId
     );
 

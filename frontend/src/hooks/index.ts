@@ -859,8 +859,8 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
     }
 
     const solLamports = new BN(Math.floor(solAmount * LAMPORTS_PER_SOL));
-    const virtualSolReserve = new BN(context.virtualSolReserve || 30 * LAMPORTS_PER_SOL);
-    const virtualTokenReserve = new BN(context.virtualTokenReserve || 800_000_000 * 1e9);
+    const virtualSolReserve = new BN(String(context.virtualSolReserve || 30 * LAMPORTS_PER_SOL));
+    const virtualTokenReserve = new BN(String(context.virtualTokenReserve || '800000000000000000'));
 
     const { tokensOut, priceImpact } = client.calculateBuyOutput(
       solLamports,
@@ -884,8 +884,8 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
     }
 
     const tokenLamports = new BN(Math.floor(tokenAmount * 1e9));
-    const virtualSolReserve = new BN(context.virtualSolReserve || 30 * LAMPORTS_PER_SOL);
-    const virtualTokenReserve = new BN(context.virtualTokenReserve || 800_000_000 * 1e9);
+    const virtualSolReserve = new BN(String(context.virtualSolReserve || 30 * LAMPORTS_PER_SOL));
+    const virtualTokenReserve = new BN(String(context.virtualTokenReserve || '800000000000000000'));
 
     const { solOut, priceImpact } = client.calculateSellOutput(
       tokenLamports,
@@ -1736,8 +1736,12 @@ export function useMultipleTokenMetadata(mintAddresses: string[]): {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Serialize mint addresses to avoid infinite re-render from new array refs
+  const mintsKey = mintAddresses.join(',');
+
   const fetchAllMetadata = useCallback(async () => {
-    if (mintAddresses.length === 0) {
+    const mints = mintsKey.split(',').filter(Boolean);
+    if (mints.length === 0) {
       setLoading(false);
       return;
     }
@@ -1746,7 +1750,7 @@ export function useMultipleTokenMetadata(mintAddresses: string[]): {
     setError(null);
 
     try {
-      const response = await api.getMultipleTokenMetadata(mintAddresses);
+      const response = await api.getMultipleTokenMetadata(mints);
 
       if (response.error) {
         throw new Error(response.error);
@@ -1777,7 +1781,7 @@ export function useMultipleTokenMetadata(mintAddresses: string[]): {
     } finally {
       setLoading(false);
     }
-  }, [mintAddresses]);
+  }, [mintsKey]);
 
   useEffect(() => {
     fetchAllMetadata();
