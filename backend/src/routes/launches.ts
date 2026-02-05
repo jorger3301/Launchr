@@ -8,6 +8,8 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import * as fs from 'fs';
+import * as path from 'path';
 import { IndexerService } from '../services/indexer';
 import { MetaplexService, TokenMetadata } from '../services/metaplex';
 import { logger } from '../utils/logger';
@@ -76,12 +78,66 @@ async function compute24hStats(
   }
 }
 
-// Strip internal fields and enrich with 24h stats
+// Strip internal fields and enrich with 24h stats + resolved image URL
 async function enrichLaunch(indexer: IndexerService, launch: LaunchAccount) {
+  // Resolve image URL with caching
+  let imageUrl: string | undefined;
+  const cached = imageUrlCache.get(launch.publicKey);
+  if (cached && Date.now() - cached.timestamp < IMAGE_CACHE_TTL) {
+    imageUrl = cached.url;
+  } else {
+    imageUrl = await resolveImageUrl(launch.uri);
+    imageUrlCache.set(launch.publicKey, { url: imageUrl, timestamp: Date.now() });
+  }
+
   return {
     ...stripInternalFields(launch),
     ...(await compute24hStats(indexer, launch)),
+    ...(imageUrl ? { imageUrl } : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// IMAGE URL RESOLUTION
+// ---------------------------------------------------------------------------
+
+const UPLOADS_DIR = path.join(__dirname, '../../uploads');
+const imageUrlCache = new Map<string, { url: string | undefined; timestamp: number }>();
+const IMAGE_CACHE_TTL = 300_000; // 5 minutes
+
+/**
+ * Resolve a launch's metadata URI to extract the image URL.
+ * For local uploads, reads the JSON file directly from disk.
+ * For remote URIs, fetches with a short timeout.
+ */
+async function resolveImageUrl(uri: string): Promise<string | undefined> {
+  if (!uri) return undefined;
+
+  try {
+    // Local upload: read metadata JSON directly from disk
+    const uploadsMatch = uri.match(/\/uploads\/metadata\/([a-f0-9]+\.json)$/);
+    if (uploadsMatch) {
+      const filePath = path.join(UPLOADS_DIR, 'metadata', uploadsMatch[1]);
+      if (fs.existsSync(filePath)) {
+        const meta = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        return meta.image || undefined;
+      }
+      return undefined;
+    }
+
+    // Skip obviously unresolvable URIs (mock data)
+    if (uri.includes('/mock')) return undefined;
+
+    // Remote URI: fetch with timeout
+    const response = await fetch(uri, { signal: AbortSignal.timeout(3000) });
+    if (response.ok) {
+      const meta = (await response.json()) as { image?: string };
+      return meta.image || undefined;
+    }
+  } catch {
+    // Resolution failed — not an error, just no image available
+  }
+  return undefined;
 }
 
 // Enrich launches with concurrency limit to avoid overwhelming the RPC/cache
@@ -263,6 +319,31 @@ router.post(
       for (const mint of mints) {
         const data = metadataMap.get(mint);
         metadata[mint] = data || null;
+      }
+
+      // Fall back to direct URI resolution for mints DAS couldn't resolve
+      const missingMints = mints.filter(m => !metadata[m]);
+      if (missingMints.length > 0) {
+        const indexer: IndexerService = req.app.locals.indexer;
+        const launches = await indexer.getAllLaunches();
+        const launchByMint = new Map(launches.map(l => [l.mint, l]));
+
+        await Promise.all(missingMints.map(async (mint) => {
+          const launch = launchByMint.get(mint);
+          if (!launch) return;
+          const imageUrl = await resolveImageUrl(launch.uri);
+          if (imageUrl) {
+            metadata[mint] = {
+              mint,
+              name: launch.name,
+              symbol: launch.symbol,
+              uri: launch.uri,
+              image: imageUrl,
+              isMutable: true,
+              primarySaleHappened: false,
+            };
+          }
+        }));
       }
 
       res.json({ metadata });

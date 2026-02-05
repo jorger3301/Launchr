@@ -1728,6 +1728,7 @@ interface LaunchItem {
   progress: number;
   createdAt: number;
   gi: number;
+  imageUrl?: string;
 }
 
 interface TradeItem {
@@ -2327,7 +2328,8 @@ const App: React.FC = () => {
         trades: l.tradeCount || 0,
         progress: Math.round(progress),
         createdAt: l.createdAt || Date.now(),
-        gi: i % 10
+        gi: i % 10,
+        imageUrl: l.imageUrl,
       };
     });
   }, [rawLaunches]);
@@ -2350,10 +2352,20 @@ const App: React.FC = () => {
     return map;
   }, [rawMetadataMap, launches]);
 
+  // Build a lookup from publicKey → imageUrl from enriched launch data
+  const launchImageMap = useMemo(() => {
+    const map = new Map<string, string>();
+    launches.forEach(l => {
+      if (l.imageUrl) map.set(l.publicKey, l.imageUrl);
+    });
+    return map;
+  }, [launches]);
+
   // Helper function to get token image URL
+  // Priority: enriched launch imageUrl (backend-resolved) > DAS metadata
   const getTokenImageUrl = useCallback((publicKey: string): string | undefined => {
-    return tokenMetadataMap.get(publicKey)?.image;
-  }, [tokenMetadataMap]);
+    return launchImageMap.get(publicKey) || tokenMetadataMap.get(publicKey)?.image;
+  }, [launchImageMap, tokenMetadataMap]);
 
   // Restore detail page when launches load (for route persistence)
   useEffect(() => {

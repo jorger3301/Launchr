@@ -103,6 +103,7 @@ export interface LaunchData {
   creatorFeeBps?: number;
   priceChange24h?: number;
   volume24h?: number;
+  imageUrl?: string;
 }
 
 export interface TradeData {
