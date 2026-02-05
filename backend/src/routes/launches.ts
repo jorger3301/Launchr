@@ -70,7 +70,8 @@ async function compute24hStats(
     }
 
     return { priceChange24h, volume24h };
-  } catch {
+  } catch (error) {
+    logger.warn(`compute24hStats failed for ${launch.publicKey}:`, error);
     return { priceChange24h: 0, volume24h: 0 };
   }
 }
@@ -83,8 +84,16 @@ async function enrichLaunch(indexer: IndexerService, launch: LaunchAccount) {
   };
 }
 
+// Enrich launches with concurrency limit to avoid overwhelming the RPC/cache
+const ENRICH_CONCURRENCY = 10;
 async function enrichLaunches(indexer: IndexerService, launches: LaunchAccount[]) {
-  return Promise.all(launches.map(l => enrichLaunch(indexer, l)));
+  const results: Awaited<ReturnType<typeof enrichLaunch>>[] = [];
+  for (let i = 0; i < launches.length; i += ENRICH_CONCURRENCY) {
+    const batch = launches.slice(i, i + ENRICH_CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(l => enrichLaunch(indexer, l)));
+    results.push(...batchResults);
+  }
+  return results;
 }
 
 // =============================================================================

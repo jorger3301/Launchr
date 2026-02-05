@@ -74,6 +74,8 @@ export interface TokenInfo {
   decimals: number;
 }
 
+export type LaunchStatus = 'Active' | 'PendingGraduation' | 'Graduated' | 'Cancelled';
+
 export interface LaunchData {
   publicKey: string;
   mint: string;
@@ -81,7 +83,7 @@ export interface LaunchData {
   name: string;
   symbol: string;
   uri: string;
-  status: 'Active' | 'PendingGraduation' | 'Graduated' | 'Cancelled';
+  status: LaunchStatus;
   totalSupply: number;
   tokensSold: number;
   realSolReserve: number;
@@ -167,7 +169,7 @@ export const PriceChange: React.FC<PriceChangeProps> = ({
 // =============================================================================
 
 interface StatusBadgeProps {
-  status: 'Active' | 'PendingGraduation' | 'Graduated' | 'Cancelled';
+  status: LaunchStatus;
   className?: string;
 }
 

@@ -32,7 +32,7 @@ import {
   WalletType,
 } from './hooks';
 
-import { WalletSelector, PriceChart, OfflineIndicator } from './components/molecules';
+import { WalletSelector, PriceChart, OfflineIndicator, type LaunchStatus } from './components/molecules';
 import { api, wsClient, NormalizedMessage } from './services/api';
 
 import {
@@ -115,6 +115,14 @@ const fP = (p: number): string => {
   if (p < 0.01) return p.toFixed(6);
   if (p < 1) return p.toFixed(4);
   return p.toFixed(2);
+};
+
+// Sanitize external URL: only allow http(s), prepend https:// for bare domains
+const safeHref = (url: string): string => {
+  const t = url.trim();
+  if (/^https?:\/\//i.test(t)) return t;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return '';
+  return `https://${t}`;
 };
 
 // Format number with thousands separator
@@ -1710,7 +1718,7 @@ interface LaunchItem {
   name: string;
   symbol: string;
   creator: string;
-  status: 'Active' | 'PendingGraduation' | 'Graduated' | 'Cancelled';
+  status: LaunchStatus;
   price: number;
   priceChange24h: number;
   volume24h: number;
@@ -2379,14 +2387,13 @@ const App: React.FC = () => {
     return data;
   }, [launches]);
 
-  // Listen for graduation events + real-time trade updates via WebSocket
+  // Listen for graduation events via WebSocket
   useEffect(() => {
     if (!settings.notifications.graduationAlerts) return;
 
     try {
       wsClient.connect();
       wsClient.subscribeChannel('launches');
-      wsClient.subscribeChannel('trades');
     } catch (err) {
       console.error('WebSocket connection failed:', err);
     }
@@ -2404,7 +2411,7 @@ const App: React.FC = () => {
             name: launch.name || 'Unknown',
             symbol: launch.symbol || '???',
             gi: 0,
-            status: 'Graduated',
+            status: 'Graduated' as LaunchStatus,
             price: launch.currentPrice || 0,
             priceChange24h: 0,
             creator: launch.creator || '',
@@ -2423,7 +2430,6 @@ const App: React.FC = () => {
 
     return () => {
       wsClient.unsubscribeChannel('launches');
-      wsClient.unsubscribeChannel('trades');
       unsubscribe();
     };
   }, [settings.notifications.graduationAlerts, launches, showToast]);
@@ -2444,6 +2450,14 @@ const App: React.FC = () => {
   const TRADES_PER_PAGE = 15;
   const paginatedTrades = useMemo(() => trades.slice(tradePage * TRADES_PER_PAGE, (tradePage + 1) * TRADES_PER_PAGE), [trades, tradePage]);
   const totalTradePages = Math.ceil(trades.length / TRADES_PER_PAGE);
+
+  // Clamp tradePage when trade list shrinks (e.g. switching launches)
+  useEffect(() => {
+    setTradePage(p => {
+      const max = Math.max(0, totalTradePages - 1);
+      return p > max ? max : p;
+    });
+  }, [totalTradePages]);
 
   // Filtered launches with advanced filters
   const filteredLaunches = useMemo(() => {
@@ -3059,7 +3073,7 @@ const App: React.FC = () => {
             }}>
               ${solPrice.price > 0 ? solPrice.price.toFixed(2) : '--'}
             </span>
-            {solPrice.change24h !== 0 && (
+            {solPrice.price > 0 && (
               <span style={{
                 fontSize: "var(--fs-xs)",
                 fontWeight: "var(--fw-medium)",
@@ -4094,8 +4108,8 @@ const App: React.FC = () => {
                       <SvgTg /> Telegram
                     </a>
                   )}
-                  {ld?.website && (
-                    <a href={ld.website} target="_blank" rel="noopener noreferrer" className="glass-pill interactive-hover" style={s(bsS, { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", fontSize: "var(--fs-xs)", color: "var(--t2)", textDecoration: "none" })}>
+                  {ld?.website && safeHref(ld.website) && (
+                    <a href={safeHref(ld.website)} target="_blank" rel="noopener noreferrer" className="glass-pill interactive-hover" style={s(bsS, { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", fontSize: "var(--fs-xs)", color: "var(--t2)", textDecoration: "none" })}>
                       <SvgExternal /> Website
                     </a>
                   )}
@@ -6584,9 +6598,9 @@ const App: React.FC = () => {
                       <div style={{
                         fontSize: "var(--fs-sm)",
                         fontWeight: "var(--fw-semibold)",
-                        color: launch.priceChange24h === 0 ? "var(--t3)" : launch.priceChange24h >= 0 ? "var(--grn)" : "var(--red)"
+                        color: launch.priceChange24h >= 0 ? "var(--grn)" : "var(--red)"
                       }}>
-                        {launch.priceChange24h === 0 ? "—" : `${launch.priceChange24h >= 0 ? "+" : ""}${launch.priceChange24h.toFixed(1)}%`}
+                        {`${launch.priceChange24h >= 0 ? "+" : ""}${launch.priceChange24h.toFixed(1)}%`}
                       </div>
                     </div>
                   </div>
@@ -6624,20 +6638,22 @@ const App: React.FC = () => {
       }));
     };
 
-    const Toggle = ({ checked, onChange, label, description }: { checked: boolean; onChange: () => void; label: string; description?: string }) => (
+    const Toggle = ({ checked, onChange, label, description, disabled }: { checked: boolean; onChange: () => void; label: string; description?: string; disabled?: boolean }) => (
       <div
-        onClick={onChange}
+        onClick={disabled ? undefined : onChange}
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           padding: "16px 0",
-          cursor: "pointer",
+          cursor: disabled ? "default" : "pointer",
+          opacity: disabled ? 0.5 : 1,
           transition: "all .15s"
         }}
-        className="interactive-hover"
+        className={disabled ? '' : 'interactive-hover'}
         role="switch"
         aria-checked={checked}
+        aria-disabled={disabled}
       >
         <div style={{ flex: 1, paddingRight: 16 }}>
           <span style={{
@@ -7020,10 +7036,11 @@ const App: React.FC = () => {
               {/* Sound & Accessibility */}
               <SettingSection title="Sound & Accessibility">
                 <Toggle
-                  checked={settings.soundEffects}
-                  onChange={() => updateSettings({ soundEffects: !settings.soundEffects })}
+                  checked={false}
+                  onChange={() => {}}
                   label="Sound Effects (Coming soon)"
                   description="Audio feedback for trades and alerts"
+                  disabled
                 />
               </SettingSection>
             </>
@@ -8602,12 +8619,12 @@ const App: React.FC = () => {
                 </span>
                 <span style={{
                   fontSize: "var(--fs-xs)",
-                  color: l.priceChange24h === 0 ? "var(--t3)" : l.priceChange24h >= 0 ? "var(--grn)" : "var(--red)",
+                  color: l.priceChange24h >= 0 ? "var(--grn)" : "var(--red)",
                   display: "flex",
                   alignItems: "center",
                   gap: 2
                 }}>
-                  {l.priceChange24h === 0 ? "—" : `${l.priceChange24h >= 0 ? "+" : ""}${l.priceChange24h.toFixed(1)}%`}
+                  {`${l.priceChange24h >= 0 ? "+" : ""}${l.priceChange24h.toFixed(1)}%`}
                 </span>
               </div>
             ))}

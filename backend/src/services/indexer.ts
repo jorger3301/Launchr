@@ -36,6 +36,8 @@ const useMockData = () => process.env.USE_MOCK_DATA === 'true' || process.env.NO
  * - Total: 85 SOL
  */
 
+// These exceed Number.MAX_SAFE_INTEGER but the ~128-unit precision loss
+// at 1e18 is negligible for mock data display purposes.
 const TOTAL_SUPPLY = 1_000_000_000_000_000_000; // 1 billion tokens (with 9 decimals)
 const BONDING_CURVE_TOKENS = 800_000_000_000_000_000; // 80% for bonding curve
 const LP_RESERVE_TOKENS = 200_000_000_000_000_000; // 20% for LP migration
@@ -349,29 +351,29 @@ export class IndexerService extends EventEmitter {
 
   private async handleTradeEvent(signature: string): Promise<void> {
     this.state.tradeCount++;
-    
+
     // Emit event for WebSocket broadcast
     this.emit('trade', { signature });
 
     // Re-index after short delay (let the transaction confirm)
     setTimeout(() => {
-      this.indexAll().catch(err => logger.error('Re-index error:', err));
+      this.indexAll().catch(err => logger.error('Re-index after trade failed:', err));
     }, 2000);
   }
 
   private async handleLaunchCreated(signature: string): Promise<void> {
     this.emit('launch:created', { signature });
-    
+
     setTimeout(() => {
-      this.indexAll().catch(err => logger.error('Re-index error:', err));
+      this.indexAll().catch(err => logger.error('Re-index after launch created failed:', err));
     }, 2000);
   }
 
   private async handleLaunchGraduated(signature: string): Promise<void> {
     this.emit('launch:graduated', { signature });
-    
+
     setTimeout(() => {
-      this.indexAll().catch(err => logger.error('Re-index error:', err));
+      this.indexAll().catch(err => logger.error('Re-index after graduation failed:', err));
     }, 2000);
   }
 

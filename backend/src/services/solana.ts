@@ -319,7 +319,10 @@ export class SolanaService {
       const tradingPaused = data.readUInt8(offset++) === 1;
       const totalLaunches = data.readBigUInt64LE(offset); offset += 8;
       const totalGraduations = data.readBigUInt64LE(offset); offset += 8;
-      const totalVolumeLamports = data.readBigUInt64LE(offset); offset += 8;
+      // u128: read low and high 64-bit halves
+      const volLo = data.readBigUInt64LE(offset);
+      const volHi = data.readBigUInt64LE(offset + 8);
+      const totalVolumeLamports = volLo + (volHi << 64n); offset += 16;
       const totalFeesCollected = data.readBigUInt64LE(offset); offset += 8;
       const bump = data.readUInt8(offset);
 
@@ -354,6 +357,9 @@ export class SolanaService {
       const mint = new PublicKey(data.slice(offset, offset += 32));
       const creator = new PublicKey(data.slice(offset, offset += 32));
       const status = data.readUInt8(offset++);
+      // Note: Number() on u64 values loses precision above 2^53 (~9e15).
+      // Token amounts (up to 1e18) exceed this, but the max error is ~128 raw
+      // units (~1.3e-7 tokens), which is negligible for price/display arithmetic.
       const totalSupply = Number(data.readBigUInt64LE(offset)); offset += 8;
       const tokensSold = Number(data.readBigUInt64LE(offset)); offset += 8;
       const graduationTokens = Number(data.readBigUInt64LE(offset)); offset += 8;

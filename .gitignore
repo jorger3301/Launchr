@@ -9,12 +9,8 @@ dist/
 *.tsbuildinfo
 
 # Environment files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 *.env
+.env*.local
 
 # Logs
 logs/
@@ -43,4 +39,3 @@ coverage/
 .cache/
 .temp/
 .vercel
-.env*.local

@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, ComputeBudgetProgram, TransactionMessage, VersionedTransaction } from '@solana/web3.js';
 import BN from 'bn.js';
-import { LaunchData, TradeData, UserPositionData } from '../components/molecules';
+import { LaunchData, TradeData, UserPositionData, type LaunchStatus } from '../components/molecules';
 import { api, wsClient, NormalizedMessage } from '../services/api';
 import { LaunchrClient, initLaunchrClient, getLaunchrClient } from '../program/client';
 import { BuyParams, SellParams, GraduateParams as ProgramGraduateParams, CreateLaunchParams as ProgramCreateLaunchParams } from '../program/idl';
@@ -2145,7 +2145,7 @@ export interface PositionWithLaunch {
     imageUri?: string;
     currentPrice?: number;
     gi?: number;
-    status?: 'Active' | 'PendingGraduation' | 'Graduated' | 'Cancelled';
+    status?: LaunchStatus;
     price?: number;
     creator?: string;
     marketCap?: number;

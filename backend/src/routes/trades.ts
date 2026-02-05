@@ -11,6 +11,22 @@ import { TradeEvent } from '../models/accounts';
 
 const router = Router();
 
+// Transform internal TradeEvent to frontend-expected format
+function toTradeData(trade: TradeEvent) {
+  return {
+    type: trade.type,
+    user: trade.trader,
+    amount: trade.tokenAmount,
+    solAmount: trade.solAmount,
+    price: trade.price,
+    timestamp: trade.timestamp,
+    txSignature: trade.signature,
+  };
+}
+
+// Solana signatures are base58-encoded, typically 87-88 chars
+const SIGNATURE_RE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
+
 // ---------------------------------------------------------------------------
 // GET /api/trades/recent - Get recent trades across all launches
 // ---------------------------------------------------------------------------
@@ -28,29 +44,19 @@ router.get('/recent', async (req: Request, res: Response) => {
       .sort((a, b) => b.tradeCount - a.tradeCount)
       .slice(0, 20);
 
-    const allTrades: TradeEvent[] = [];
-    for (const launch of activeLaunches) {
-      const launchTrades = await indexer.getRecentTrades(launch.publicKey, 10);
-      allTrades.push(...launchTrades);
-    }
+    // Fetch trades from all active launches in parallel
+    const tradeArrays = await Promise.all(
+      activeLaunches.map(launch => indexer.getRecentTrades(launch.publicKey, 10))
+    );
+    const allTrades = tradeArrays.flat();
 
     // Sort by timestamp descending
     allTrades.sort((a, b) => b.timestamp - a.timestamp);
 
-    // Transform to frontend-expected format (TradeData)
-    const trades = allTrades.slice(0, parsedLimit).map((trade) => ({
-      type: trade.type,
-      user: trade.trader,
-      amount: trade.tokenAmount,
-      solAmount: trade.solAmount,
-      price: trade.price,
-      timestamp: trade.timestamp,
-      txSignature: trade.signature,
-    }));
-
     res.json({
-      trades,
-      total: allTrades.length,
+      trades: allTrades.slice(0, parsedLimit).map(toTradeData),
+      // Count of trades collected from sampled launches (not a global total)
+      totalCollected: allTrades.length,
     });
 
   } catch (error) {
@@ -68,23 +74,23 @@ router.get('/:signature', async (req: Request, res: Response) => {
     const indexer: IndexerService = req.app.locals.indexer;
     const { signature } = req.params;
 
-    // Search through cached trades for all launches
+    if (!SIGNATURE_RE.test(signature)) {
+      return res.status(400).json({ error: 'Invalid transaction signature format' });
+    }
+
+    // Search cached trades across all launches in parallel
     const launches = await indexer.getAllLaunches();
-    for (const launch of launches) {
-      const trades = await indexer.getRecentTrades(launch.publicKey, 100);
-      const found = trades.find(t => t.signature === signature);
-      if (found) {
-        res.json({
-          type: found.type,
-          user: found.trader,
-          amount: found.tokenAmount,
-          solAmount: found.solAmount,
-          price: found.price,
-          timestamp: found.timestamp,
-          txSignature: found.signature,
-        });
-        return;
-      }
+    const results = await Promise.all(
+      launches.map(async (launch) => {
+        const trades = await indexer.getRecentTrades(launch.publicKey, 100);
+        return trades.find(t => t.signature === signature) || null;
+      })
+    );
+
+    const found = results.find(Boolean);
+    if (found) {
+      res.json(toTradeData(found));
+      return;
     }
 
     res.status(404).json({ error: 'Trade not found' });

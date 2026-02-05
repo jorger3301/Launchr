@@ -70,11 +70,17 @@ router.get('/:address/positions', async (req: Request, res: Response) => {
 
         if (launch && launch.currentPrice && pos.tokenBalance > 0) {
           currentValue = pos.tokenBalance * launch.currentPrice;
+          // Only compute PnL when we have a meaningful cost basis.
+          // When tokensBought is 0 (e.g. tokens transferred in), cost is unknown.
           const cost = pos.costBasis > 0
             ? pos.costBasis
-            : (pos.tokenBalance * (pos.solSpent / Math.max(pos.tokensBought, 1)));
-          pnl = currentValue - cost;
-          pnlPercent = cost > 0 ? (pnl / cost) * 100 : 0;
+            : pos.tokensBought > 0
+              ? pos.tokenBalance * (pos.solSpent / pos.tokensBought)
+              : 0;
+          if (cost > 0) {
+            pnl = currentValue - cost;
+            pnlPercent = (pnl / cost) * 100;
+          }
         }
 
         return {
