@@ -132,10 +132,10 @@ export class LaunchrPDAs {
  * Anchor instruction discriminators (first 8 bytes of sha256("global:<instruction_name>"))
  */
 const DISCRIMINATORS = {
-  createLaunch: Buffer.from([137, 42, 226, 107, 34, 208, 200, 252]),
-  buy: Buffer.from([102, 6, 61, 18, 1, 218, 235, 234]),
-  sell: Buffer.from([51, 230, 133, 164, 1, 127, 131, 173]),
-  graduate: Buffer.from([159, 232, 138, 211, 178, 120, 60, 129]), // sha256("global:graduate")[0:8]
+  createLaunch: Buffer.from([239, 223, 255, 134, 39, 121, 127, 62]), // sha256("global:create_launch")[0:8]
+  buy: Buffer.from([102, 6, 61, 18, 1, 218, 235, 234]),             // sha256("global:buy")[0:8]
+  sell: Buffer.from([51, 230, 133, 164, 1, 127, 131, 173]),          // sha256("global:sell")[0:8]
+  graduate: Buffer.from([45, 235, 225, 181, 17, 218, 64, 130]),      // sha256("global:graduate")[0:8]
 };
 
 /**
@@ -318,6 +318,12 @@ export class LaunchrClient {
     if (!accountInfo) return null;
 
     const data = Buffer.from(accountInfo.data);
+    // Minimum: disc(8) + admin(32) + fee_auth(32) + fee_bps(2) + grad(8) + quote(32) +
+    // orbit(32) + bin(2) + base(2) + paused(2) + stats(8+8+16+8) + bump(1) = 193
+    if (data.length < 193) {
+      console.error('Config account data too short:', data.length);
+      return null;
+    }
     let off = 8; // skip discriminator
     const admin = new PublicKey(data.slice(off, off + 32)); off += 32;
     const feeAuthority = new PublicKey(data.slice(off, off + 32)); off += 32;
@@ -352,10 +358,20 @@ export class LaunchrClient {
     if (!accountInfo) return null;
 
     const data = Buffer.from(accountInfo.data);
+    // Minimum: disc(8) + mint(32) + creator(32) + status(1) + fields...authority_bump(1) = 675
+    if (data.length < 675) {
+      console.error('Launch account data too short:', data.length);
+      return null;
+    }
     let off = 8; // skip discriminator
     const mintPk = new PublicKey(data.slice(off, off + 32)); off += 32;
     const creator = new PublicKey(data.slice(off, off + 32)); off += 32;
-    const status = data[off] as LaunchStatus; off += 1;
+    const statusByte = data[off]; off += 1;
+    if (statusByte > 3) {
+      console.error('Invalid LaunchStatus value:', statusByte);
+      return null;
+    }
+    const status: LaunchStatus = statusByte;
     const totalSupply = new BN(data.slice(off, off + 8), 'le'); off += 8;
     const tokensSold = new BN(data.slice(off, off + 8), 'le'); off += 8;
     const graduationTokens = new BN(data.slice(off, off + 8), 'le'); off += 8;
@@ -727,11 +743,15 @@ export class LaunchrClient {
       .mul(solIn)
       .div(virtualSolReserve.add(solIn));
 
-    // Price impact
-    const priceBefore = virtualSolReserve.toNumber() / virtualTokenReserve.toNumber();
-    const priceAfter = virtualSolReserve.add(solIn).toNumber() /
-                       virtualTokenReserve.sub(tokensOut).toNumber();
-    const priceImpact = ((priceAfter - priceBefore) / priceBefore) * 100;
+    // Price impact using BN cross-multiplication to avoid precision loss
+    // priceRatio = (solAfter/tokenAfter) / (solBefore/tokenBefore)
+    //            = (solAfter * tokenBefore) / (solBefore * tokenAfter)
+    const IMPACT_PRECISION = new BN(1_000_000);
+    const solAfter = virtualSolReserve.add(solIn);
+    const tokenAfter = virtualTokenReserve.sub(tokensOut);
+    const ratioScaled = solAfter.mul(virtualTokenReserve).mul(IMPACT_PRECISION)
+      .div(virtualSolReserve.mul(tokenAfter));
+    const priceImpact = (ratioScaled.toNumber() / 1_000_000 - 1) * 100;
 
     return { tokensOut, priceImpact };
   }
@@ -764,11 +784,15 @@ export class LaunchrClient {
     const feeAmount = grossSolOut.muln(protocolFeeBps).divn(10000);
     const solOut = grossSolOut.sub(feeAmount);
 
-    // Price impact
-    const priceBefore = virtualSolReserve.toNumber() / virtualTokenReserve.toNumber();
-    const priceAfter = virtualSolReserve.sub(grossSolOut).toNumber() /
-                       virtualTokenReserve.add(tokenAmount).toNumber();
-    const priceImpact = ((priceBefore - priceAfter) / priceBefore) * 100;
+    // Price impact using BN cross-multiplication to avoid precision loss
+    // priceRatio = (solBefore/tokenBefore) / (solAfter/tokenAfter)
+    //            = (solBefore * tokenAfter) / (solAfter * tokenBefore)
+    const IMPACT_PRECISION = new BN(1_000_000);
+    const solAfter = virtualSolReserve.sub(grossSolOut);
+    const tokenAfter = virtualTokenReserve.add(tokenAmount);
+    const ratioScaled = virtualSolReserve.mul(tokenAfter).mul(IMPACT_PRECISION)
+      .div(solAfter.mul(virtualTokenReserve));
+    const priceImpact = (ratioScaled.toNumber() / 1_000_000 - 1) * 100;
 
     return { solOut, priceImpact };
   }

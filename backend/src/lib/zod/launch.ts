@@ -84,7 +84,7 @@ export const LaunchResponseSchema = z.object({
   graduationTokens: NonNegativeNumberSchema,
   creatorTokens: NonNegativeNumberSchema,
   virtualSolReserve: NonNegativeNumberSchema,
-  virtualTokenReserve: NonNegativeNumberSchema,
+  virtualTokenReserve: z.union([z.string(), NonNegativeNumberSchema]),
   realSolReserve: NonNegativeNumberSchema,
   realTokenReserve: NonNegativeNumberSchema,
   graduationThreshold: NonNegativeNumberSchema,

@@ -1717,7 +1717,8 @@ interface LaunchItem {
   mint: string;
   name: string;
   symbol: string;
-  creator: string;
+  creator: string;       // truncated for display
+  creatorFull: string;   // full address for matching
   status: LaunchStatus;
   price: number;
   priceChange24h: number;
@@ -2248,16 +2249,21 @@ const App: React.FC = () => {
   // Refresh data
   const refreshDataRef = useRef<() => Promise<void>>();
   const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return; // Prevent overlapping refreshes
     setIsRefreshing(true);
     try {
-      await refreshDataRef.current?.();
+      if (!refreshDataRef.current) {
+        showToast('Nothing to refresh', 'info');
+        return;
+      }
+      await refreshDataRef.current();
       showToast('Data refreshed', 'success');
     } catch {
       showToast('Refresh failed', 'error');
     } finally {
       setIsRefreshing(false);
     }
-  }, [showToast]);
+  }, [showToast, isRefreshing]);
 
   // Persist watchlist
   useEffect(() => {
@@ -2350,6 +2356,7 @@ const App: React.FC = () => {
         name: l.name,
         symbol: l.symbol,
         creator: l.creator ? l.creator.slice(0, 4) + "..." + l.creator.slice(-4) : 'Unknown',
+        creatorFull: l.creator || '',
         status: l.status,
         price: l.currentPrice || 0,
         priceChange24h: l.priceChange24h ?? 0,
@@ -2436,6 +2443,11 @@ const App: React.FC = () => {
     return data;
   }, [launches]);
 
+  // Keep a ref for launches so the WebSocket callback can access current data
+  // without causing effect re-runs
+  const launchesRef = useRef(launches);
+  launchesRef.current = launches;
+
   // Listen for graduation events via WebSocket
   useEffect(() => {
     if (!settings.notifications.graduationAlerts) return;
@@ -2451,7 +2463,7 @@ const App: React.FC = () => {
       if (message.type === 'launch_graduated') {
         const launch = message.data;
         // Find the full launch data if available
-        const fullLaunch = launches.find(l => l.publicKey === launch.publicKey);
+        const fullLaunch = launchesRef.current.find(l => l.publicKey === launch.publicKey);
         if (fullLaunch || launch) {
           setGraduatedLaunch(fullLaunch || {
             id: launch.publicKey,
@@ -2463,7 +2475,8 @@ const App: React.FC = () => {
             status: 'Graduated' as LaunchStatus,
             price: launch.currentPrice || 0,
             priceChange24h: 0,
-            creator: launch.creator || '',
+            creator: launch.creator ? launch.creator.slice(0, 4) + '...' + launch.creator.slice(-4) : '',
+            creatorFull: launch.creator || '',
             marketCap: launch.marketCap || (launch.currentPrice ? launch.currentPrice * (launch.totalSupply || 800_000_000) : 0),
             volume24h: 0,
             progress: 100,
@@ -2481,7 +2494,7 @@ const App: React.FC = () => {
       wsClient.unsubscribeChannel('launches');
       unsubscribe();
     };
-  }, [settings.notifications.graduationAlerts, launches, showToast]);
+  }, [settings.notifications.graduationAlerts, showToast]);
 
   // Transform trades
   const trades: TradeItem[] = useMemo(() => {
@@ -2489,7 +2502,7 @@ const App: React.FC = () => {
       id: t.txSignature || `trade-${t.timestamp}-${i}`,
       type: t.type as 'buy' | 'sell',
       trader: t.user ? t.user.slice(0, 4) + "..." + t.user.slice(-4) : 'Unknown',
-      sol: t.solAmount || 0,
+      sol: (t.solAmount || 0) / 1e9,
       tokens: fTok(t.amount || 0),
       price: t.price || 0,
       time: getTimeAgo(t.timestamp || Date.now()),
@@ -2719,7 +2732,8 @@ const App: React.FC = () => {
           status: pos.launch.status || 'Active',
           price: pos.launch.currentPrice || 0,
           priceChange24h: 0,
-          creator: pos.launch.creator || '',
+          creator: pos.launch.creator ? pos.launch.creator.slice(0, 4) + '...' + pos.launch.creator.slice(-4) : '',
+          creatorFull: pos.launch.creator || '',
           marketCap: pos.launch.marketCap || 0,
           volume24h: pos.launch.volume24h || 0,
           progress: pos.launch.progress || 0,
@@ -4394,7 +4408,7 @@ const App: React.FC = () => {
                           </td>
                           <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>{r.trader}</td>
                           <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>{r.price > 0 ? fP(r.price) : '—'}</td>
-                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t1)" }}>{r.sol}</td>
+                          <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t1)" }}>{r.sol.toFixed(4)}</td>
                           <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t2)" }}>{r.tokens}</td>
                           <td style={{ textAlign: "right", fontSize: "var(--fs-sm)", color: "var(--t3)" }}>{r.time}</td>
                         </tr>
@@ -4669,7 +4683,7 @@ const App: React.FC = () => {
 
                 return (
                   <button
-                    onClick={wallet.connected ? initiateTransaction : () => wallet.connect()}
+                    onClick={wallet.connected ? initiateTransaction : () => setShowWalletSelector(true)}
                     className={`btn-press ${tradeLoading ? 'btn-loading' : ''}`}
                     disabled={isDisabled}
                     style={{
@@ -4879,7 +4893,7 @@ const App: React.FC = () => {
       if (!sy.trim()) errors.symbol = "Symbol is required";
       else if (sy.length < 2) errors.symbol = "Symbol must be at least 2 characters";
       else if (sy.length > 10) errors.symbol = "Symbol must be 10 characters or less";
-      else if (!/^[A-Z0-9]+$/.test(sy)) errors.symbol = "Symbol must be alphanumeric only";
+      else if (!/^[A-Za-z0-9]+$/.test(sy)) errors.symbol = "Symbol must be alphanumeric only";
 
       // Description validation
       if (ds.length > 500) errors.description = "Description must be 500 characters or less";
@@ -4945,7 +4959,7 @@ const App: React.FC = () => {
         const errorMessage = (err instanceof Error ? err.message : 'Unknown error').toLowerCase();
         console.error('Token creation failed:', err);
 
-        if (errorMessage.includes('reject') || errorMessage.includes('denied') || errorMessage.includes('cancelled')) {
+        if (errorMessage.includes('reject') || errorMessage.includes('denied') || errorMessage.includes('cancelled') || errorMessage.includes('canceled')) {
           showToast('Transaction was rejected by wallet.', 'error');
         } else if (errorMessage.includes('upload') || errorMessage.includes('metadata')) {
           showToast('Failed to upload token metadata. Please try again.', 'error');
@@ -5203,7 +5217,10 @@ const App: React.FC = () => {
               {renderLabel("Description", false, formErrors.description, 500, ds.length)}
               <textarea
                 value={ds}
-                onChange={(e) => setDs(e.target.value.slice(0, 500))}
+                onChange={(e) => {
+                  setDs(e.target.value.slice(0, 500));
+                  if (formErrors.description) setFormErrors(prev => ({ ...prev, description: undefined }));
+                }}
                 onFocus={() => setFocusedField('description')}
                 onBlur={() => setFocusedField(null)}
                 placeholder="Describe your token's purpose and vision..."
@@ -5327,7 +5344,7 @@ const App: React.FC = () => {
                     justifyContent: "space-between",
                     alignItems: "center",
                     padding: "10px 0",
-                    borderBottom: i < 3 ? "1px solid var(--glass-border)" : "none"
+                    borderBottom: i < 4 ? "1px solid var(--glass-border)" : "none"
                   }}
                 >
                   <span style={{
@@ -5356,7 +5373,7 @@ const App: React.FC = () => {
 
             {/* Create Button */}
             <button
-              onClick={wallet.connected ? handleSubmit : () => wallet.connect()}
+              onClick={wallet.connected ? handleSubmit : () => setShowWalletSelector(true)}
               disabled={isCreating}
               className={`btn-press btn-glow create-btn-animate ${isCreating ? 'btn-loading' : ''}`}
               style={s(bpS, {
@@ -5502,7 +5519,7 @@ const App: React.FC = () => {
     );
 
     const myCreatedLaunches = launches.filter(l =>
-      wallet.address && l.creator.includes(wallet.address.slice(0, 4))
+      wallet.address && l.creatorFull === wallet.address
     ).slice(0, 2);
 
     // Mini sparkline for performance
@@ -6306,7 +6323,7 @@ const App: React.FC = () => {
     [launches]);
 
     const mockCreatedLaunches = useMemo(() => {
-      return launches.filter(l => l.creator === (address.slice(0, 4) + '...' + address.slice(-4))).slice(0, 3);
+      return launches.filter(l => l.creatorFull === address).slice(0, 3);
     }, [launches, address]);
 
     const tabBtn = (k: 'positions' | 'activity' | 'created', l: string, count?: number) => (

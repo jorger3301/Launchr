@@ -187,13 +187,18 @@ export function bytesToString(bytes: number[]): string {
  */
 export function calculatePrice(virtualSolReserve: BN, virtualTokenReserve: BN): number {
   if (virtualTokenReserve.isZero()) return 0;
-  // price = sol / tokens
-  return virtualSolReserve.toNumber() / virtualTokenReserve.toNumber();
+  // Use BN multiplication to preserve precision for large reserve values
+  // price = sol / tokens, scaled by 1e9 then back to avoid precision loss
+  const SCALE = new BN(1_000_000_000);
+  const scaledPrice = virtualSolReserve.mul(SCALE).div(virtualTokenReserve);
+  return scaledPrice.toNumber() / 1_000_000_000;
 }
 
 /**
  * Calculate market cap
  */
 export function calculateMarketCap(price: number, totalSupply: BN): number {
-  return price * totalSupply.toNumber();
+  // totalSupply can exceed MAX_SAFE_INTEGER; divide first to keep within safe range
+  const supplyInTokens = totalSupply.div(new BN(1_000_000_000)).toNumber();
+  return price * supplyInTokens * 1_000_000_000;
 }

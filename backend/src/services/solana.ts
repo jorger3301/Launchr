@@ -357,17 +357,28 @@ export class SolanaService {
       const mint = new PublicKey(data.slice(offset, offset += 32));
       const creator = new PublicKey(data.slice(offset, offset += 32));
       const status = data.readUInt8(offset++);
-      // Note: Number() on u64 values loses precision above 2^53 (~9e15).
-      // Token amounts (up to 1e18) exceed this, but the max error is ~128 raw
-      // units (~1.3e-7 tokens), which is negligible for price/display arithmetic.
-      const totalSupply = Number(data.readBigUInt64LE(offset)); offset += 8;
-      const tokensSold = Number(data.readBigUInt64LE(offset)); offset += 8;
-      const graduationTokens = Number(data.readBigUInt64LE(offset)); offset += 8;
-      const creatorTokens = Number(data.readBigUInt64LE(offset)); offset += 8;
-      const virtualSolReserve = Number(data.readBigUInt64LE(offset)); offset += 8;
-      const virtualTokenReserve = Number(data.readBigUInt64LE(offset)); offset += 8;
-      const realSolReserve = Number(data.readBigUInt64LE(offset)); offset += 8;
-      const realTokenReserve = Number(data.readBigUInt64LE(offset)); offset += 8;
+      // Use BigInt for token-scale u64 values that may exceed Number.MAX_SAFE_INTEGER
+      // (e.g., virtualTokenReserve starts at 8e17, totalSupply = 1e18)
+      const totalSupplyBig = data.readBigUInt64LE(offset); offset += 8;
+      const tokensSoldBig = data.readBigUInt64LE(offset); offset += 8;
+      const graduationTokensBig = data.readBigUInt64LE(offset); offset += 8;
+      const creatorTokensBig = data.readBigUInt64LE(offset); offset += 8;
+      const virtualSolReserveBig = data.readBigUInt64LE(offset); offset += 8;
+      const virtualTokenReserveBig = data.readBigUInt64LE(offset); offset += 8;
+      const realSolReserveBig = data.readBigUInt64LE(offset); offset += 8;
+      const realTokenReserveBig = data.readBigUInt64LE(offset); offset += 8;
+
+      // Safe Number conversions (SOL values always within safe range)
+      const totalSupply = Number(totalSupplyBig);
+      const tokensSold = Number(tokensSoldBig);
+      const graduationTokens = Number(graduationTokensBig);
+      const creatorTokens = Number(creatorTokensBig);
+      const virtualSolReserve = Number(virtualSolReserveBig);
+      const realSolReserve = Number(realSolReserveBig);
+      const realTokenReserve = Number(realTokenReserveBig);
+
+      // Token reserves can exceed MAX_SAFE_INTEGER; keep as string for precision
+      const virtualTokenReserve = virtualTokenReserveBig.toString();
       const graduationThreshold = Number(data.readBigUInt64LE(offset)); offset += 8;
       const createdAt = Number(data.readBigInt64LE(offset)); offset += 8;
       const graduatedAt = Number(data.readBigInt64LE(offset)); offset += 8;
@@ -388,9 +399,10 @@ export class SolanaService {
       const telegram = this.parseString(data.slice(offset, offset += 64));
       const website = this.parseString(data.slice(offset, offset += 64));
 
-      // Calculate price and market cap
-      const currentPrice = virtualTokenReserve > 0 
-        ? (virtualSolReserve * 1e9) / virtualTokenReserve 
+      // Calculate price and market cap using BigInt for precision
+      const vtReserve = virtualTokenReserveBig;
+      const currentPrice = vtReserve > 0n
+        ? Number(virtualSolReserveBig * 1000000000n / vtReserve)
         : 0;
       const marketCap = (currentPrice * totalSupply) / 1e9;
 

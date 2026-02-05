@@ -103,7 +103,8 @@ export const TradePanel: React.FC<TradePanelProps> = ({
     if (isNaN(numAmount) || numAmount <= 0) return 0;
 
     const solReserve = launch.virtualSolReserve;
-    const tokenReserve = launch.virtualTokenReserve;
+    const tokenReserve = typeof launch.virtualTokenReserve === 'string'
+      ? parseFloat(launch.virtualTokenReserve) : launch.virtualTokenReserve;
 
     if (tradeType === 'buy') {
       // Buy: adding SOL, receiving tokens

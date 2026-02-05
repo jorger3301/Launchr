@@ -88,7 +88,7 @@ export interface LaunchData {
   tokensSold: number;
   realSolReserve: number;
   virtualSolReserve: number;
-  virtualTokenReserve: number;
+  virtualTokenReserve: string | number;
   graduationThreshold: number;
   currentPrice: number;
   marketCap: number;

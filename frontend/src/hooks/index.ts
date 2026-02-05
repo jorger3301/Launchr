@@ -830,7 +830,7 @@ export interface TradeContext {
   mint: string;
   creator: string;
   virtualSolReserve?: number;
-  virtualTokenReserve?: number;
+  virtualTokenReserve?: string | number;
   protocolFeeBps?: number;
   creatorFeeBps?: number;
 }

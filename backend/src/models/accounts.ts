@@ -44,7 +44,7 @@ export interface LaunchAccount {
   graduationTokens: number;
   creatorTokens: number;
   virtualSolReserve: number;
-  virtualTokenReserve: number;
+  virtualTokenReserve: string | number;
   realSolReserve: number;
   realTokenReserve: number;
   graduationThreshold: number;
