@@ -13,9 +13,11 @@ import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, Co
 import BN from 'bn.js';
 import { LaunchData, TradeData, UserPositionData, type LaunchStatus } from '../components/molecules';
 import { api, wsClient, NormalizedMessage } from '../services/api';
-import { LaunchrClient, initLaunchrClient, getLaunchrClient } from '../program/client';
-import { BuyParams, SellParams, GraduateParams as ProgramGraduateParams, CreateLaunchParams as ProgramCreateLaunchParams } from '../program/idl';
+import { LaunchrClient, initLaunchrClient, getLaunchrClient, checkMintAuthority } from '../program/client';
+import { BuyParams, SellParams, GraduateParams as ProgramGraduateParams, CreateLaunchParams as ProgramCreateLaunchParams, SEEDS, LaunchStatus as ProgramLaunchStatus } from '../program/idl';
 import { validateTransaction, isTransactionSafe } from '../lib/transaction-validator';
+import { txLog, extractSimulationDetails, classifyError } from '../lib/tx-logger';
+import { getAccount, getAssociatedTokenAddress } from '@solana/spl-token';
 
 // =============================================================================
 // TYPES
@@ -117,17 +119,24 @@ async function prepareAndSimulateTransaction(
 
   // Step 3: Simulate transaction to verify it will succeed
   const simulation = await connection.simulateTransaction(transaction);
+  const simDetails = extractSimulationDetails(simulation.value);
+
+  // Log simulation details regardless of success/failure
+  txLog({
+    action: 'simulate',
+    computeUnits: simDetails.unitsConsumed,
+    logs: simDetails.logs,
+    error: simDetails.error,
+  });
 
   if (simulation.value.err) {
-    const errorMsg = typeof simulation.value.err === 'string'
-      ? simulation.value.err
-      : JSON.stringify(simulation.value.err);
-    throw new Error(`Transaction simulation failed: ${errorMsg}`);
-  }
-
-  // Log compute units used for debugging
-  if (simulation.value.unitsConsumed) {
-    console.log(`Simulation consumed ${simulation.value.unitsConsumed} compute units`);
+    const classified = classifyError(
+      simDetails.error || JSON.stringify(simulation.value.err)
+    );
+    const logSuffix = simDetails.logs.length > 0
+      ? `\nProgram logs:\n${simDetails.logs.slice(-5).join('\n')}`
+      : '';
+    throw new Error(`Transaction simulation failed: ${classified.userMessage}${logSuffix}`);
   }
 
   return { transaction, blockhash, lastValidBlockHeight };
@@ -155,6 +164,8 @@ async function sendAndConfirmTransactionWithRetry(
         maxRetries: 0, // We handle retries ourselves
       });
 
+      txLog({ action: 'send', attempt: retries + 1, blockhash, signature });
+
       // Confirm with blockhash expiry check
       const confirmation = await connection.confirmTransaction(
         {
@@ -172,21 +183,29 @@ async function sendAndConfirmTransactionWithRetry(
       return signature;
     } catch (err) {
       retries++;
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      const classified = classifyError(err);
 
-      // Check if blockhash expired
-      if (errorMessage.includes('blockhash') && errorMessage.includes('expired')) {
-        throw new Error('Transaction expired. Please try again.');
+      txLog({
+        action: 'send_error',
+        attempt: retries,
+        blockhash,
+        signature: signature || undefined,
+        error: classified.raw,
+        errorBucket: classified.bucket,
+      });
+
+      // Non-retryable errors: bail immediately
+      if (!classified.retryable) {
+        throw new Error(classified.userMessage);
       }
 
       // Check if we should retry
       if (retries >= maxRetries) {
-        throw err;
+        throw new Error(classified.userMessage);
       }
 
       // Wait before retry (exponential backoff)
       await new Promise(resolve => setTimeout(resolve, 1000 * retries));
-      console.log(`Retrying transaction (attempt ${retries + 1}/${maxRetries})...`);
     }
   }
 
@@ -210,8 +229,18 @@ async function verifyTransactionSuccess(
       return false;
     }
 
+    // Log on-chain transaction logs
+    txLog({
+      action: 'verify',
+      signature,
+      computeUnits: tx.meta?.computeUnitsConsumed || 0,
+      logs: tx.meta?.logMessages || [],
+      error: tx.meta?.err ? JSON.stringify(tx.meta.err) : null,
+    });
+
     if (tx.meta?.err) {
-      console.error('Transaction failed:', tx.meta.err);
+      const classified = classifyError(JSON.stringify(tx.meta.err));
+      console.error('Transaction failed on-chain:', classified.userMessage);
       return false;
     }
 
@@ -219,6 +248,130 @@ async function verifyTransactionSuccess(
   } catch {
     return false;
   }
+}
+
+// =============================================================================
+// IDEMPOTENCY CHECKS
+// =============================================================================
+
+/**
+ * Pre-flight idempotency check. Returns { skip: true } if the action
+ * has already been completed so the caller can bail out early.
+ */
+async function checkIdempotency(
+  connection: Connection,
+  action: 'create' | 'buy' | 'sell' | 'graduate',
+  params: { launchPk?: string; mint?: string; wallet?: string }
+): Promise<{ skip: boolean; reason?: string }> {
+  try {
+    if (action === 'create' && params.mint) {
+      // Check if launch PDA already exists for this mint
+      const [launchPda] = PublicKey.findProgramAddressSync(
+        [SEEDS.LAUNCH, new PublicKey(params.mint).toBuffer()],
+        PROGRAM_ID
+      );
+      const info = await connection.getAccountInfo(launchPda);
+      if (info) {
+        return { skip: true, reason: 'Launch already exists for this mint' };
+      }
+    }
+
+    if (action === 'sell' && params.wallet && params.mint) {
+      // Check seller has tokens (ATA exists with balance)
+      try {
+        const ata = await getAssociatedTokenAddress(
+          new PublicKey(params.mint),
+          new PublicKey(params.wallet)
+        );
+        const account = await getAccount(connection, ata);
+        if (account.amount === BigInt(0)) {
+          return { skip: true, reason: 'No tokens to sell (zero balance)' };
+        }
+      } catch {
+        // Account not found — no tokens to sell
+        return { skip: true, reason: 'No token account found — nothing to sell' };
+      }
+    }
+
+    if (action === 'graduate' && params.launchPk) {
+      // Check if already graduated by reading account data
+      const info = await connection.getAccountInfo(new PublicKey(params.launchPk));
+      if (info && info.data.length > 8) {
+        // Launch status is at a fixed offset in the account data.
+        // Anchor discriminator is 8 bytes, then mint (32), creator (32) = offset 72
+        // status is a u8 enum right after creator
+        const statusByte = info.data[72];
+        if (statusByte === ProgramLaunchStatus.Graduated) {
+          return { skip: true, reason: 'Launch already graduated' };
+        }
+      }
+    }
+
+    return { skip: false };
+  } catch (err) {
+    // Don't block the transaction on idempotency check failures
+    txLog({ action: 'idempotency_check', error: err instanceof Error ? err.message : String(err) });
+    return { skip: false };
+  }
+}
+
+/**
+ * Comprehensive pre-flight validation for graduation.
+ * Checks on-chain state to surface problems before building the transaction.
+ */
+async function validateGraduationPreFlight(
+  connection: Connection,
+  launchPk: PublicKey,
+  mint: PublicKey
+): Promise<void> {
+  // 1. Check launch account status
+  const launchInfo = await connection.getAccountInfo(launchPk);
+  if (!launchInfo) {
+    throw new Error('Launch account not found');
+  }
+  if (launchInfo.data.length > 8) {
+    const statusByte = launchInfo.data[72];
+    if (statusByte === ProgramLaunchStatus.Graduated) {
+      throw new Error('Launch has already graduated');
+    }
+    if (statusByte === ProgramLaunchStatus.Cancelled) {
+      throw new Error('Launch has been cancelled');
+    }
+    if (statusByte === ProgramLaunchStatus.Active) {
+      throw new Error('Launch has not reached graduation threshold yet');
+    }
+  }
+
+  // 2. Check mint authority (should be launch_authority PDA, not null)
+  try {
+    const mintInfo = await checkMintAuthority(connection, mint);
+    if (!mintInfo.authority) {
+      throw new Error('Mint authority already revoked — graduation may have already occurred');
+    }
+    txLog({ action: 'graduation_preflight', mint: mint.toBase58() });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('already')) {
+      throw err;
+    }
+    // getMint can throw if mint doesn't exist
+    throw new Error(`Failed to check mint: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // 3. Check curve vault has SOL
+  const [curveVault] = PublicKey.findProgramAddressSync(
+    [SEEDS.CURVE_VAULT, mint.toBuffer()],
+    PROGRAM_ID
+  );
+  const vaultBalance = await connection.getBalance(curveVault);
+  if (vaultBalance === 0) {
+    throw new Error('Curve vault has no SOL — cannot graduate');
+  }
+
+  txLog({
+    action: 'graduation_preflight',
+    pool: launchPk.toBase58(),
+    mint: mint.toBase58(),
+  });
 }
 
 // =============================================================================
@@ -926,6 +1079,8 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
       const mint = new PublicKey(context.mint);
       const creator = new PublicKey(context.creator);
 
+      txLog({ action: 'buy', wallet: wallet.address, mint: context.mint, amountIn: String(solAmount), slippage, rpcEndpoint: RPC_ENDPOINT });
+
       // Calculate expected output and apply slippage
       const estimate = estimateBuy(solAmount, context);
       const minTokensOut = Math.floor(estimate.tokensOut * (1 - slippage / 100) * 1e9);
@@ -963,10 +1118,13 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
       // Refresh balance
       await wallet.refreshBalance();
 
+      txLog({ action: 'buy', wallet: wallet.address, mint: context.mint, amountIn: String(solAmount), signature });
+
       return signature;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Transaction failed';
-      setError(message);
+      const classified = classifyError(err);
+      txLog({ action: 'buy', wallet: wallet.address, mint: context.mint, error: classified.raw, errorBucket: classified.bucket });
+      setError(classified.userMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -997,6 +1155,14 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
       const launchPubkey = new PublicKey(launchPk);
       const mint = new PublicKey(context.mint);
       const creator = new PublicKey(context.creator);
+
+      txLog({ action: 'sell', wallet: wallet.address, mint: context.mint, amountIn: String(tokenAmount), slippage, rpcEndpoint: RPC_ENDPOINT });
+
+      // Idempotency: check seller has tokens
+      const idem = await checkIdempotency(connection, 'sell', { wallet: wallet.address, mint: context.mint });
+      if (idem.skip) {
+        throw new Error(idem.reason || 'No tokens to sell');
+      }
 
       // Calculate expected output and apply slippage
       const estimate = estimateSell(tokenAmount, context);
@@ -1035,10 +1201,13 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
       // Refresh balance
       await wallet.refreshBalance();
 
+      txLog({ action: 'sell', wallet: wallet.address, mint: context.mint, amountIn: String(tokenAmount), signature });
+
       return signature;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Transaction failed';
-      setError(message);
+      const classified = classifyError(err);
+      txLog({ action: 'sell', wallet: wallet.address, mint: context.mint, error: classified.raw, errorBucket: classified.bucket });
+      setError(classified.userMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -1156,6 +1325,8 @@ export function useCreateLaunch(wallet: UseWalletResult) {
     try {
       const creator = new PublicKey(wallet.address);
 
+      txLog({ action: 'createLaunch', wallet: wallet.address, rpcEndpoint: RPC_ENDPOINT });
+
       // Build program params
       const programParams: ProgramCreateLaunchParams = {
         name: params.name,
@@ -1197,10 +1368,13 @@ export function useCreateLaunch(wallet: UseWalletResult) {
 
       await wallet.refreshBalance();
 
+      txLog({ action: 'createLaunch', wallet: wallet.address, signature });
+
       return signature;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create launch';
-      setError(message);
+      const classified = classifyError(err);
+      txLog({ action: 'createLaunch', wallet: wallet.address, error: classified.raw, errorBucket: classified.bucket });
+      setError(classified.userMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -1224,6 +1398,8 @@ export function useCreateLaunch(wallet: UseWalletResult) {
     try {
       const creator = new PublicKey(wallet.address);
 
+      txLog({ action: 'createLaunch', wallet: wallet.address, rpcEndpoint: RPC_ENDPOINT });
+
       // Build program params
       const programParams: ProgramCreateLaunchParams = {
         name: params.name,
@@ -1240,6 +1416,12 @@ export function useCreateLaunch(wallet: UseWalletResult) {
 
       // Get launch PDA
       const launchPda = client.getLaunchPda(mint.publicKey);
+
+      // Idempotency: check if launch already exists
+      const idem = await checkIdempotency(connection, 'create', { mint: mint.publicKey.toBase58() });
+      if (idem.skip) {
+        throw new Error(idem.reason || 'Launch already exists');
+      }
 
       // Step 2: Prepare transaction with compute budget and simulate
       // Use higher compute units for launch creation (more complex operation)
@@ -1268,14 +1450,17 @@ export function useCreateLaunch(wallet: UseWalletResult) {
 
       await wallet.refreshBalance();
 
+      txLog({ action: 'createLaunch', wallet: wallet.address, mint: mint.publicKey.toBase58(), signature });
+
       return {
         signature,
         mint: mint.publicKey.toBase58(),
         launchPda: launchPda.toBase58(),
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create launch';
-      setError(message);
+      const classified = classifyError(err);
+      txLog({ action: 'createLaunch', wallet: wallet.address, error: classified.raw, errorBucket: classified.bucket });
+      setError(classified.userMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -1357,6 +1542,11 @@ export function useGraduate(wallet: UseWalletResult) {
       const quoteMint = new PublicKey(context.quoteMint);
       const orbitProgramId = new PublicKey(context.orbitProgramId);
 
+      txLog({ action: 'graduate', wallet: wallet.address, mint: context.mint, pool: launchPk, rpcEndpoint: RPC_ENDPOINT });
+
+      // Pre-flight validation: check on-chain state before building tx
+      await validateGraduationPreFlight(connection, launchPubkey, mint);
+
       const graduateParams: ProgramGraduateParams = {
         binStepBps: params?.binStepBps ?? null,
         numLiquidityBins: params?.numLiquidityBins ?? null,
@@ -1398,10 +1588,13 @@ export function useGraduate(wallet: UseWalletResult) {
 
       await wallet.refreshBalance();
 
+      txLog({ action: 'graduate', wallet: wallet.address, mint: context.mint, pool: launchPk, signature });
+
       return signature;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Graduation failed';
-      setError(message);
+      const classified = classifyError(err);
+      txLog({ action: 'graduate', wallet: wallet.address, mint: context.mint, error: classified.raw, errorBucket: classified.bucket });
+      setError(classified.userMessage);
       throw err;
     } finally {
       setLoading(false);

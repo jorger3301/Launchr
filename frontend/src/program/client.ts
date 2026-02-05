@@ -21,6 +21,7 @@ import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   getAccount,
+  getMint,
 } from '@solana/spl-token';
 import BN from 'bn.js';
 import {
@@ -804,6 +805,25 @@ export class LaunchrClient {
     const [launchPda] = this.pdas.launch(mint);
     return launchPda;
   }
+}
+
+// =============================================================================
+// MINT HELPERS
+// =============================================================================
+
+/**
+ * Check the mint authority and supply for a given mint.
+ * Used for graduation pre-flight: if authority is null, mint was already revoked.
+ */
+export async function checkMintAuthority(
+  connection: Connection,
+  mintAddress: PublicKey
+): Promise<{ authority: PublicKey | null; supply: bigint }> {
+  const mintInfo = await getMint(connection, mintAddress);
+  return {
+    authority: mintInfo.mintAuthority,
+    supply: mintInfo.supply,
+  };
 }
 
 // =============================================================================
