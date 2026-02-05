@@ -106,6 +106,20 @@ const imageUrlCache = new Map<string, { url: string | undefined; timestamp: numb
 const IMAGE_CACHE_TTL = 300_000; // 5 minutes
 
 /**
+ * Normalize an image URL that might have been stored with a localhost host.
+ * Extracts the /uploads/... path so the frontend can prepend its API base URL.
+ */
+function normalizeImageUrl(imageUrl: string): string {
+  // If the image URL is a local uploads path (any host), return just the path.
+  // The frontend will prepend the correct API base URL.
+  const uploadsPathMatch = imageUrl.match(/(\/uploads\/images\/.+)$/);
+  if (uploadsPathMatch) {
+    return uploadsPathMatch[1];
+  }
+  return imageUrl;
+}
+
+/**
  * Resolve a launch's metadata URI to extract the image URL.
  * For local uploads, reads the JSON file directly from disk.
  * For remote URIs, fetches with a short timeout.
@@ -120,7 +134,7 @@ async function resolveImageUrl(uri: string): Promise<string | undefined> {
       const filePath = path.join(UPLOADS_DIR, 'metadata', uploadsMatch[1]);
       if (fs.existsSync(filePath)) {
         const meta = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        return meta.image || undefined;
+        return meta.image ? normalizeImageUrl(meta.image) : undefined;
       }
       return undefined;
     }
@@ -132,7 +146,7 @@ async function resolveImageUrl(uri: string): Promise<string | undefined> {
     const response = await fetch(uri, { signal: AbortSignal.timeout(3000) });
     if (response.ok) {
       const meta = (await response.json()) as { image?: string };
-      return meta.image || undefined;
+      return meta.image ? normalizeImageUrl(meta.image) : undefined;
     }
   } catch {
     // Resolution failed — not an error, just no image available

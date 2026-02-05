@@ -21,7 +21,15 @@ const router = Router();
 // =============================================================================
 
 const UPLOADS_DIR = path.join(__dirname, '../../uploads');
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001';
+
+/**
+ * Derive the public-facing base URL from the incoming request.
+ * Works behind reverse proxies (Fly.dev, Railway) because trust proxy is set
+ * in the main server config, so req.protocol respects X-Forwarded-Proto.
+ */
+function getPublicBaseUrl(req: Request): string {
+  return `${req.protocol}://${req.get('host')}`;
+}
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -81,7 +89,7 @@ router.post(
             const imagePath = path.join(UPLOADS_DIR, 'images', imageFilename);
 
             fs.writeFileSync(imagePath, imageData);
-            imageUrl = `${API_BASE_URL}/uploads/images/${imageFilename}`;
+            imageUrl = `${getPublicBaseUrl(req)}/uploads/images/${imageFilename}`;
 
             logger.info(`Image uploaded: ${imageFilename}`);
           }
@@ -114,7 +122,7 @@ router.post(
       const metadataPath = path.join(UPLOADS_DIR, 'metadata', metadataFilename);
       fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
 
-      const metadataUrl = `${API_BASE_URL}/uploads/metadata/${metadataFilename}`;
+      const metadataUrl = `${getPublicBaseUrl(req)}/uploads/metadata/${metadataFilename}`;
 
       logger.info(`Metadata uploaded: ${metadataFilename}`);
 
@@ -149,7 +157,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     res.json({
       success: true,
       metadata,
-      uri: `${API_BASE_URL}/uploads/metadata/${id}.json`,
+      uri: `${getPublicBaseUrl(req)}/uploads/metadata/${id}.json`,
     });
   } catch (error) {
     logger.error('Failed to get upload:', error);

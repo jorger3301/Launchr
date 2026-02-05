@@ -2364,7 +2364,13 @@ const App: React.FC = () => {
   // Helper function to get token image URL
   // Priority: enriched launch imageUrl (backend-resolved) > DAS metadata
   const getTokenImageUrl = useCallback((publicKey: string): string | undefined => {
-    return launchImageMap.get(publicKey) || tokenMetadataMap.get(publicKey)?.image;
+    const url = launchImageMap.get(publicKey) || tokenMetadataMap.get(publicKey)?.image;
+    if (!url) return undefined;
+    // Backend returns relative paths for local uploads — resolve to absolute
+    if (url.startsWith('/')) {
+      return `${process.env.REACT_APP_API_URL || 'http://localhost:3001'}${url}`;
+    }
+    return url;
   }, [launchImageMap, tokenMetadataMap]);
 
   // Restore detail page when launches load (for route persistence)
