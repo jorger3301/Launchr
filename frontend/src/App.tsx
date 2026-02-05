@@ -2948,41 +2948,33 @@ const App: React.FC = () => {
     telegram?: string;
     website?: string;
   }) => {
-    try {
-      // Step 1: Upload metadata and image to get URI
-      const uploadResult = await api.uploadMetadata({
-        name: data.name,
-        symbol: data.symbol,
-        description: data.description,
-        image: data.image,
-        twitter: data.twitter,
-        telegram: data.telegram,
-        website: data.website,
-        creator: wallet.address || undefined,
-      });
+    // Step 1: Upload metadata and image to get URI
+    const uploadResult = await api.uploadMetadata({
+      name: data.name,
+      symbol: data.symbol,
+      description: data.description,
+      image: data.image,
+      twitter: data.twitter,
+      telegram: data.telegram,
+      website: data.website,
+      creator: wallet.address || undefined,
+    });
 
-      if (uploadResult.error || !uploadResult.data) {
-        throw new Error(uploadResult.error || 'Failed to upload metadata');
-      }
-
-      // Step 2: Create the token with the metadata URI
-      await createLaunch({
-        name: data.name,
-        symbol: data.symbol,
-        uri: uploadResult.data.uri,
-        twitter: data.twitter || '',
-        telegram: data.telegram || '',
-        website: data.website || '',
-        creatorFeeBps: 0,
-      });
-      showToast(`Token "${data.name}" created successfully!`, 'success');
-      go('launches');
-    } catch (err) {
-      const { message, detail } = parseTransactionError(err);
-      showToast(detail ? `${message}: ${detail}` : message, 'error');
-      console.error('Create token error:', err);
+    if (uploadResult.error || !uploadResult.data) {
+      throw new Error(uploadResult.error || 'Failed to upload metadata');
     }
-  }, [createLaunch, go, showToast, wallet.address]);
+
+    // Step 2: Create the token with the metadata URI
+    await createLaunch({
+      name: data.name,
+      symbol: data.symbol,
+      uri: uploadResult.data.uri,
+      twitter: data.twitter || '',
+      telegram: data.telegram || '',
+      website: data.website || '',
+      creatorFeeBps: 0,
+    });
+  }, [createLaunch, wallet.address]);
 
   // ---------------------------------------------------------------------------
   // NAV COMPONENT
@@ -4906,7 +4898,7 @@ const App: React.FC = () => {
         setCreationStep(3);
         showToast(`${sy.toUpperCase()} token created successfully!`, 'success');
 
-        // Reset form after success
+        // Navigate to launches after short delay
         setTimeout(() => {
           setNm('');
           setSy('');
@@ -4916,22 +4908,24 @@ const App: React.FC = () => {
           setWs('');
           setImg(null);
           setCreationStep(0);
+          go('launches');
         }, 2000);
       } catch (err) {
-        // Provide specific error context without exposing raw error details to users
         const errorMessage = (err instanceof Error ? err.message : 'Unknown error').toLowerCase();
         console.error('Token creation failed:', err);
 
-        if (errorMessage.includes('upload') || errorMessage.includes('metadata')) {
+        if (errorMessage.includes('reject') || errorMessage.includes('denied') || errorMessage.includes('cancelled')) {
+          showToast('Transaction was rejected by wallet.', 'error');
+        } else if (errorMessage.includes('upload') || errorMessage.includes('metadata')) {
           showToast('Failed to upload token metadata. Please try again.', 'error');
         } else if (errorMessage.includes('insufficient') || errorMessage.includes('balance')) {
           showToast('Insufficient SOL balance for transaction fees.', 'error');
-        } else if (errorMessage.includes('simulation') || errorMessage.includes('rejected')) {
-          showToast('Transaction simulation failed. Please check your inputs.', 'error');
+        } else if (errorMessage.includes('simulation')) {
+          showToast('Transaction simulation failed. Please check your inputs and try again.', 'error');
         } else if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
           showToast('Network error. Please check your connection and try again.', 'error');
         } else {
-          showToast('Failed to create token. Please try again.', 'error');
+          showToast(`Failed to create token: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
         }
         setCreationStep(0);
       } finally {
