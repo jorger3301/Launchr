@@ -2,11 +2,11 @@
 anchor_version = "0.32.1"
 
 [features]
-seeds = false
+resolution = true
 skip-lint = false
 
 [programs.devnet]
-launchr = "AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK"
+launchr = "5LFTkjx2vRTkXaKvYtikEEJkvpTrx16feUspuxKgvsE8"
 
 [registry]
 url = "https://api.apr.dev"
@@ -20,18 +20,20 @@ test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
 
 [test]
 startup_wait = 5000
+shutdown_wait = 2000
+upgradeable = false
 
 [test.validator]
+bind_address = "0.0.0.0"
 url = "https://api.devnet.solana.com"
+ledger = ".anchor/test-ledger"
+rpc_port = 8899
 
-# Clone Orbit Finance program for testing graduation
 [[test.validator.clone]]
 address = "Fn3fA3fjsmpULNL7E9U79jKTe1KHxPtQeWdURCbJXCnM"
 
-# Clone Token Program
 [[test.validator.clone]]
 address = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 
-# Clone Associated Token Program  
 [[test.validator.clone]]
 address = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"

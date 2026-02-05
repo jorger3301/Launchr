@@ -6,7 +6,7 @@
 
 Launchr is a permissionless token launchpad built on Solana that uses constant-product bonding curves for fair price discovery. When sufficient liquidity accumulates, launches automatically graduate to Orbit Finance's concentrated liquidity pools. The platform features real-time WebSocket updates, comprehensive analytics, and a polished glassmorphism UI.
 
-**Program ID (Devnet):** `AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK`
+**Program ID (Devnet):** `5LFTkjx2vRTkXaKvYtikEEJkvpTrx16feUspuxKgvsE8`
 
 ### Key Features
 
@@ -104,8 +104,8 @@ launchr/
 ### Prerequisites
 
 - Rust 1.70+
-- Solana CLI 1.18+
-- Anchor 0.29+
+- Solana CLI 2.x (Agave)
+- Anchor 0.32+
 - Node.js 18+
 - Redis (optional)
 
@@ -374,7 +374,7 @@ Migrate launch to Orbit Finance DLMM (callable when threshold reached).
 ```env
 PORT=3001
 RPC_ENDPOINT=https://api.devnet.solana.com
-PROGRAM_ID=AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK
+PROGRAM_ID=5LFTkjx2vRTkXaKvYtikEEJkvpTrx16feUspuxKgvsE8
 REDIS_URL=redis://localhost:6379
 CORS_ORIGIN=http://localhost:3000
 HELIUS_API_KEY=your-helius-api-key
@@ -386,7 +386,7 @@ API_BASE_URL=http://localhost:3001
 ```env
 REACT_APP_API_URL=http://localhost:3001
 REACT_APP_RPC_ENDPOINT=https://api.devnet.solana.com
-REACT_APP_PROGRAM_ID=AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK
+REACT_APP_PROGRAM_ID=5LFTkjx2vRTkXaKvYtikEEJkvpTrx16feUspuxKgvsE8
 ```
 
 ## Security Features

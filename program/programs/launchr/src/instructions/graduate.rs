@@ -40,7 +40,7 @@ pub struct Graduate<'info> {
         seeds = [CONFIG_SEED],
         bump = config.bump
     )]
-    pub config: Account<'info, Config>,
+    pub config: Box<Account<'info, Config>>,
 
     /// Launch account
     #[account(
@@ -50,7 +50,7 @@ pub struct Graduate<'info> {
         constraint = launch.can_graduate() @ LaunchrError::AlreadyGraduated,
         constraint = launch.threshold_reached() @ LaunchrError::ThresholdNotReached
     )]
-    pub launch: Account<'info, Launch>,
+    pub launch: Box<Account<'info, Launch>>,
 
     /// Launch authority PDA
     /// CHECK: PDA checked by seeds
@@ -81,13 +81,13 @@ pub struct Graduate<'info> {
         mut,
         constraint = mint.key() == launch.mint
     )]
-    pub mint: Account<'info, anchor_spl::token::Mint>,
+    pub mint: Box<Account<'info, anchor_spl::token::Mint>>,
 
     /// Quote mint (WSOL)
     #[account(
         constraint = quote_mint.key() == config.quote_mint
     )]
-    pub quote_mint: Account<'info, anchor_spl::token::Mint>,
+    pub quote_mint: Box<Account<'info, anchor_spl::token::Mint>>,
 
     /// Token vault (bonding curve tokens)
     #[account(

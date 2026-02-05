@@ -32,7 +32,7 @@ pub struct Buy<'info> {
         bump = launch.bump,
         constraint = launch.is_tradeable() @ LaunchrError::LaunchNotActive
     )]
-    pub launch: Account<'info, Launch>,
+    pub launch: Box<Account<'info, Launch>>,
     
     /// Launch authority PDA
     /// CHECK: PDA checked by seeds

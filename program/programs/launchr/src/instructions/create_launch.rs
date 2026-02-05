@@ -43,7 +43,7 @@ pub struct CreateLaunch<'info> {
         seeds = [LAUNCH_SEED, mint.key().as_ref()],
         bump
     )]
-    pub launch: Account<'info, Launch>,
+    pub launch: Box<Account<'info, Launch>>,
     
     /// Launch authority PDA
     /// CHECK: PDA checked by seeds

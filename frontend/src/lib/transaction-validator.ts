@@ -44,7 +44,7 @@ const SECURITY_CONFIG = {
  */
 const ALLOWED_PROGRAM_IDS = new Set([
   // Launchr program (main application)
-  process.env.REACT_APP_PROGRAM_ID || 'AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK',
+  process.env.REACT_APP_PROGRAM_ID || '5LFTkjx2vRTkXaKvYtikEEJkvpTrx16feUspuxKgvsE8',
 
   // Standard Solana programs
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // SPL Token program

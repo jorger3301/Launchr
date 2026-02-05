@@ -23,7 +23,7 @@ pub struct Sell<'info> {
         bump = config.bump,
         constraint = !config.trading_paused @ LaunchrError::TradingPaused
     )]
-    pub config: Account<'info, Config>,
+    pub config: Box<Account<'info, Config>>,
     
     /// Launch account
     #[account(
@@ -32,7 +32,7 @@ pub struct Sell<'info> {
         bump = launch.bump,
         constraint = launch.is_tradeable() @ LaunchrError::LaunchNotActive
     )]
-    pub launch: Account<'info, Launch>,
+    pub launch: Box<Account<'info, Launch>>,
     
     /// Launch authority PDA
     /// CHECK: PDA checked by seeds

@@ -18,7 +18,7 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 
 // Program ID (deployed to devnet)
-const PROGRAM_ID = new PublicKey('AD9VheLMqVPwbDQc5CmSHmCZdfa8CGmr2xXmhhNSTyhK');
+const PROGRAM_ID = new PublicKey('5LFTkjx2vRTkXaKvYtikEEJkvpTrx16feUspuxKgvsE8');
 
 // WSOL Mint on devnet/mainnet
 const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
