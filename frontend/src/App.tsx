@@ -33,6 +33,7 @@ import {
 } from './hooks';
 
 import { WalletSelector, PriceChart, OfflineIndicator, type LaunchStatus } from './components/molecules';
+import { TradeHistory } from './components/chart';
 import { api, wsClient, NormalizedMessage } from './services/api';
 import { classifyError } from './lib/tx-logger';
 
@@ -93,11 +94,12 @@ const AVATAR_ICONS = [
 // HELPER FUNCTIONS
 // ---------------------------------------------------------------------------
 
-// Format market cap with $ prefix
+// Format USD value with $ prefix and K/M/B suffixes
 const fm = (n: number): string => {
   if (n >= 1e9) return "$" + (n/1e9).toFixed(2) + "B";
   if (n >= 1e6) return "$" + (n/1e6).toFixed(2) + "M";
   if (n >= 1e3) return "$" + (n/1e3).toFixed(1) + "K";
+  if (n < 0.01 && n > 0) return "<$0.01";
   return "$" + n.toFixed(2);
 };
 
@@ -110,11 +112,18 @@ const fTok = (raw: number): string => {
   return n.toFixed(0);
 };
 
-// Format price with adaptive precision
+// Format price in SOL with adaptive precision
 const fP = (p: number): string => {
   if (!Number.isFinite(p) || p < 0) return '0.00';
   if (p === 0) return '0.00';
-  if (p < 0.0001) return p.toExponential(2);
+  // For very small bonding curve prices, show significant digits without scientific notation
+  if (p < 0.000001) {
+    // Count leading zeros after decimal, then show 4 significant digits
+    const s = p.toFixed(20);
+    const m = s.match(/^0\.(0*?)([1-9]\d{0,3})/);
+    return m ? `0.${m[1]}${m[2]}` : p.toExponential(2);
+  }
+  if (p < 0.0001) return p.toFixed(8);
   if (p < 0.01) return p.toFixed(6);
   if (p < 1) return p.toFixed(4);
   return p.toFixed(2);
@@ -2501,7 +2510,7 @@ const App: React.FC = () => {
             priceChange24h: 0,
             creator: launch.creator ? launch.creator.slice(0, 4) + '...' + launch.creator.slice(-4) : '',
             creatorFull: launch.creator || '',
-            marketCap: launch.marketCap || (launch.currentPrice ? launch.currentPrice * (launch.totalSupply || 800_000_000) : 0),
+            marketCap: launch.marketCap || (launch.currentPrice ? launch.currentPrice * ((launch.totalSupply || 1_000_000_000_000_000_000) / 1e9) : 0),
             volume24h: 0,
             progress: 100,
             holders: launch.holderCount || 0,
@@ -3873,9 +3882,9 @@ const App: React.FC = () => {
                 <tr>
                   <th style={s(thS, { textAlign: "center", width: 36 })}></th>
                   <th style={s(thS, { textAlign: "left" })}>Token</th>
-                  <th style={s(thS, { textAlign: "right" })}>Price</th>
+                  <th style={s(thS, { textAlign: "right" })}>Price (SOL)</th>
                   <th style={s(thS, { textAlign: "right" })}>24h</th>
-                  <th style={s(thS, { textAlign: "right" })}>MCap</th>
+                  <th style={s(thS, { textAlign: "right" })}>MCap (USD)</th>
                   <th style={s(thS, { textAlign: "right", width: 140 })}>Progress</th>
                 </tr>
               </thead>
@@ -3948,7 +3957,7 @@ const App: React.FC = () => {
                       {fP(l.price)}
                     </td>
                     <td style={{ textAlign: "right" }}><Chg v={l.priceChange24h} /></td>
-                    <td style={{ textAlign: "right", fontSize: "var(--fs-base)", color: "var(--t2)" }}>{fm(l.marketCap)}</td>
+                    <td style={{ textAlign: "right", fontSize: "var(--fs-base)", color: "var(--t2)" }}>{fm(l.marketCap * (solPrice?.price || 0))}</td>
                     <td style={{ textAlign: "right", padding: "12px 0" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "var(--space-2)" }}>
                         <div style={{ width: 80, height: 6, borderRadius: 3, overflow: "hidden", background: "var(--glass2)" }}>
@@ -4170,16 +4179,21 @@ const App: React.FC = () => {
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: "var(--fs-3xl)", fontWeight: "var(--fw-bold)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>
-                      {fP(l.price)}
+                      {fP(l.price)} <span style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", fontWeight: "var(--fw-medium)" }}>SOL</span>
                     </div>
+                    {solPrice?.price ? (
+                      <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", fontFamily: "'JetBrains Mono',monospace" }}>
+                        {fm(l.price * (solPrice.price || 0))}
+                      </div>
+                    ) : null}
                     <Chg v={l.priceChange24h} />
                   </div>
                 </div>
               </div>
               <div style={s(ani("fu", 0.06), { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "var(--space-2-5)", marginTop: 22 })} className="grid-stagger">
                 {[
-                  { l: "Market Cap", v: fm(l.marketCap), icon: <SvgChart /> },
-                  { l: "Volume (24h)", v: fm(l.volume24h), icon: <SvgActivity /> },
+                  { l: "Market Cap", v: solPrice?.price ? fm(l.marketCap * solPrice.price) : fSOL(l.marketCap, true), icon: <SvgChart /> },
+                  { l: "Volume (24h)", v: fm(l.volume24h * (solPrice?.price || 0)), icon: <SvgActivity /> },
                   { l: "Holders", v: l.holders.toLocaleString(), icon: <SvgUser /> },
                   { l: "Trades", v: l.trades.toLocaleString(), icon: <SvgZap /> }
                 ].map((x) => (
@@ -4762,6 +4776,12 @@ const App: React.FC = () => {
                 );
               })()}
             </div>
+            {/* Real-time trade feed (Supabase-backed) */}
+            <TradeHistory
+              launchId={l.publicKey}
+              limit={20}
+              style={{ marginTop: 'var(--space-4)' }}
+            />
           </div>
         </div>
       </div>
@@ -8016,7 +8036,7 @@ const App: React.FC = () => {
                 }}>
                   {isTrader
                     ? `${(item as typeof leaderboardData[0]).totalPnl >= 0 ? '+' : ''}${(item as typeof leaderboardData[0]).totalPnl.toFixed(1)} SOL`
-                    : fm((item as typeof topLaunches[0]).marketCap)
+                    : fm((item as typeof topLaunches[0]).marketCap * (solPrice?.price || 0))
                   }
                 </div>
 
@@ -8437,11 +8457,11 @@ const App: React.FC = () => {
                     </div>
 
                     <div style={{ textAlign: "right", fontSize: "var(--fs-base)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
-                      {fm(launch.volume24h)}
+                      {fm(launch.volume24h * (solPrice?.price || 0))}
                     </div>
 
                     <div style={{ textAlign: "right", fontSize: "var(--fs-md)", fontWeight: "var(--fw-bold)", color: "var(--grn)", fontFamily: "'JetBrains Mono', monospace" }}>
-                      {fm(launch.marketCap)}
+                      {fm(launch.marketCap * (solPrice?.price || 0))}
                     </div>
                   </div>
                 ))}
@@ -8474,7 +8494,7 @@ const App: React.FC = () => {
     if (!shareModal) return null;
     const l = shareModal;
     const shareUrl = `https://launchr.app/token/${l.publicKey}`;
-    const shareText = `Check out $${l.symbol} on Launchr! ${l.name} - ${fm(l.marketCap)} MCap`;
+    const shareText = `Check out $${l.symbol} on Launchr! ${l.name} - ${fm(l.marketCap * (solPrice?.price || 0))} MCap`;
 
     const copyShareLink = () => {
       navigator.clipboard.writeText(shareUrl);
@@ -8542,7 +8562,7 @@ const App: React.FC = () => {
               <div className="glass-card-inner" style={{ padding: 12 }}>
                 <div style={{ fontSize: "var(--fs-2xs)", color: "var(--t3)", marginBottom: 4 }}>MCAP</div>
                 <div style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-bold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
-                  {fm(l.marketCap)}
+                  {fm(l.marketCap * (solPrice?.price || 0))}
                 </div>
               </div>
             </div>
@@ -8744,10 +8764,8 @@ const App: React.FC = () => {
         onClose={() => setShowWalletSelector(false)}
         onSelect={async (walletType: string) => {
           try {
-            // Store selected wallet type
-            localStorage.setItem('launchr_wallet_type', walletType);
-            // Trigger wallet connection
-            await wallet.connect();
+            // Connect to the specific wallet type the user selected
+            await wallet.connect(walletType);
             showToast(`Connected with ${walletType.charAt(0).toUpperCase() + walletType.slice(1)}`, 'success');
           } catch (err) {
             showToast('Failed to connect wallet', 'error');

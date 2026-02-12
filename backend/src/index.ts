@@ -40,6 +40,8 @@ import {
   getSecurityStats,
 } from './lib/security';
 
+import { PriceAdapter, SwapEvent } from './services/price/adapter';
+
 import path from 'path';
 import launchRoutes from './routes/launches';
 import tradeRoutes from './routes/trades';
@@ -47,6 +49,7 @@ import statsRoutes from './routes/stats';
 import userRoutes from './routes/users';
 import healthRoutes from './routes/health';
 import uploadRoutes from './routes/upload';
+import chartRoutes from './routes/chart';
 
 dotenv.config();
 
@@ -127,6 +130,14 @@ const monitoringService = initMonitoring();
 // Initialize Helius if API key is provided
 const heliusService = HELIUS_API_KEY ? initHelius(HELIUS_API_KEY, SOLANA_CLUSTER) : null;
 
+// Price adapter for Supabase chart data
+const priceAdapter = new PriceAdapter(
+  RPC_ENDPOINT,
+  PROGRAM_ID,
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY,
+);
+
 // Wire up monitoring to indexer events
 indexerService.on('trade', (trade) => {
   monitoringService.processTrade({
@@ -146,6 +157,43 @@ monitoringService.on('alert', (alert) => {
   wsService.broadcast('alerts', alert);
 });
 
+// Forward PriceAdapter swap events to WebSocket chart channels
+priceAdapter.on('swap', (swap: SwapEvent) => {
+  const channel = `chart:${swap.launchId}`;
+
+  // Broadcast trade to chart channel
+  wsService.broadcast(channel, {
+    type: 'trade',
+    signature: swap.signature,
+    trader: swap.trader,
+    swapType: swap.swapType,
+    solAmount: Number(swap.solAmount) / 1e9,
+    tokenAmount: Number(swap.tokenAmount),
+    price: swap.price,
+    time: swap.blockTime * 1000,
+  });
+
+  // Broadcast price update to chart channel
+  wsService.broadcast(channel, {
+    type: 'price',
+    price: swap.price,
+    priceUsd: swap.priceUsd,
+    marketCapSol: swap.marketCapSol,
+    time: swap.blockTime * 1000,
+  });
+
+  // Also broadcast to global trades feed
+  wsService.broadcast('trades', {
+    type: 'trade',
+    launchId: swap.launchId,
+    mint: swap.mint,
+    swapType: swap.swapType,
+    solAmount: Number(swap.solAmount) / 1e9,
+    price: swap.price,
+    time: swap.blockTime * 1000,
+  });
+});
+
 // Make services available to routes
 app.locals.solana = solanaService;
 app.locals.cache = cacheService;
@@ -157,6 +205,7 @@ app.locals.helius = heliusService;
 app.locals.pyth = pythService;
 app.locals.metaplex = metaplexService;
 app.locals.monitoring = monitoringService;
+app.locals.priceAdapter = priceAdapter;
 
 // =============================================================================
 // ROUTES
@@ -175,6 +224,7 @@ app.use('/api/trades', tradeRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/chart', chartRoutes);
 app.use('/health', healthRoutes);
 
 // Nonce endpoint for wallet authentication
@@ -260,6 +310,7 @@ app.get('/', (req, res) => {
       health: '/health',
       websocket: '/ws',
       auth: '/api/auth/nonce',
+      chart: '/api/chart/:launchId/candles',
       monitoring: '/api/monitoring/alerts',
       pyth: '/api/pyth/health',
     },
@@ -269,6 +320,7 @@ app.get('/', (req, res) => {
       pyth: 'enabled',
       metaplex: 'enabled',
       monitoring: 'enabled',
+      priceAdapter: process.env.SUPABASE_URL ? 'enabled' : 'disabled (no SUPABASE_URL)',
       helius: heliusService ? 'enabled' : 'disabled (no API key)',
     },
     security: {
@@ -319,6 +371,24 @@ async function start() {
     wsService.start();
     logger.info('WebSocket service started');
 
+    // Start price adapter (non-blocking – gracefully continues without Supabase)
+    priceAdapter.start().then(() => {
+      // Populate launch cache from indexed launches
+      indexerService.getAllLaunches().then(launches => {
+        priceAdapter.updateLaunchCache(launches);
+        logger.info(`[PriceAdapter] Launch cache populated with ${launches.length} launches`);
+      }).catch(() => {});
+    }).catch(err => {
+      logger.warn('PriceAdapter start failed (continuing without it):', err);
+    });
+
+    // Refresh price adapter's launch cache whenever indexer re-indexes
+    indexerService.on('launch:created', () => {
+      indexerService.getAllLaunches().then(launches => {
+        priceAdapter.updateLaunchCache(launches);
+      }).catch(() => {});
+    });
+
     // Initialize Jito with fastest block engine (non-blocking)
     jitoService.findFastestBlockEngine().catch(err => {
       logger.warn('Failed to find fastest Jito block engine:', err);
@@ -347,6 +417,7 @@ process.on('SIGTERM', async () => {
   indexerService.stop();
   wsService.stop();
   monitoringService.stop();
+  await priceAdapter.stop();
   stopSecurityService();
   await cacheService.disconnect();
 

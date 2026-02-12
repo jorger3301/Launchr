@@ -2251,6 +2251,20 @@ export interface PriceChartProps {
 
 type AnySeries = ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> | ISeriesApi<'Area'>;
 
+const chartPriceFormatter = (price: number): string => {
+  if (!Number.isFinite(price) || price < 0) return '0.00';
+  if (price === 0) return '0.00';
+  if (price < 0.000001) {
+    const s = price.toFixed(20);
+    const m = s.match(/^0\.(0*?)([1-9]\d{0,3})/);
+    return m ? `0.${m[1]}${m[2]}` : price.toExponential(2);
+  }
+  if (price < 0.0001) return price.toFixed(8);
+  if (price < 0.01) return price.toFixed(6);
+  if (price < 1) return price.toFixed(4);
+  return price.toFixed(2);
+};
+
 export const PriceChart: React.FC<PriceChartProps> = ({
   data,
   chartType = 'candle',
@@ -2261,11 +2275,12 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<AnySeries | null>(null);
+  const [chartReady, setChartReady] = useState(false);
 
+  // Create chart once container is in DOM
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || chartRef.current) return;
 
-    // Create chart
     const chart = createChart(containerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
@@ -2301,14 +2316,17 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         timeVisible: true,
         secondsVisible: false,
       },
+      localization: {
+        priceFormatter: chartPriceFormatter,
+      },
       handleScale: { mouseWheel: true, pinch: true },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
     });
 
     chart.timeScale().fitContent();
     chartRef.current = chart;
+    setChartReady(true);
 
-    // Handle resize
     const handleResize = () => {
       if (containerRef.current && chartRef.current) {
         chartRef.current.applyOptions({
@@ -2325,12 +2343,13 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      setChartReady(false);
     };
-  }, []);
+  }, [loading, data]);
 
   // Update chart type and data
   useEffect(() => {
-    if (!chartRef.current) return;
+    if (!chartRef.current || !chartReady) return;
 
     // Remove existing series
     if (seriesRef.current) {
@@ -2340,9 +2359,14 @@ export const PriceChart: React.FC<PriceChartProps> = ({
 
     if (data.length === 0) return;
 
-    // Convert timestamps to seconds for TradingView (it expects Unix timestamp in seconds)
     const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
     const chart = chartRef.current;
+
+    const seriesPriceFormat = {
+      type: 'custom' as const,
+      minMove: 0.00000001,
+      formatter: chartPriceFormatter,
+    };
 
     if (chartType === 'candle') {
       const candleSeries = chart.addSeries(CandlestickSeries, {
@@ -2352,6 +2376,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         borderDownColor: '#ef4444',
         wickUpColor: '#22c55e',
         wickDownColor: '#ef4444',
+        priceFormat: seriesPriceFormat,
       });
 
       const candleData: CandlestickData<Time>[] = sortedData.map((d) => ({
@@ -2372,6 +2397,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         crosshairMarkerRadius: 4,
         crosshairMarkerBorderColor: '#22c55e',
         crosshairMarkerBackgroundColor: '#0a0e17',
+        priceFormat: seriesPriceFormat,
       });
 
       const lineData: LineData<Time>[] = sortedData.map((d) => ({
@@ -2391,6 +2417,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         crosshairMarkerRadius: 4,
         crosshairMarkerBorderColor: '#22c55e',
         crosshairMarkerBackgroundColor: '#0a0e17',
+        priceFormat: seriesPriceFormat,
       });
 
       const areaData: AreaData<Time>[] = sortedData.map((d) => ({
@@ -2403,42 +2430,45 @@ export const PriceChart: React.FC<PriceChartProps> = ({
     }
 
     chart.timeScale().fitContent();
-  }, [data, chartType]);
+  }, [data, chartType, chartReady]);
 
-  if (loading) {
-    return (
-      <div
-        className={`flex items-center justify-center ${className}`}
-        style={{ height, background: 'rgba(255, 255, 255, 0.02)', borderRadius: 12 }}
-      >
-        <Spinner size="md" />
-      </div>
-    );
-  }
-
-  if (data.length === 0) {
-    return (
-      <div
-        className={`flex flex-col items-center justify-center ${className}`}
-        style={{ height, background: 'rgba(255, 255, 255, 0.02)', borderRadius: 12 }}
-      >
-        <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.5}>
-          <line x1="12" y1="20" x2="12" y2="10"/>
-          <line x1="18" y1="20" x2="18" y2="4"/>
-          <line x1="6" y1="20" x2="6" y2="16"/>
-        </svg>
-        <span className="text-sm text-gray-500 mt-3">No trading data yet</span>
-        <span className="text-xs text-gray-600 mt-1">Chart will appear after first trade</span>
-      </div>
-    );
-  }
+  // Always render the container div so chart can be created
+  // Overlay loading/empty states on top
+  const showOverlay = loading || data.length === 0;
 
   return (
-    <div
-      ref={containerRef}
-      className={className}
-      style={{ height, width: '100%' }}
-    />
+    <div style={{ position: 'relative', height, width: '100%' }} className={className}>
+      <div
+        ref={containerRef}
+        style={{ height: '100%', width: '100%', visibility: showOverlay ? 'hidden' : 'visible' }}
+      />
+      {loading && (
+        <div
+          style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255, 255, 255, 0.02)', borderRadius: 12,
+          }}
+        >
+          <Spinner size="md" />
+        </div>
+      )}
+      {!loading && data.length === 0 && (
+        <div
+          style={{
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255, 255, 255, 0.02)', borderRadius: 12,
+          }}
+        >
+          <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.5}>
+            <line x1="12" y1="20" x2="12" y2="10"/>
+            <line x1="18" y1="20" x2="18" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="16"/>
+          </svg>
+          <span className="text-sm text-gray-500 mt-3">No trading data yet</span>
+          <span className="text-xs text-gray-600 mt-1">Chart will appear after first trade</span>
+        </div>
+      )}
+    </div>
   );
 };
 

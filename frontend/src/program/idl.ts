@@ -207,7 +207,7 @@ export function calculatePrice(virtualSolReserve: BN, virtualTokenReserve: BN): 
  * Calculate market cap
  */
 export function calculateMarketCap(price: number, totalSupply: BN): number {
-  // totalSupply can exceed MAX_SAFE_INTEGER; divide first to keep within safe range
+  // totalSupply is in base units (9 decimals); divide by 1e9 to get whole tokens
   const supplyInTokens = safeToNumber(totalSupply.div(new BN(1_000_000_000)));
-  return price * supplyInTokens * 1_000_000_000;
+  return price * supplyInTokens;
 }
