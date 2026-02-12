@@ -79,6 +79,7 @@ impl Config {
         64;     // reserved
     
     /// Initialize a new config
+    #[allow(clippy::too_many_arguments)]
     pub fn init(
         &mut self,
         admin: Pubkey,

@@ -198,6 +198,8 @@ pub struct GraduateParams {
 pub mod balanced_strategy {
     /// Default number of bins on each side of active bin
     pub const DEFAULT_BINS_PER_SIDE: u8 = 10;
+    /// Maximum bins per side (prevents exceeding tx size limits)
+    pub const MAX_BINS_PER_SIDE: u8 = 30;
     /// Target allocation: 40% to base token bins (below active price)
     pub const BASE_ALLOCATION_PCT: u8 = 40;
     /// Target allocation: 40% to quote token bins (above active price)
@@ -217,12 +219,19 @@ pub fn graduate(ctx: Context<Graduate>, params: GraduateParams) -> Result<()> {
     let num_bins_per_side = params.num_liquidity_bins
         .unwrap_or(balanced_strategy::DEFAULT_BINS_PER_SIDE);
 
+    // Cap bins to avoid exceeding transaction size limits
+    require!(
+        num_bins_per_side <= balanced_strategy::MAX_BINS_PER_SIDE,
+        LaunchrError::InvalidConfig
+    );
+
     // Calculate current price from bonding curve
     let current_price = launch.current_price();
     msg!("Current bonding curve price: {} (scaled by 1e9)", current_price);
 
-    // Convert to Q64.64 for Orbit
-    let price_q64_64 = orbit_math::price_to_q64_64(current_price, 9);
+    // Convert to Q64.64 for Orbit — use actual mint decimals
+    let token_decimals = ctx.accounts.mint.decimals;
+    let price_q64_64 = orbit_math::price_to_q64_64(current_price, token_decimals);
     msg!("Price in Q64.64: {}", price_q64_64);
 
     // Calculate active bin index
@@ -542,6 +551,7 @@ const INIT_POOL_VAULTS_DISCRIMINATOR: [u8; 8] = [209, 118, 61, 154, 158, 189, 16
 /// Orbit create_bin_array discriminator
 const CREATE_BIN_ARRAY_DISCRIMINATOR: [u8; 8] = [107, 26, 23, 62, 137, 213, 131, 235];
 
+#[allow(clippy::too_many_arguments)]
 fn build_init_pool_instruction(
     orbit_program: &Pubkey,
     payer: &Pubkey,
@@ -576,6 +586,7 @@ fn build_init_pool_instruction(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_init_vaults_instruction(
     orbit_program: &Pubkey,
     payer: &Pubkey,
@@ -667,6 +678,7 @@ fn build_init_position_instruction(
 /// Build add_liquidity_v2 instruction matching Orbit IDL
 /// Account order: pool, owner, owner_base, owner_quote, base_vault, quote_vault, position, token_program
 /// Bin arrays passed as remaining accounts
+#[allow(clippy::too_many_arguments)]
 fn build_add_liquidity_v2_instruction(
     orbit_program: &Pubkey,
     pool: &Pubkey,
@@ -730,22 +742,22 @@ fn calculate_balanced_distribution(
     let mut bin_ids = Vec::new();
     let mut distribution = Vec::new();
 
-    // Total bins: bins below + active + bins above = (num_bins_per_side * 2) + 1
-
     // Calculate per-bin allocations based on 40/40/20 strategy
     // Base tokens go to bins below active price
     // Quote tokens go to bins above active price
     // Active bin gets mixed allocation
 
-    let base_per_bin = if num_bins_per_side > 0 {
-        (total_base_tokens as u128 * balanced_strategy::BASE_ALLOCATION_PCT as u128 / 100)
-            / num_bins_per_side as u128
-    } else { 0 };
+    let n = num_bins_per_side as u128;
 
-    let quote_per_bin = if num_bins_per_side > 0 {
-        (total_quote_tokens as u128 * balanced_strategy::QUOTE_ALLOCATION_PCT as u128 / 100)
-            / num_bins_per_side as u128
-    } else { 0 };
+    let total_base_alloc = total_base_tokens as u128 * balanced_strategy::BASE_ALLOCATION_PCT as u128 / 100;
+    let total_quote_alloc = total_quote_tokens as u128 * balanced_strategy::QUOTE_ALLOCATION_PCT as u128 / 100;
+
+    let base_per_bin = if n > 0 { total_base_alloc / n } else { 0 };
+    let quote_per_bin = if n > 0 { total_quote_alloc / n } else { 0 };
+
+    // Remainder tokens go to the bins closest to the active bin to avoid loss
+    let base_remainder = if n > 0 { (total_base_alloc - base_per_bin * n) as u64 } else { 0 };
+    let quote_remainder = if n > 0 { (total_quote_alloc - quote_per_bin * n) as u64 } else { 0 };
 
     let active_base = total_base_tokens as u128 * balanced_strategy::ACTIVE_BIN_PCT as u128 / 200;
     let active_quote = total_quote_tokens as u128 * balanced_strategy::ACTIVE_BIN_PCT as u128 / 200;
@@ -754,7 +766,9 @@ fn calculate_balanced_distribution(
     for i in (1..=num_bins_per_side).rev() {
         let bin_id = active_bin_index - (i as i32);
         bin_ids.push(bin_id);
-        distribution.push(base_per_bin as u64);
+        // Add remainder to the bin closest to active (i == 1)
+        let extra = if i == 1 { base_remainder } else { 0 };
+        distribution.push(base_per_bin as u64 + extra);
     }
 
     // Active bin (mixed base + quote)
@@ -765,7 +779,9 @@ fn calculate_balanced_distribution(
     for i in 1..=num_bins_per_side {
         let bin_id = active_bin_index + (i as i32);
         bin_ids.push(bin_id);
-        distribution.push(quote_per_bin as u64);
+        // Add remainder to the bin closest to active (i == 1)
+        let extra = if i == 1 { quote_remainder } else { 0 };
+        distribution.push(quote_per_bin as u64 + extra);
     }
 
     (bin_ids, distribution)

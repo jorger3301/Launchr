@@ -8,6 +8,15 @@
 import { PublicKey } from '@solana/web3.js';
 import BN from 'bn.js';
 
+/** Safely convert BN to number without throwing on values > 2^53 */
+function safeToNumber(bn: BN): number {
+  try {
+    return bn.toNumber();
+  } catch {
+    return parseFloat(bn.toString());
+  }
+}
+
 // =============================================================================
 // PROGRAM ID
 // =============================================================================
@@ -191,7 +200,7 @@ export function calculatePrice(virtualSolReserve: BN, virtualTokenReserve: BN): 
   // price = sol / tokens, scaled by 1e9 then back to avoid precision loss
   const SCALE = new BN(1_000_000_000);
   const scaledPrice = virtualSolReserve.mul(SCALE).div(virtualTokenReserve);
-  return scaledPrice.toNumber() / 1_000_000_000;
+  return safeToNumber(scaledPrice) / 1_000_000_000;
 }
 
 /**
@@ -199,6 +208,6 @@ export function calculatePrice(virtualSolReserve: BN, virtualTokenReserve: BN): 
  */
 export function calculateMarketCap(price: number, totalSupply: BN): number {
   // totalSupply can exceed MAX_SAFE_INTEGER; divide first to keep within safe range
-  const supplyInTokens = totalSupply.div(new BN(1_000_000_000)).toNumber();
+  const supplyInTokens = safeToNumber(totalSupply.div(new BN(1_000_000_000)));
   return price * supplyInTokens * 1_000_000_000;
 }

@@ -121,14 +121,17 @@ impl UserPosition {
     
     /// Record a sell transaction
     pub fn record_sell(&mut self, tokens: u64, sol_amount: u64, timestamp: i64) {
+        // Capture balance BEFORE sell for proportional cost basis reduction
+        let balance_before = self.token_balance;
+
         // Update totals
         self.tokens_sold = self.tokens_sold.saturating_add(tokens);
         self.token_balance = self.token_balance.saturating_sub(tokens);
         self.sol_received = self.sol_received.saturating_add(sol_amount);
-        
-        // Reduce cost basis proportionally
-        if self.tokens_bought > 0 {
-            let sold_ratio = (tokens as u128 * 1_000_000_000) / self.tokens_bought as u128;
+
+        // Reduce cost basis proportionally to fraction of holdings sold
+        if balance_before > 0 {
+            let sold_ratio = (tokens as u128 * 1_000_000_000) / balance_before as u128;
             let cost_reduction = ((self.cost_basis as u128 * sold_ratio) / 1_000_000_000) as u64;
             self.cost_basis = self.cost_basis.saturating_sub(cost_reduction);
         }

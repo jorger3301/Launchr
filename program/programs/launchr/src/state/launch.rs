@@ -5,9 +5,10 @@
 use anchor_lang::prelude::*;
 
 /// Status of a token launch
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum LaunchStatus {
     /// Actively trading on bonding curve
+    #[default]
     Active,
     /// Graduation threshold reached, awaiting migration
     PendingGraduation,
@@ -15,12 +16,6 @@ pub enum LaunchStatus {
     Graduated,
     /// Launch was cancelled by creator
     Cancelled,
-}
-
-impl Default for LaunchStatus {
-    fn default() -> Self {
-        LaunchStatus::Active
-    }
 }
 
 /// Token launch account - represents a single token on the bonding curve
@@ -215,15 +210,17 @@ impl Launch {
     }
     
     /// Record a sell transaction
-    pub fn record_sell(&mut self, tokens_in: u64, sol_out: u64) {
+    /// `sol_user_payout` is the SOL sent to the user (after fees)
+    /// `total_sol_removed` is the total SOL leaving the vault (payout + all fees)
+    pub fn record_sell(&mut self, tokens_in: u64, sol_user_payout: u64, total_sol_removed: u64) {
         self.tokens_sold = self.tokens_sold.saturating_sub(tokens_in);
-        self.real_sol_reserve = self.real_sol_reserve.saturating_sub(sol_out);
+        self.real_sol_reserve = self.real_sol_reserve.saturating_sub(total_sol_removed);
         self.real_token_reserve = self.real_token_reserve.saturating_add(tokens_in);
-        self.sell_volume = self.sell_volume.saturating_add(sol_out as u128);
+        self.sell_volume = self.sell_volume.saturating_add(sol_user_payout as u128);
         self.trade_count = self.trade_count.saturating_add(1);
-        
-        // Update virtual reserves
-        self.virtual_sol_reserve = self.virtual_sol_reserve.saturating_sub(sol_out);
+
+        // Update virtual reserves — must reflect total SOL leaving the vault
+        self.virtual_sol_reserve = self.virtual_sol_reserve.saturating_sub(total_sol_removed);
         self.virtual_token_reserve = self.virtual_token_reserve.saturating_add(tokens_in);
     }
     

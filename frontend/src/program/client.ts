@@ -37,6 +37,15 @@ import {
   CONSTANTS,
 } from './idl';
 
+/** Safely convert BN to number without throwing on values > 2^53 */
+function safeToNumber(bn: BN): number {
+  try {
+    return bn.toNumber();
+  } catch {
+    return parseFloat(bn.toString());
+  }
+}
+
 // =============================================================================
 // PDA DERIVATION
 // =============================================================================
@@ -752,7 +761,7 @@ export class LaunchrClient {
     const tokenAfter = virtualTokenReserve.sub(tokensOut);
     const ratioScaled = solAfter.mul(virtualTokenReserve).mul(IMPACT_PRECISION)
       .div(virtualSolReserve.mul(tokenAfter));
-    const priceImpact = (ratioScaled.toNumber() / 1_000_000 - 1) * 100;
+    const priceImpact = (safeToNumber(ratioScaled) / 1_000_000 - 1) * 100;
 
     return { tokensOut, priceImpact };
   }
@@ -793,7 +802,7 @@ export class LaunchrClient {
     const tokenAfter = virtualTokenReserve.add(tokenAmount);
     const ratioScaled = virtualSolReserve.mul(tokenAfter).mul(IMPACT_PRECISION)
       .div(solAfter.mul(virtualTokenReserve));
-    const priceImpact = (ratioScaled.toNumber() / 1_000_000 - 1) * 100;
+    const priceImpact = (safeToNumber(ratioScaled) / 1_000_000 - 1) * 100;
 
     return { solOut, priceImpact };
   }

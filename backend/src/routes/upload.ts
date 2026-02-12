@@ -146,13 +146,24 @@ router.post(
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+
+    // Validate id is hex-only to prevent path traversal
+    if (!/^[a-f0-9]+$/.test(id)) {
+      return res.status(400).json({ error: 'Invalid upload ID' });
+    }
+
     const metadataPath = path.join(UPLOADS_DIR, 'metadata', `${id}.json`);
 
     if (!fs.existsSync(metadataPath)) {
       return res.status(404).json({ error: 'Upload not found' });
     }
 
-    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+    let metadata;
+    try {
+      metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+    } catch {
+      return res.status(500).json({ error: 'Corrupted metadata file' });
+    }
 
     res.json({
       success: true,

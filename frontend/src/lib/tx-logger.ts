@@ -167,7 +167,7 @@ export function classifyError(err: unknown): ClassifiedError {
   }
 
   // Fallback
-  return { bucket: 'unknown', userMessage: raw, retryable: false, raw };
+  return { bucket: 'unknown', userMessage: raw || 'An unexpected error occurred. Please try again.', retryable: false, raw };
 }
 
 // =============================================================================

@@ -187,8 +187,11 @@ pub fn sell(ctx: Context<Sell>, params: SellParams) -> Result<()> {
         **ctx.accounts.creator.try_borrow_mut_lamports()? += swap_result.creator_fee;
     }
     
-    // Update launch state
-    launch.record_sell(params.token_amount, swap_result.amount_out);
+    // Update launch state — pass total SOL leaving vault (payout + all fees)
+    let total_sol_removed = swap_result.amount_out
+        .saturating_add(swap_result.protocol_fee)
+        .saturating_add(swap_result.creator_fee);
+    launch.record_sell(params.token_amount, swap_result.amount_out, total_sol_removed);
     
     // Update user position
     user_position.record_sell(params.token_amount, swap_result.amount_out, clock.unix_timestamp);

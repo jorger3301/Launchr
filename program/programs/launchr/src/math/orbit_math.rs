@@ -2,6 +2,8 @@
 //! 
 //! Calculations for graduating launches to Orbit Finance concentrated liquidity.
 
+// anchor_lang prelude not currently needed but kept for future use
+#[allow(unused_imports)]
 use anchor_lang::prelude::*;
 
 /// Q64.64 fixed-point multiplier (2^64)
@@ -80,16 +82,17 @@ impl Default for OrbitFeeConfig {
 /// * `price_lamports_per_token` - Price scaled by PRICE_PRECISION (1e9)
 /// * `token_decimals` - Token decimal places (usually 9)
 pub fn price_to_q64_64(price_lamports_per_token: u64, token_decimals: u8) -> u128 {
-    // price_q64 = price * 2^64 / 10^9 (adjust for price precision)
-    // Also adjust for decimal difference if needed
+    // price is scaled by PRICE_PRECISION (1e9).
+    // Q64.64 price = price * 2^64 / decimal_adjustment
+    // The PRICE_PRECISION cancels with SOL decimals (both 1e9), leaving token decimals.
     let decimal_adjustment = 10u128.pow(token_decimals as u32);
-    (price_lamports_per_token as u128 * Q64_64) / (1_000_000_000 * decimal_adjustment / 1_000_000_000)
+    (price_lamports_per_token as u128 * Q64_64) / decimal_adjustment
 }
 
 /// Convert Q64.64 price back to lamports per token
 pub fn q64_64_to_price(price_q64_64: u128, token_decimals: u8) -> u64 {
     let decimal_adjustment = 10u128.pow(token_decimals as u32);
-    ((price_q64_64 * 1_000_000_000 * decimal_adjustment / 1_000_000_000) / Q64_64) as u64
+    ((price_q64_64 * decimal_adjustment) / Q64_64) as u64
 }
 
 /// Calculate bin index from Q64.64 price

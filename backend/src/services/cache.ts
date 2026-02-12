@@ -66,9 +66,9 @@ export class CacheService {
   // ---------------------------------------------------------------------------
 
   async connect(): Promise<void> {
-    // Skip Redis in development or if USE_MOCK_DATA is set
-    if (process.env.USE_MOCK_DATA === 'true' || process.env.NODE_ENV === 'development') {
-      logger.info('Using in-memory cache (development mode)');
+    // Skip Redis if mock data is explicitly enabled or Redis URL is not configured
+    if (process.env.USE_MOCK_DATA === 'true') {
+      logger.info('Using in-memory cache (mock data mode)');
       this.redis = null;
       this.isConnected = false;
       return;

@@ -1,3 +1,6 @@
+// Allow cfg values used by Anchor/Solana macros (custom-heap, custom-panic, solana, anchor-debug)
+#![allow(unexpected_cfgs)]
+
 //! # Launchr
 //! 
 //! **Launch into Orbit** 🚀

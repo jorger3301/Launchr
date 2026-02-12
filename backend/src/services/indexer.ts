@@ -16,7 +16,8 @@ import { EventEmitter } from 'events';
 // =============================================================================
 
 // Check at runtime (after dotenv.config() runs in index.ts)
-const useMockData = () => process.env.USE_MOCK_DATA === 'true' || process.env.NODE_ENV === 'development';
+// Only use mock data when explicitly opted in via USE_MOCK_DATA=true
+const useMockData = () => process.env.USE_MOCK_DATA === 'true';
 
 /**
  * LAUNCHR TOKENOMICS:
@@ -275,7 +276,9 @@ export class IndexerService extends EventEmitter {
       this.state.launchCount = launches.length;
 
       if (useMockData()) {
-        logger.info('Using mock data for development');
+        logger.info('Using mock data (USE_MOCK_DATA=true)');
+      } else if (launches.length === 0) {
+        logger.warn('Indexer found 0 launches on-chain. Check PROGRAM_ID and RPC_ENDPOINT.');
       }
 
       // Cache launches list

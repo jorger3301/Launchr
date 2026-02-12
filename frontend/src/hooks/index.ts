@@ -77,6 +77,19 @@ const PROGRAM_ID = new PublicKey(PROGRAM_ID_STRING);
 const DEFAULT_COMPUTE_UNITS = 200_000;
 const DEFAULT_PRIORITY_FEE = 50_000; // microlamports per compute unit
 
+/**
+ * Safely convert a BN to a JavaScript number.
+ * BN.toNumber() throws "Number can only safely store up to 53 bits" for values > 2^53.
+ * This falls back to parseFloat(bn.toString()) which won't throw but may lose precision.
+ */
+function safeToNumber(bn: BN): number {
+  try {
+    return bn.toNumber();
+  } catch {
+    return parseFloat(bn.toString());
+  }
+}
+
 // =============================================================================
 // TRANSACTION HELPERS
 // =============================================================================
@@ -574,7 +587,9 @@ export function useWallet(): UseWalletResult {
   // Connect - tries last used wallet or shows selector
   const connect = useCallback(async () => {
     // Check for previously used wallet
-    const lastWallet = localStorage.getItem('launchr_wallet') as WalletType;
+    const storedWallet = localStorage.getItem('launchr_wallet');
+    const validTypes: WalletType[] = ['phantom', 'solflare', 'backpack', 'jupiter'];
+    const lastWallet = validTypes.includes(storedWallet as WalletType) ? storedWallet as WalletType : null;
     const availableWallets = detectWallets().filter(w => w.detected);
 
     if (lastWallet && availableWallets.some(w => w.type === lastWallet)) {
@@ -918,15 +933,15 @@ export function useUserPosition(launchPk: string | undefined, userAddress: strin
       // + 8 last_trade_at + 4 buy_count + 4 sell_count + 8 avg_buy_price + 8 cost_basis
       const data = Buffer.from(accountInfo.data);
       let off = 8 + 32 + 32; // Skip discriminator, launch, user pubkeys
-      const tokensBought = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
-      const tokensSold = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
-      const tokenBalance = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
-      const solSpent = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
-      const solReceived = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const tokensBought = safeToNumber(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const tokensSold = safeToNumber(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const tokenBalance = safeToNumber(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const solSpent = safeToNumber(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const solReceived = safeToNumber(new BN(data.slice(off, off + 8), 'le')); off += 8;
       off += 16; // Skip first_trade_at, last_trade_at
       off += 8; // Skip buy_count (u32) + sell_count (u32)
-      const avgBuyPrice = Number(new BN(data.slice(off, off + 8), 'le')); off += 8;
-      const costBasis = Number(new BN(data.slice(off, off + 8), 'le'));
+      const avgBuyPrice = safeToNumber(new BN(data.slice(off, off + 8), 'le')); off += 8;
+      const costBasis = safeToNumber(new BN(data.slice(off, off + 8), 'le'));
 
       const allocatedSol = tokensBought > 0 ? (solSpent * tokensSold / tokensBought) : 0;
       const realizedPnl = solReceived - allocatedSol;
@@ -1029,7 +1044,7 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
     );
 
     return {
-      tokensOut: tokensOut.toNumber() / 1e9,
+      tokensOut: safeToNumber(tokensOut) / 1e9,
       priceImpact,
     };
   }, []);
@@ -1054,7 +1069,7 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
     );
 
     return {
-      solOut: solOut.toNumber() / LAMPORTS_PER_SOL,
+      solOut: safeToNumber(solOut) / LAMPORTS_PER_SOL,
       priceImpact,
     };
   }, []);
