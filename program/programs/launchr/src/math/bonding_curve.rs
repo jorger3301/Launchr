@@ -190,7 +190,7 @@ pub fn calculate_sol_for_tokens(
     sol_reserve: u64,
     token_reserve: u64,
     protocol_fee_bps: u16,
-    creator_fee_bps: u16,
+    _creator_fee_bps: u16,
 ) -> Result<u64> {
     require!(tokens_out > 0 && tokens_out < token_reserve, LaunchrError::InvalidAmount);
     require!(sol_reserve > 0 && token_reserve > 0, LaunchrError::InvalidReserves);

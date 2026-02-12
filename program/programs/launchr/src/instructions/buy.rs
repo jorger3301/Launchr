@@ -23,7 +23,7 @@ pub struct Buy<'info> {
         bump = config.bump,
         constraint = !config.trading_paused @ LaunchrError::TradingPaused
     )]
-    pub config: Account<'info, Config>,
+    pub config: Box<Account<'info, Config>>,
     
     /// Launch account
     #[account(

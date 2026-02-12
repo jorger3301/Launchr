@@ -23,8 +23,8 @@ pub struct CreateLaunch<'info> {
         bump = config.bump,
         constraint = !config.launches_paused @ LaunchrError::LaunchesPaused
     )]
-    pub config: Account<'info, Config>,
-    
+    pub config: Box<Account<'info, Config>>,
+
     /// Token mint (created by this instruction)
     #[account(
         init,
@@ -33,7 +33,7 @@ pub struct CreateLaunch<'info> {
         mint::authority = launch_authority,
         mint::freeze_authority = launch_authority,
     )]
-    pub mint: Account<'info, Mint>,
+    pub mint: Box<Account<'info, Mint>>,
     
     /// Launch account (PDA)
     #[account(
@@ -62,8 +62,8 @@ pub struct CreateLaunch<'info> {
         seeds = [TOKEN_VAULT_SEED, launch.key().as_ref()],
         bump
     )]
-    pub token_vault: Account<'info, TokenAccount>,
-    
+    pub token_vault: Box<Account<'info, TokenAccount>>,
+
     /// LP reserve token vault (20% for Orbit DLMM migration)
     #[account(
         init,
@@ -73,7 +73,7 @@ pub struct CreateLaunch<'info> {
         seeds = [GRADUATION_VAULT_SEED, launch.key().as_ref()],
         bump
     )]
-    pub graduation_vault: Account<'info, TokenAccount>,
+    pub graduation_vault: Box<Account<'info, TokenAccount>>,
 
     // Note: Creator receives 2 SOL reward on graduation, not token allocation
     // No creator_token_account needed
@@ -157,42 +157,43 @@ pub fn create_launch(ctx: Context<CreateLaunch>, params: CreateLaunchParams) -> 
     // Fees - fixed at 0.2% (creator_fee_bps param is ignored)
     launch.creator_fee_bps = CREATOR_FEE_BPS;
     
-    // Store metadata
-    let mut name_bytes = [0u8; 32];
-    let name_slice = params.name.as_bytes();
-    name_bytes[..name_slice.len().min(32)].copy_from_slice(&name_slice[..name_slice.len().min(32)]);
-    launch.name = name_bytes;
-    
-    let mut symbol_bytes = [0u8; 10];
-    let symbol_slice = params.symbol.as_bytes();
-    symbol_bytes[..symbol_slice.len().min(10)].copy_from_slice(&symbol_slice[..symbol_slice.len().min(10)]);
-    launch.symbol = symbol_bytes;
-    
-    let mut uri_bytes = [0u8; 200];
-    let uri_slice = params.uri.as_bytes();
-    uri_bytes[..uri_slice.len().min(200)].copy_from_slice(&uri_slice[..uri_slice.len().min(200)]);
-    launch.uri = uri_bytes;
-    
+    // Store metadata — write directly to heap-allocated launch (no stack temporaries)
+    // Account is zero-initialized by `init`, so we only copy the actual bytes
+    {
+        let src = params.name.as_bytes();
+        let len = src.len().min(32);
+        launch.name[..len].copy_from_slice(&src[..len]);
+    }
+
+    {
+        let src = params.symbol.as_bytes();
+        let len = src.len().min(10);
+        launch.symbol[..len].copy_from_slice(&src[..len]);
+    }
+
+    {
+        let src = params.uri.as_bytes();
+        let len = src.len().min(200);
+        launch.uri[..len].copy_from_slice(&src[..len]);
+    }
+
     // Optional social links
-    if let Some(twitter) = params.twitter {
-        let mut twitter_bytes = [0u8; 64];
-        let twitter_slice = twitter.as_bytes();
-        twitter_bytes[..twitter_slice.len().min(64)].copy_from_slice(&twitter_slice[..twitter_slice.len().min(64)]);
-        launch.twitter = twitter_bytes;
+    if let Some(ref twitter) = params.twitter {
+        let src = twitter.as_bytes();
+        let len = src.len().min(64);
+        launch.twitter[..len].copy_from_slice(&src[..len]);
     }
-    
-    if let Some(telegram) = params.telegram {
-        let mut telegram_bytes = [0u8; 64];
-        let telegram_slice = telegram.as_bytes();
-        telegram_bytes[..telegram_slice.len().min(64)].copy_from_slice(&telegram_slice[..telegram_slice.len().min(64)]);
-        launch.telegram = telegram_bytes;
+
+    if let Some(ref telegram) = params.telegram {
+        let src = telegram.as_bytes();
+        let len = src.len().min(64);
+        launch.telegram[..len].copy_from_slice(&src[..len]);
     }
-    
-    if let Some(website) = params.website {
-        let mut website_bytes = [0u8; 64];
-        let website_slice = website.as_bytes();
-        website_bytes[..website_slice.len().min(64)].copy_from_slice(&website_slice[..website_slice.len().min(64)]);
-        launch.website = website_bytes;
+
+    if let Some(ref website) = params.website {
+        let src = website.as_bytes();
+        let len = src.len().min(64);
+        launch.website[..len].copy_from_slice(&src[..len]);
     }
     
     // Store bumps

@@ -112,6 +112,8 @@ const fTok = (raw: number): string => {
 
 // Format price with adaptive precision
 const fP = (p: number): string => {
+  if (!Number.isFinite(p) || p < 0) return '0.00';
+  if (p === 0) return '0.00';
   if (p < 0.0001) return p.toExponential(2);
   if (p < 0.01) return p.toFixed(6);
   if (p < 1) return p.toFixed(4);
@@ -2306,7 +2308,7 @@ const App: React.FC = () => {
   // ---- Hooks (mock or real) ----
   const wallet = USE_MOCKS ? useMockWallet() : useRealWallet();
   const launchesData = USE_MOCKS ? useMockLaunches() : useRealLaunches();
-  const { launches: rawLaunches, loading: launchesLoading } = launchesData;
+  const { launches: rawLaunches = [], loading: launchesLoading } = launchesData;
 
   const statsData = USE_MOCKS ? useMockGlobalStats() : useRealGlobalStats();
   const { stats } = statsData;
@@ -2314,6 +2316,14 @@ const App: React.FC = () => {
   const trade = USE_MOCKS ? useMockTrade() : useRealTrade(wallet);
   const createData = USE_MOCKS ? useMockCreateLaunch() : useRealCreateLaunch(wallet);
   const { createLaunch } = createData;
+
+  // Reset trade form when wallet disconnects to avoid showing stale data
+  useEffect(() => {
+    if (!wallet.connected) {
+      setTradeAmount('');
+      setTradeType('buy');
+    }
+  }, [wallet.connected]);
 
   // SOL Price from Pyth Oracle
   const { solPrice } = useSolPrice(15000); // Refresh every 15 seconds
@@ -2334,26 +2344,26 @@ const App: React.FC = () => {
 
   const currentLaunchPk = route.type === 'detail' ? route.launch.publicKey : undefined;
   const launchDetail = USE_MOCKS ? useMockLaunch(currentLaunchPk) : useRealLaunch(currentLaunchPk);
-  const { trades: rawTrades } = launchDetail;
+  const { trades: rawTrades = [] } = launchDetail;
 
   // User balances for trading (real token balance from on-chain)
   const userAddress = wallet.connected ? wallet.address : undefined;
   const { balances: userBalances } = useUserBalances(userAddress ?? undefined, currentLaunchPk);
 
   // Launch holders data
-  const { holders: launchHolders, totalHolders } = useLaunchHolders(currentLaunchPk);
+  const { holders: launchHolders = [], totalHolders = 0 } = useLaunchHolders(currentLaunchPk);
 
   // User positions for portfolio view (from API - used when not mocking)
-  const { positions: apiUserPositions, totalValue: apiPortfolioValue, totalPnl: apiPortfolioPnl } = useUserPositions(userAddress ?? undefined);
+  const { positions: apiUserPositions = [], totalValue: apiPortfolioValue = 0, totalPnl: apiPortfolioPnl = 0 } = useUserPositions(userAddress ?? undefined);
 
   // User activity for profile
-  const { activity: userTradeActivity } = useUserActivity(userAddress ?? undefined, 50);
+  const { activity: userTradeActivity = [] } = useUserActivity(userAddress ?? undefined, 50);
 
   // User stats for profile
   const { stats: userProfileStats } = useUserStats(userAddress ?? undefined);
 
   // Chart data for detail page (lifted from Detail component)
-  const { candles, loading: chartLoading } = useLaunchChart(currentLaunchPk, chartTimeframe);
+  const { candles = [], loading: chartLoading } = useLaunchChart(currentLaunchPk, chartTimeframe);
 
   // Transform launches to our format
   const launches: LaunchItem[] = useMemo(() => {
@@ -2389,7 +2399,7 @@ const App: React.FC = () => {
   const launchMintAddresses = useMemo(() => {
     return launches.map(l => l.mint).filter(Boolean);
   }, [launches]);
-  const { metadataMap: rawMetadataMap } = useMultipleTokenMetadata(launchMintAddresses);
+  const { metadataMap: rawMetadataMap = new Map() } = useMultipleTokenMetadata(launchMintAddresses);
 
   // Remap metadata from mint→data to publicKey→data for easy lookup
   const tokenMetadataMap = useMemo(() => {
@@ -2446,7 +2456,8 @@ const App: React.FC = () => {
       const base = l.price;
       // Use a simple hash of the id for deterministic pseudo-randomness
       let seed = 0;
-      for (let c = 0; c < l.id.length; c++) seed = ((seed << 5) - seed + l.id.charCodeAt(c)) | 0;
+      const id = l.id || '';
+      for (let c = 0; c < id.length; c++) seed = ((seed << 5) - seed + id.charCodeAt(c)) | 0;
       data[l.id] = Array.from({ length: 12 }, (_, i) => {
         seed = (seed * 16807 + 0) % 2147483647;
         const noise = (seed / 2147483647) * 0.4 - 0.2; // -0.2 to +0.2
@@ -2731,7 +2742,7 @@ const App: React.FC = () => {
     if (!wallet.connected) return [];
 
     // Use real API data when not mocking
-    if (!USE_MOCKS && apiUserPositions.length > 0) {
+    if (!USE_MOCKS && apiUserPositions && apiUserPositions.length > 0) {
       return apiUserPositions.map((pos) => {
         // Find the full launch data from launches array if available
         const fullLaunch = launches.find(l => l.publicKey === pos.launch.publicKey);
@@ -2794,15 +2805,15 @@ const App: React.FC = () => {
     if (!wallet.connected) return [];
 
     // Use real API data when not mocking
-    if (!USE_MOCKS && userTradeActivity.length > 0) {
+    if (!USE_MOCKS && userTradeActivity && userTradeActivity.length > 0) {
       return userTradeActivity.map((activity, i) => ({
         id: activity.signature || `activity-${activity.timestamp}-${i}`,
         type: activity.type as 'buy' | 'sell',
-        launch: activity.launch.name,
-        symbol: activity.launch.symbol,
-        amount: activity.tokenAmount,
-        sol: activity.solAmount / 1e9, // Convert lamports to SOL
-        time: getTimeAgo(activity.timestamp),
+        launch: activity.launch?.name || 'Unknown',
+        symbol: activity.launch?.symbol || '???',
+        amount: activity.tokenAmount || 0,
+        sol: activity.solAmount ? activity.solAmount / 1e9 : 0,
+        time: getTimeAgo(activity.timestamp * 1000),
         gi: i % GRADS.length, // Use index for gradient
       }));
     }
@@ -4462,7 +4473,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   )}</>
-                ) : launchHolders.length > 0 ? (
+                ) : launchHolders && launchHolders.length > 0 ? (
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                       <span style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>
@@ -4533,8 +4544,16 @@ const App: React.FC = () => {
                 <div className="amount-input-wrapper input-focus-glow" style={s(inpS, { display: "flex", alignItems: "center", gap: "var(--space-2)", height: 56, padding: "0 var(--space-4)", borderRadius: "var(--radius-lg)" })}>
                   <input
                     type="number"
+                    min="0"
+                    step="any"
                     value={tradeAmount}
-                    onChange={(e) => setTradeAmount(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      // Allow empty, or valid non-negative number with max 9 decimal places
+                      if (v === '' || /^\d*\.?\d{0,9}$/.test(v)) {
+                        setTradeAmount(v);
+                      }
+                    }}
                     placeholder="0.00"
                     style={{
                       flex: 1,
@@ -4980,7 +4999,7 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('Token creation failed:', err);
         const classified = classifyError(err);
-        showToast(classified.userMessage, 'error');
+        showToast(classified.userMessage || 'Transaction failed. Please try again.', 'error');
         setCreationStep(0);
       } finally {
         setIsCreating(false);
@@ -5524,6 +5543,7 @@ const App: React.FC = () => {
 
     // Mini sparkline for performance
     const MiniChart = () => {
+      if (!performanceData || performanceData.length < 2) return null;
       const max = Math.max(...performanceData.map(d => d.value));
       const min = Math.min(...performanceData.map(d => d.value));
       const range = max - min || 1;
@@ -5941,7 +5961,7 @@ const App: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <div style={{
+                {performanceData.length > 0 && (<div style={{
                   display: "flex",
                   alignItems: "center",
                   gap: "var(--space-1-5)",
@@ -5960,7 +5980,7 @@ const App: React.FC = () => {
                     {performanceData[performanceData.length - 1].value >= performanceData[0].value ? '+' : ''}
                     {(((performanceData[performanceData.length - 1].value - performanceData[0].value) / performanceData[0].value) * 100).toFixed(1)}%
                   </span>
-                </div>
+                </div>)}
               </div>
             </div>
             <div style={{ position: "relative" }}>

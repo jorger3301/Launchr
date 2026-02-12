@@ -175,7 +175,7 @@ export class SolanaService {
     try {
       const accounts = await this.connection.getProgramAccounts(this.programId, {
         filters: [
-          { dataSize: 800 }, // Launch account size
+          { dataSize: 707 }, // Launch account size (must match Launch::LEN in program)
         ],
       });
 
@@ -484,7 +484,7 @@ export class SolanaService {
 
   private parseString(buffer: Buffer): string {
     const nullIndex = buffer.indexOf(0);
-    return buffer.slice(0, nullIndex > 0 ? nullIndex : buffer.length).toString('utf8').trim();
+    return buffer.slice(0, nullIndex >= 0 ? nullIndex : buffer.length).toString('utf8').trim();
   }
 
   // ---------------------------------------------------------------------------

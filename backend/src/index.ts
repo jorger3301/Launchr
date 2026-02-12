@@ -217,8 +217,13 @@ app.get('/api/monitoring/stats', (req, res) => {
   res.json(monitoringService.getStats());
 });
 
-// Security stats endpoint (admin only in production)
+// Security stats endpoint — restrict to localhost in production
 app.get('/api/security/stats', (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || '';
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  if (process.env.NODE_ENV === 'production' && !isLocal) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   res.json(getSecurityStats());
 });
 

@@ -117,7 +117,7 @@ pub const ORBIT_PROGRAM_ID: &str = "Fn3fA3fjsmpULNL7E9U79jKTe1KHxPtQeWdURCbJXCnM
 
 /// Get the Orbit Finance program ID
 pub fn orbit_program_id() -> Pubkey {
-    ORBIT_PROGRAM_ID.parse().unwrap()
+    ORBIT_PROGRAM_ID.parse().expect("Invalid Orbit program ID constant")
 }
 
 /// Derive an Orbit pool PDA

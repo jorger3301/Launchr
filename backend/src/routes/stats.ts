@@ -54,10 +54,15 @@ router.get('/leaderboard', async (req: Request, res: Response) => {
     const indexer: IndexerService = req.app.locals.indexer;
     const { by = 'volume', limit = '10' } = req.query;
 
+    // Validate and clamp limit to prevent abuse
+    const validMetrics = ['volume', 'marketcap', 'holders', 'trades'];
+    const metric = validMetrics.includes(by as string) ? by as string : 'volume';
+    const parsedLimit = Math.min(Math.max(parseInt(limit as string) || 10, 1), 100);
+
     const launches = await indexer.getAllLaunches();
-    
+
     let sorted: typeof launches;
-    switch (by) {
+    switch (metric) {
       case 'marketcap':
         sorted = [...launches].sort((a, b) => b.marketCap - a.marketCap);
         break;
@@ -73,8 +78,8 @@ router.get('/leaderboard', async (req: Request, res: Response) => {
     }
 
     res.json({
-      leaderboard: sorted.slice(0, parseInt(limit as string)),
-      metric: by,
+      leaderboard: sorted.slice(0, parsedLimit),
+      metric,
     });
 
   } catch (error) {
@@ -163,13 +168,14 @@ router.get('/sol-price', async (req: Request, res: Response) => {
 
   } catch (error) {
     logger.error('Failed to get SOL price:', error);
-    // Return fallback on error
-    res.json({
+    // Return fallback on error with flag so clients know it's stale
+    res.status(503).json({
       price: 100.0,
       confidence: 0.5,
       symbol: 'SOL/USD',
       publishTime: Math.floor(Date.now() / 1000),
       emaPrice: 100.0,
+      isFallback: true,
     });
   }
 });
