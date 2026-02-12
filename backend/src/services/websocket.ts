@@ -281,7 +281,7 @@ export class WebSocketService {
       type: 'connected',
       data: {
         message: 'Connected to Launchr WebSocket',
-        channels: ['trades', 'launches', 'stats'],
+        channels: ['trades', 'launches', 'stats', 'chart:<launchId>'],
         limits: {
           maxSubscriptions: WS_CONFIG.maxSubscriptionsPerClient,
           messageRateLimit: WS_CONFIG.messageRateLimit,
@@ -360,9 +360,10 @@ export class WebSocketService {
             return;
           }
 
-          // Validate channel name
-          const validChannels = ['trades', 'launches', 'stats'];
-          if (!validChannels.includes(message.channel)) {
+          // Validate channel name: static channels + dynamic chart:<launchId>
+          const validStaticChannels = ['trades', 'launches', 'stats', 'alerts'];
+          const isChartChannel = /^chart:[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(message.channel);
+          if (!validStaticChannels.includes(message.channel) && !isChartChannel) {
             this.send(ws, {
               type: 'error',
               data: { message: `Invalid channel: ${message.channel}` },

@@ -400,11 +400,16 @@ export class SolanaService {
       const website = this.parseString(data.slice(offset, offset += 64));
 
       // Calculate price and market cap using BigInt for precision
+      // price = virtualSolReserve / virtualTokenReserve (both in base units)
+      // Since SOL and tokens both use 9 decimals, this gives SOL per whole token.
+      // We scale up by 1e9 before BigInt division to preserve precision, then divide back.
       const vtReserve = virtualTokenReserveBig;
       const currentPrice = vtReserve > 0n
-        ? Number(virtualSolReserveBig * 1000000000n / vtReserve)
+        ? Number(virtualSolReserveBig * 1_000_000_000n / vtReserve) / 1_000_000_000
         : 0;
-      const marketCap = (currentPrice * totalSupply) / 1e9;
+      // marketCap = price_per_token * total_whole_tokens (in SOL)
+      const totalWholeTokens = Number(totalSupplyBig / 1_000_000_000n);
+      const marketCap = currentPrice * totalWholeTokens;
 
       return {
         publicKey: pubkey.toBase58(),
