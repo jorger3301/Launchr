@@ -79,13 +79,13 @@ pub struct Graduate<'info> {
     /// Token mint
     #[account(
         mut,
-        constraint = mint.key() == launch.mint
+        constraint = mint.key() == launch.mint @ LaunchrError::InvalidConfig
     )]
     pub mint: Box<Account<'info, anchor_spl::token::Mint>>,
 
     /// Quote mint (WSOL)
     #[account(
-        constraint = quote_mint.key() == config.quote_mint
+        constraint = quote_mint.key() == config.quote_mint @ LaunchrError::InvalidConfig
     )]
     pub quote_mint: Box<Account<'info, anchor_spl::token::Mint>>,
 
@@ -94,7 +94,7 @@ pub struct Graduate<'info> {
         mut,
         seeds = [TOKEN_VAULT_SEED, launch.key().as_ref()],
         bump,
-        constraint = token_vault.mint == launch.mint
+        constraint = token_vault.mint == launch.mint @ LaunchrError::InvalidConfig
     )]
     pub token_vault: Account<'info, TokenAccount>,
 
@@ -103,7 +103,7 @@ pub struct Graduate<'info> {
         mut,
         seeds = [GRADUATION_VAULT_SEED, launch.key().as_ref()],
         bump,
-        constraint = graduation_vault.mint == launch.mint
+        constraint = graduation_vault.mint == launch.mint @ LaunchrError::InvalidConfig
     )]
     pub graduation_vault: Account<'info, TokenAccount>,
 
@@ -121,7 +121,7 @@ pub struct Graduate<'info> {
     /// Orbit Finance program
     /// CHECK: Verified against config
     #[account(
-        constraint = orbit_program.key() == config.orbit_program_id
+        constraint = orbit_program.key() == config.orbit_program_id @ LaunchrError::InvalidConfig
     )]
     pub orbit_program: UncheckedAccount<'info>,
     

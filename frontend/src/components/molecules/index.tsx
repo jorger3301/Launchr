@@ -5,7 +5,7 @@
  * Composed components that combine atoms for reusable UI patterns.
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Button,
   Input,
@@ -2230,9 +2230,10 @@ import {
   CandlestickSeries,
   LineSeries,
   AreaSeries,
+  HistogramSeries,
 } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, CandlestickData, LineData, AreaData, Time } from 'lightweight-charts';
-import { useRef } from 'react';
+import type { IChartApi, ISeriesApi, CandlestickData, LineData, AreaData, HistogramData, Time } from 'lightweight-charts';
+
 
 export interface PriceChartProps {
   data: Array<{
@@ -2247,6 +2248,8 @@ export interface PriceChartProps {
   height?: number;
   loading?: boolean;
   className?: string;
+  isDark?: boolean;
+  showIndicators?: boolean;
 }
 
 type AnySeries = ISeriesApi<'Candlestick'> | ISeriesApi<'Line'> | ISeriesApi<'Area'>;
@@ -2262,8 +2265,48 @@ const chartPriceFormatter = (price: number): string => {
   if (price < 0.0001) return price.toFixed(8);
   if (price < 0.01) return price.toFixed(6);
   if (price < 1) return price.toFixed(4);
+  if (price >= 1e9) return (price / 1e9).toFixed(2) + 'B';
+  if (price >= 1e6) return (price / 1e6).toFixed(2) + 'M';
+  if (price >= 1e4) return price.toFixed(0);
   return price.toFixed(2);
 };
+
+/** Compute Simple Moving Average over `period` closes */
+function computeSMA(
+  data: Array<{ time: Time; close: number }>,
+  period: number,
+): LineData<Time>[] {
+  const result: LineData<Time>[] = [];
+  for (let i = period - 1; i < data.length; i++) {
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += data[j].close;
+    result.push({ time: data[i].time, value: sum / period });
+  }
+  return result;
+}
+
+/** Theme colors for light/dark mode */
+function getChartColors(isDark: boolean) {
+  return {
+    textColor: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)',
+    gridColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.06)',
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+    crosshairLabelBg: '#22c55e',
+    upColor: '#22c55e',
+    downColor: '#ef4444',
+    lineColor: '#22c55e',
+    areaTop: 'rgba(34, 197, 94, 0.4)',
+    areaBottom: 'rgba(34, 197, 94, 0.0)',
+    markerBg: isDark ? '#0a0e17' : '#ffffff',
+    volumeUp: isDark ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.25)',
+    volumeDown: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.25)',
+    maColor: '#f59e0b',
+    overlayBg: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+    emptyStroke: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)',
+    emptyText: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+    emptySubtext: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)',
+  };
+}
 
 export const PriceChart: React.FC<PriceChartProps> = ({
   data,
@@ -2271,96 +2314,153 @@ export const PriceChart: React.FC<PriceChartProps> = ({
   height = 300,
   loading = false,
   className = '',
+  isDark = true,
+  showIndicators = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<AnySeries | null>(null);
-  const [chartReady, setChartReady] = useState(false);
+  const maSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
-  // Create chart once container is in DOM
+  /** Remove all existing series from chart */
+  const clearSeries = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    if (volumeSeriesRef.current) {
+      try { chart.removeSeries(volumeSeriesRef.current); } catch { /* already removed */ }
+      volumeSeriesRef.current = null;
+    }
+    if (maSeriesRef.current) {
+      try { chart.removeSeries(maSeriesRef.current); } catch { /* already removed */ }
+      maSeriesRef.current = null;
+    }
+    if (seriesRef.current) {
+      try { chart.removeSeries(seriesRef.current); } catch { /* already removed */ }
+      seriesRef.current = null;
+    }
+  }, []);
+
+  // Create chart ONCE when container mounts — no data/loading in deps
   useEffect(() => {
-    if (!containerRef.current || chartRef.current) return;
+    if (!containerRef.current) return;
+    // Prevent double-init in StrictMode
+    if (chartRef.current) return;
 
-    const chart = createChart(containerRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: 'rgba(255, 255, 255, 0.5)',
-        fontFamily: "'Inter', -apple-system, sans-serif",
-        fontSize: 11,
-      },
-      grid: {
-        vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
-        horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
-      },
-      crosshair: {
-        mode: 1,
-        vertLine: {
-          color: 'rgba(34, 197, 94, 0.3)',
-          width: 1,
-          style: 2,
-          labelBackgroundColor: '#22c55e',
+    const colors = getChartColors(isDark);
+
+    let chart: IChartApi;
+    try {
+      chart = createChart(containerRef.current, {
+        layout: {
+          background: { type: ColorType.Solid, color: 'transparent' },
+          textColor: colors.textColor,
+          fontFamily: "'Inter', -apple-system, sans-serif",
+          fontSize: 11,
         },
-        horzLine: {
-          color: 'rgba(34, 197, 94, 0.3)',
-          width: 1,
-          style: 2,
-          labelBackgroundColor: '#22c55e',
+        grid: {
+          vertLines: { color: colors.gridColor },
+          horzLines: { color: colors.gridColor },
         },
-      },
-      rightPriceScale: {
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        scaleMargins: { top: 0.1, bottom: 0.1 },
-      },
-      timeScale: {
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      localization: {
-        priceFormatter: chartPriceFormatter,
-      },
-      handleScale: { mouseWheel: true, pinch: true },
-      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-    });
+        crosshair: {
+          mode: 1,
+          vertLine: {
+            color: 'rgba(34, 197, 94, 0.3)',
+            width: 1,
+            style: 2,
+            labelBackgroundColor: colors.crosshairLabelBg,
+          },
+          horzLine: {
+            color: 'rgba(34, 197, 94, 0.3)',
+            width: 1,
+            style: 2,
+            labelBackgroundColor: colors.crosshairLabelBg,
+          },
+        },
+        rightPriceScale: {
+          borderColor: colors.borderColor,
+          scaleMargins: { top: 0.1, bottom: 0.2 },
+        },
+        timeScale: {
+          borderColor: colors.borderColor,
+          timeVisible: true,
+          secondsVisible: false,
+        },
+        localization: {
+          priceFormatter: chartPriceFormatter,
+        },
+        handleScale: { mouseWheel: true, pinch: true },
+        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      });
+    } catch (e) {
+      console.error('[PriceChart] Failed to create chart:', e);
+      return;
+    }
 
     chart.timeScale().fitContent();
     chartRef.current = chart;
-    setChartReady(true);
 
-    const handleResize = () => {
-      if (containerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: containerRef.current.clientWidth,
-        });
+    // Use ResizeObserver instead of window resize for accurate container sizing
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (chartRef.current) {
+          chartRef.current.applyOptions({ width: entry.contentRect.width });
+        }
       }
-    };
-
-    window.addEventListener('resize', handleResize);
-    handleResize();
+    });
+    ro.observe(containerRef.current);
+    resizeObserverRef.current = ro;
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      ro.disconnect();
+      resizeObserverRef.current = null;
+      clearSeries();
       chart.remove();
       chartRef.current = null;
-      seriesRef.current = null;
-      setChartReady(false);
     };
-  }, [loading, data]);
+  }, [clearSeries]);
 
-  // Update chart type and data
+  // Update theme colors when isDark changes (without recreating chart)
   useEffect(() => {
-    if (!chartRef.current || !chartReady) return;
+    if (!chartRef.current) return;
+    const colors = getChartColors(isDark);
+    chartRef.current.applyOptions({
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: colors.textColor,
+      },
+      grid: {
+        vertLines: { color: colors.gridColor },
+        horzLines: { color: colors.gridColor },
+      },
+      rightPriceScale: { borderColor: colors.borderColor },
+      timeScale: { borderColor: colors.borderColor },
+    });
+  }, [isDark]);
 
-    // Remove existing series
-    if (seriesRef.current) {
-      chartRef.current.removeSeries(seriesRef.current);
-      seriesRef.current = null;
-    }
+  // Update series data, chart type, and indicators
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    clearSeries();
 
     if (data.length === 0) return;
 
-    const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
+    const colors = getChartColors(isDark);
+    // Limit to last 2000 candles for performance, filter invalid data
+    const MAX_CANDLES = 2000;
+    const validData = data.filter((d) =>
+      Number.isFinite(d.open) && Number.isFinite(d.high) &&
+      Number.isFinite(d.low) && Number.isFinite(d.close) &&
+      Number.isFinite(d.timestamp) && d.timestamp > 0
+    );
+    const sortedData = validData
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-MAX_CANDLES);
     const chart = chartRef.current;
+
+    if (sortedData.length === 0) return;
 
     const seriesPriceFormat = {
       type: 'custom' as const,
@@ -2368,85 +2468,131 @@ export const PriceChart: React.FC<PriceChartProps> = ({
       formatter: chartPriceFormatter,
     };
 
-    if (chartType === 'candle') {
-      const candleSeries = chart.addSeries(CandlestickSeries, {
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderUpColor: '#22c55e',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
-        priceFormat: seriesPriceFormat,
-      });
+    // Prepare time-aligned data
+    const timeData = sortedData.map((d) => ({
+      time: Math.floor(d.timestamp / 1000) as Time,
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+      volume: Number.isFinite(d.volume) && d.volume >= 0 ? d.volume : 0,
+    }));
 
-      const candleData: CandlestickData<Time>[] = sortedData.map((d) => ({
-        time: Math.floor(d.timestamp / 1000) as Time,
-        open: d.open,
-        high: d.high,
-        low: d.low,
-        close: d.close,
-      }));
+    try {
+      // --- Volume histogram (rendered first so it appears behind price) ---
+      if (showIndicators) {
+        const volSeries = chart.addSeries(HistogramSeries, {
+          priceFormat: { type: 'volume' as const },
+          priceScaleId: 'volume',
+        });
+        chart.priceScale('volume').applyOptions({
+          scaleMargins: { top: 0.8, bottom: 0 },
+          visible: false,
+        });
+        const volData: HistogramData<Time>[] = timeData.map((d) => ({
+          time: d.time,
+          value: d.volume,
+          color: d.close >= d.open ? colors.volumeUp : colors.volumeDown,
+        }));
+        volSeries.setData(volData);
+        volumeSeriesRef.current = volSeries;
+      }
 
-      candleSeries.setData(candleData);
-      seriesRef.current = candleSeries as AnySeries;
-    } else if (chartType === 'line') {
-      const lineSeries = chart.addSeries(LineSeries, {
-        color: '#22c55e',
-        lineWidth: 2,
-        crosshairMarkerVisible: true,
-        crosshairMarkerRadius: 4,
-        crosshairMarkerBorderColor: '#22c55e',
-        crosshairMarkerBackgroundColor: '#0a0e17',
-        priceFormat: seriesPriceFormat,
-      });
+      // --- Main price series ---
+      if (chartType === 'candle') {
+        const candleSeries = chart.addSeries(CandlestickSeries, {
+          upColor: colors.upColor,
+          downColor: colors.downColor,
+          borderUpColor: colors.upColor,
+          borderDownColor: colors.downColor,
+          wickUpColor: colors.upColor,
+          wickDownColor: colors.downColor,
+          priceFormat: seriesPriceFormat,
+        });
+        const candleData: CandlestickData<Time>[] = timeData.map((d) => ({
+          time: d.time,
+          open: d.open,
+          high: d.high,
+          low: d.low,
+          close: d.close,
+        }));
+        candleSeries.setData(candleData);
+        seriesRef.current = candleSeries as AnySeries;
+      } else if (chartType === 'line') {
+        const lineSeries = chart.addSeries(LineSeries, {
+          color: colors.lineColor,
+          lineWidth: 2,
+          crosshairMarkerVisible: true,
+          crosshairMarkerRadius: 4,
+          crosshairMarkerBorderColor: colors.lineColor,
+          crosshairMarkerBackgroundColor: colors.markerBg,
+          priceFormat: seriesPriceFormat,
+        });
+        const lineData: LineData<Time>[] = timeData.map((d) => ({
+          time: d.time,
+          value: d.close,
+        }));
+        lineSeries.setData(lineData);
+        seriesRef.current = lineSeries as AnySeries;
+      } else if (chartType === 'area') {
+        const areaSeries = chart.addSeries(AreaSeries, {
+          topColor: colors.areaTop,
+          bottomColor: colors.areaBottom,
+          lineColor: colors.lineColor,
+          lineWidth: 2,
+          crosshairMarkerVisible: true,
+          crosshairMarkerRadius: 4,
+          crosshairMarkerBorderColor: colors.lineColor,
+          crosshairMarkerBackgroundColor: colors.markerBg,
+          priceFormat: seriesPriceFormat,
+        });
+        const areaData: AreaData<Time>[] = timeData.map((d) => ({
+          time: d.time,
+          value: d.close,
+        }));
+        areaSeries.setData(areaData);
+        seriesRef.current = areaSeries as AnySeries;
+      }
 
-      const lineData: LineData<Time>[] = sortedData.map((d) => ({
-        time: Math.floor(d.timestamp / 1000) as Time,
-        value: d.close,
-      }));
+      // --- MA(7) overlay ---
+      if (showIndicators && timeData.length >= 7) {
+        const maData = computeSMA(timeData, 7);
+        const maSeries = chart.addSeries(LineSeries, {
+          color: colors.maColor,
+          lineWidth: 1,
+          crosshairMarkerVisible: false,
+          priceFormat: seriesPriceFormat,
+          lastValueVisible: false,
+          priceLineVisible: false,
+        });
+        maSeries.setData(maData);
+        maSeriesRef.current = maSeries;
+      }
 
-      lineSeries.setData(lineData);
-      seriesRef.current = lineSeries as AnySeries;
-    } else if (chartType === 'area') {
-      const areaSeries = chart.addSeries(AreaSeries, {
-        topColor: 'rgba(34, 197, 94, 0.4)',
-        bottomColor: 'rgba(34, 197, 94, 0.0)',
-        lineColor: '#22c55e',
-        lineWidth: 2,
-        crosshairMarkerVisible: true,
-        crosshairMarkerRadius: 4,
-        crosshairMarkerBorderColor: '#22c55e',
-        crosshairMarkerBackgroundColor: '#0a0e17',
-        priceFormat: seriesPriceFormat,
-      });
-
-      const areaData: AreaData<Time>[] = sortedData.map((d) => ({
-        time: Math.floor(d.timestamp / 1000) as Time,
-        value: d.close,
-      }));
-
-      areaSeries.setData(areaData);
-      seriesRef.current = areaSeries as AnySeries;
+      chart.timeScale().fitContent();
+    } catch (e) {
+      console.error('[PriceChart] Failed to update series:', e);
     }
+  }, [data, chartType, showIndicators, isDark, clearSeries]);
 
-    chart.timeScale().fitContent();
-  }, [data, chartType, chartReady]);
-
-  // Always render the container div so chart can be created
-  // Overlay loading/empty states on top
-  const showOverlay = loading || data.length === 0;
+  const colors = getChartColors(isDark);
 
   return (
     <div style={{ position: 'relative', height, width: '100%' }} className={className}>
       <div
         ref={containerRef}
-        style={{ height: '100%', width: '100%', visibility: showOverlay ? 'hidden' : 'visible' }}
+        style={{
+          height: '100%',
+          width: '100%',
+          opacity: loading ? 0.3 : 1,
+          transition: 'opacity 0.2s ease',
+        }}
       />
       {loading && (
         <div
           style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(255, 255, 255, 0.02)', borderRadius: 12,
+            background: colors.overlayBg, borderRadius: 12,
           }}
         >
           <Spinner size="md" />
@@ -2456,16 +2602,16 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         <div
           style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(255, 255, 255, 0.02)', borderRadius: 12,
+            background: colors.overlayBg, borderRadius: 12,
           }}
         >
-          <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.5}>
+          <svg width={32} height={32} viewBox="0 0 24 24" fill="none" stroke={colors.emptyStroke} strokeWidth={1.5}>
             <line x1="12" y1="20" x2="12" y2="10"/>
             <line x1="18" y1="20" x2="18" y2="4"/>
             <line x1="6" y1="20" x2="6" y2="16"/>
           </svg>
-          <span className="text-sm text-gray-500 mt-3">No trading data yet</span>
-          <span className="text-xs text-gray-600 mt-1">Chart will appear after first trade</span>
+          <span style={{ fontSize: 14, color: colors.emptyText, marginTop: 12 }}>No trading data yet</span>
+          <span style={{ fontSize: 12, color: colors.emptySubtext, marginTop: 4 }}>Chart will appear after first trade</span>
         </div>
       )}
     </div>

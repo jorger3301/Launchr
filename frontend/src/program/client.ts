@@ -480,24 +480,14 @@ export class LaunchrClient {
     const [userPosition] = this.pdas.userPosition(launchPk, buyer);
     const [feeVault] = this.pdas.feeVault(configPda);
 
-    // Get buyer's ATA
+    // Get buyer's ATA (the program's init_if_needed handles creation)
     const buyerAta = await getAssociatedTokenAddress(mint, buyer);
 
     const transaction = new Transaction();
 
-    // Check if buyer's ATA exists, create if not
-    try {
-      await getAccount(this.connection, buyerAta);
-    } catch {
-      transaction.add(
-        createAssociatedTokenAccountInstruction(
-          buyer,
-          buyerAta,
-          buyer,
-          mint
-        )
-      );
-    }
+    // Note: ATA creation is handled by the program via init_if_needed on buyer_token_account.
+    // Do NOT add a separate createAssociatedTokenAccountInstruction here — having both
+    // in the same transaction can cause "assertion failed" / "already in use" errors.
 
     // Build buy instruction
     const buyInstruction = new TransactionInstruction({

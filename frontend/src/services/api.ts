@@ -222,6 +222,32 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------------------
+  // CHART (Supabase-backed endpoints)
+  // ---------------------------------------------------------------------------
+
+  async getChartTrades(launchId: string, limit = 50): Promise<ApiResponse<TradesResponse>> {
+    try {
+      const url = `${this.baseUrl}/api/chart/${launchId}/trades?limit=${limit}`;
+      const response = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
+      if (!response.ok) return { error: `HTTP ${response.status}` };
+      const data = await response.json();
+      // Normalize Supabase trade format → TradeData format
+      const trades = (data.trades || []).map((t: any) => ({
+        type: t.type || t.swap_type || 'buy',
+        user: t.trader || '',
+        amount: t.tokenAmount || 0,
+        solAmount: t.solAmount || 0,
+        price: t.price || 0,
+        timestamp: typeof t.time === 'number' ? Math.floor(t.time / 1000) : t.time || 0,
+        txSignature: t.signature || '',
+      }));
+      return { data: { trades } };
+    } catch {
+      return { error: 'Chart trades unavailable' };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // USERS
   // ---------------------------------------------------------------------------
 
@@ -405,7 +431,7 @@ class WebSocketClient {
   }
 
   connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return;
 
     try {
       this.ws = new WebSocket(this.url);
@@ -494,30 +520,43 @@ class WebSocketClient {
       }
 
       if (channel === 'trades') {
-        // Validate trade data has required fields
-        if (
-          typeof data.trader !== 'string' ||
-          typeof data.launch !== 'string' ||
-          data.tokenAmount === undefined ||
-          data.solAmount === undefined
-        ) {
-          console.warn('Invalid trade data - missing required fields:', data);
+        // Normalize field names — backend may use 'user' or 'trader', 'amount' or 'tokenAmount'
+        const trader = data.trader || data.user || '';
+        const launch = data.launch || data.launchPk || data.launchId || '';
+        const tokenAmount = data.tokenAmount ?? data.amount ?? 0;
+        const solAmount = data.solAmount ?? 0;
+
+        // Validate trade data has minimum required fields
+        if (!trader || !launch) {
+          console.warn('Invalid trade data - missing trader or launch:', data);
           return;
+        }
+
+        // Normalize timestamp: backend sends 'time' (ms) or 'timestamp' (s)
+        let timestamp = data.timestamp;
+        if (timestamp === undefined && data.time !== undefined) {
+          // Backend sends time in milliseconds, convert to seconds for frontend
+          timestamp = typeof data.time === 'number' && data.time > 1e12
+            ? Math.floor(data.time / 1000)
+            : data.time;
+        }
+        if (timestamp === undefined) {
+          timestamp = Math.floor(Date.now() / 1000);
         }
 
         // Transform trade data to frontend format
         const normalized: NormalizedMessage = {
           type: 'trade',
           data: {
-            type: data.type || 'buy',
-            user: data.trader,
-            amount: data.tokenAmount ?? 0,
-            solAmount: data.solAmount ?? 0,
+            type: data.type || data.swapType || 'buy',
+            user: trader,
+            amount: tokenAmount,
+            solAmount: solAmount,
             price: data.price ?? 0,
-            timestamp: data.timestamp ?? Date.now(),
-            txSignature: data.signature || '',
+            timestamp,
+            txSignature: data.signature || data.txSignature || '',
           },
-          launchPk: data.launch
+          launchPk: launch
         };
         this.handlers.forEach(handler => handler(normalized));
       } else if (channel === 'launches') {

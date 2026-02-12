@@ -132,7 +132,15 @@ async function prepareAndSimulateTransaction(
   transaction.feePayer = feePayer;
 
   // Step 3: Simulate transaction to verify it will succeed
-  const simulation = await connection.simulateTransaction(transaction);
+  let simulation;
+  try {
+    simulation = await connection.simulateTransaction(transaction);
+  } catch (simErr) {
+    // Catch serialization/encoding errors (e.g., assert failures in web3.js)
+    const errMsg = simErr instanceof Error ? simErr.message : String(simErr);
+    console.error('[LAUNCHR_TX] Simulation call failed:', errMsg);
+    throw new Error(`Transaction simulation error: ${errMsg}`);
+  }
   const simDetails = extractSimulationDetails(simulation.value);
 
   // Log simulation details regardless of success/failure
@@ -830,10 +838,24 @@ export function useLaunch(publicKey: string | undefined) {
       }
 
       setLaunch(launchRes.data);
-      setTrades(tradesRes.data?.trades || []);
+
+      // Log trade fetch errors but don't block the page
+      if (tradesRes.error) {
+        console.warn('Trade fetch failed:', tradesRes.error);
+      }
+      let fetchedTrades = tradesRes.data?.trades || [];
+
+      // Fallback: try Supabase chart API if indexer returned empty
+      if (fetchedTrades.length === 0) {
+        const chartTradesRes = await api.getChartTrades(publicKey, 50);
+        if (chartTradesRes.data?.trades && chartTradesRes.data.trades.length > 0) {
+          fetchedTrades = chartTradesRes.data.trades;
+        }
+      }
+      setTrades(fetchedTrades);
 
       // Build price history from trades
-      const history = (tradesRes.data?.trades || [])
+      const history = fetchedTrades
         .filter(t => t.price !== undefined)
         .map(t => ({
           timestamp: t.timestamp,
@@ -1034,10 +1056,11 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
   }, [connection]);
 
   // Estimate buy output
+  // Returns both display-friendly numbers AND raw BN for slippage calculations
   const estimateBuy = useCallback((solAmount: number, context: TradeContext) => {
     const client = clientRef.current;
     if (!client) {
-      return { tokensOut: 0, priceImpact: 0 };
+      return { tokensOut: 0, tokensOutBN: new BN(0), priceImpact: 0 };
     }
 
     const solLamports = new BN(Math.floor(solAmount * LAMPORTS_PER_SOL));
@@ -1054,18 +1077,21 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
 
     return {
       tokensOut: safeToNumber(tokensOut) / 1e9,
+      tokensOutBN: tokensOut, // Keep raw BN for slippage calc (avoids > 2^53 overflow)
       priceImpact,
     };
   }, []);
 
   // Estimate sell output
+  // Returns both display-friendly numbers AND raw BN for slippage calculations
   const estimateSell = useCallback((tokenAmount: number, context: TradeContext) => {
     const client = clientRef.current;
     if (!client) {
-      return { solOut: 0, priceImpact: 0 };
+      return { solOut: 0, solOutBN: new BN(0), priceImpact: 0 };
     }
 
-    const tokenLamports = new BN(Math.floor(tokenAmount * 1e9));
+    // Use BN multiplication to avoid JS precision loss for amounts > 2^53
+    const tokenLamports = new BN(String(Math.floor(tokenAmount))).mul(new BN('1000000000'));
     const virtualSolReserve = new BN(String(context.virtualSolReserve || 30 * LAMPORTS_PER_SOL));
     const virtualTokenReserve = new BN(String(context.virtualTokenReserve || '800000000000000000'));
 
@@ -1079,6 +1105,7 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
 
     return {
       solOut: safeToNumber(solOut) / LAMPORTS_PER_SOL,
+      solOutBN: solOut, // Keep raw BN for slippage calc
       priceImpact,
     };
   }, []);
@@ -1110,13 +1137,17 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
 
       txLog({ action: 'buy', wallet: wallet.address, mint: context.mint, amountIn: String(solAmount), slippage, rpcEndpoint: RPC_ENDPOINT });
 
-      // Calculate expected output and apply slippage
+      // Calculate expected output and apply slippage using BN arithmetic
+      // (token amounts in base units exceed 2^53, so JS numbers lose precision / BN asserts)
       const estimate = estimateBuy(solAmount, context);
-      const minTokensOut = Math.floor(estimate.tokensOut * (1 - slippage / 100) * 1e9);
+      const slippageBps = Math.floor(slippage * 100); // e.g., 1% → 100 bps
+      const minTokensOut = estimate.tokensOutBN
+        .muln(10000 - slippageBps)
+        .divn(10000);
 
       const params: BuyParams = {
         solAmount: new BN(Math.floor(solAmount * LAMPORTS_PER_SOL)),
-        minTokensOut: new BN(minTokensOut),
+        minTokensOut,
       };
 
       // Step 1: Build transaction using LaunchrClient
@@ -1193,14 +1224,29 @@ export function useTrade(wallet: UseWalletResult): UseTradeResult & {
         throw new Error(idem.reason || 'No tokens to sell');
       }
 
-      // Calculate expected output and apply slippage
+      // Calculate expected output and apply slippage using BN arithmetic
+      // (token amounts in base units exceed 2^53, so JS numbers lose precision / BN asserts)
       const estimate = estimateSell(tokenAmount, context);
-      const minSolOut = Math.floor(estimate.solOut * (1 - slippage / 100) * LAMPORTS_PER_SOL);
+      const slippageBps = Math.floor(slippage * 100); // e.g., 1% → 100 bps
+      const minSolOut = estimate.solOutBN
+        .muln(10000 - slippageBps)
+        .divn(10000);
 
       const params: SellParams = {
-        tokenAmount: new BN(Math.floor(tokenAmount * 1e9)),
-        minSolOut: new BN(minSolOut),
+        // Use BN multiplication to avoid JS precision loss for amounts > 2^53
+        tokenAmount: new BN(String(Math.floor(tokenAmount))).mul(new BN('1000000000')),
+        minSolOut,
       };
+
+      console.log('[LAUNCHR_SELL] params:', {
+        tokenAmount: params.tokenAmount.toString(),
+        minSolOut: params.minSolOut.toString(),
+        estimatedSolOut: estimate.solOutBN.toString(),
+        slippageBps,
+        reserves: { sol: String(context.virtualSolReserve), token: String(context.virtualTokenReserve) },
+        creator: context.creator,
+        mint: context.mint,
+      });
 
       // Step 1: Build transaction using LaunchrClient
       const tx = await client.buildSellTx(seller, launchPubkey, mint, creator, params);
@@ -1981,6 +2027,7 @@ export function useMultipleTokenMetadata(mintAddresses: string[]): {
       if (response.data?.metadata) {
         const newMap = new Map<string, TokenMetadata>();
         Object.entries(response.data.metadata).forEach(([mint, data]) => {
+          if (!data) return;
           newMap.set(mint, {
             mint: data.mint,
             name: data.name,

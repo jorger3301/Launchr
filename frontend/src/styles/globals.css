@@ -561,6 +561,16 @@ textarea:focus-visible {
   animation: ticker-scroll 30s linear infinite;
 }
 
+.ticker-scroll:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-scroll {
+    animation: none;
+  }
+}
+
 /* Modal entrance */
 @keyframes modal-enter {
   from {
@@ -890,6 +900,17 @@ textarea:focus-visible {
 }
 
 /* Card entrance with stagger for grid */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .grid-stagger > * {
   animation: fade-in-up 0.4s var(--ease-out-expo) both;
 }
@@ -900,6 +921,22 @@ textarea:focus-visible {
 .grid-stagger > *:nth-child(4) { animation-delay: 0.15s; }
 .grid-stagger > *:nth-child(5) { animation-delay: 0.2s; }
 .grid-stagger > *:nth-child(6) { animation-delay: 0.25s; }
+
+/* Detail page responsive layout */
+@media (max-width: 1292px) {
+  .detail-grid {
+    grid-template-columns: 1fr 320px !important;
+  }
+}
+
+@media (max-width: 1024px) {
+  .detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .detail-sidebar {
+    position: static !important;
+  }
+}
 
 /* Glowing border effect */
 @keyframes glow-border {

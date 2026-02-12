@@ -208,6 +208,7 @@ export const TradeHistory: React.FC<TradeHistoryProps> = ({
           trades.map((trade, i) => (
             <div
               key={`${trade.signature}-${i}`}
+              onClick={trade.signature ? () => window.open(`https://solscan.io/tx/${trade.signature}?cluster=devnet`, '_blank') : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -215,6 +216,7 @@ export const TradeHistory: React.FC<TradeHistoryProps> = ({
                 padding: '8px 0',
                 borderBottom: i < trades.length - 1 ? '1px solid var(--glass-border)' : 'none',
                 animation: i === 0 ? 'fu 0.3s ease-out' : undefined,
+                cursor: trade.signature ? 'pointer' : undefined,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>

@@ -565,9 +565,13 @@ export class SolanaService {
         const isBuy = data.readUInt8(offset) === 1; offset += 1;
         const solAmount = Number(data.readBigUInt64LE(offset)); offset += 8;
         const tokenAmount = Number(data.readBigUInt64LE(offset)); offset += 8;
-        const price = Number(data.readBigUInt64LE(offset)); offset += 8;
+        const priceRaw = Number(data.readBigUInt64LE(offset)); offset += 8;
         offset += 16; // Skip protocol_fee and creator_fee
         const timestamp = Number(data.readBigInt64LE(offset));
+
+        // price_after from the on-chain event is a scaled u64 (lamports-per-token).
+        // Convert to SOL-per-token to match the format used by currentPrice and mock data.
+        const price = priceRaw / 1e9;
 
         return {
           signature,

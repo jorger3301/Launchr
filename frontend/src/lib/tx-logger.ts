@@ -48,6 +48,15 @@ interface AnchorErrorInfo {
   userMessage: string;
 }
 
+// Anchor framework errors (2000-2999) that indicate account/constraint issues
+const ANCHOR_FRAMEWORK_ERRORS: Record<number, AnchorErrorInfo> = {
+  2001: { name: 'AccountDiscriminatorMismatch', message: 'Account discriminator mismatch', bucket: 'program_state', retryable: false, userMessage: 'Account data is corrupted or wrong type. The account may not exist yet.' },
+  2003: { name: 'AccountNotInitialized', message: 'Account not initialized', bucket: 'missing_rent_or_ata', retryable: false, userMessage: 'A required account has not been initialized. Try buying first to create your position.' },
+  2006: { name: 'ConstraintSeeds', message: 'PDA seeds constraint violated', bucket: 'account_ordering', retryable: false, userMessage: 'Account address mismatch. Please refresh the page and try again.' },
+  2012: { name: 'ConstraintHasOne', message: 'Has-one constraint violated', bucket: 'invalid_input', retryable: false, userMessage: 'Account ownership mismatch. Please refresh the page and try again.' },
+  2009: { name: 'ConstraintAssociated', message: 'Associated constraint violated', bucket: 'missing_rent_or_ata', retryable: false, userMessage: 'Token account mismatch. Please refresh the page and try again.' },
+};
+
 const LAUNCHR_ERROR_CODES: Record<number, AnchorErrorInfo> = {
   6000: { name: 'TradeTooSmall', message: 'Trade amount is too small', bucket: 'invalid_input', retryable: false, userMessage: 'Trade amount is too small. Please increase the amount.' },
   6001: { name: 'InvalidReserves', message: 'Invalid reserves', bucket: 'program_state', retryable: false, userMessage: 'Pool reserves are in an invalid state. Please try again later.' },
@@ -107,18 +116,20 @@ export function classifyError(err: unknown): ClassifiedError {
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
 
-  // 1. Check for Anchor custom program errors first
+  // 1. Check for Anchor custom program errors first (app-level 6000+ and framework-level 2000+)
   const code = extractAnchorErrorCode(raw);
-  if (code !== null && LAUNCHR_ERROR_CODES[code]) {
-    const info = LAUNCHR_ERROR_CODES[code];
-    return {
-      bucket: info.bucket,
-      code,
-      name: info.name,
-      userMessage: info.userMessage,
-      retryable: info.retryable,
-      raw,
-    };
+  if (code !== null) {
+    const info = LAUNCHR_ERROR_CODES[code] || ANCHOR_FRAMEWORK_ERRORS[code];
+    if (info) {
+      return {
+        bucket: info.bucket,
+        code,
+        name: info.name,
+        userMessage: info.userMessage,
+        retryable: info.retryable,
+        raw,
+      };
+    }
   }
 
   // 2. Wallet rejection

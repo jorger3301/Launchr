@@ -33,6 +33,7 @@ import {
 } from './hooks';
 
 import { WalletSelector, PriceChart, OfflineIndicator, type LaunchStatus } from './components/molecules';
+import { ErrorBoundary } from './components/atoms';
 import { TradeHistory } from './components/chart';
 import { api, wsClient, NormalizedMessage } from './services/api';
 import { classifyError } from './lib/tx-logger';
@@ -118,10 +119,14 @@ const fP = (p: number): string => {
   if (p === 0) return '0.00';
   // For very small bonding curve prices, show significant digits without scientific notation
   if (p < 0.000001) {
-    // Count leading zeros after decimal, then show 4 significant digits
+    // Count leading zeros after decimal, then show significant digits (no trailing zeros)
     const s = p.toFixed(20);
     const m = s.match(/^0\.(0*?)([1-9]\d{0,3})/);
-    return m ? `0.${m[1]}${m[2]}` : p.toExponential(2);
+    if (m) {
+      const sig = m[2].replace(/0+$/, '');
+      return `0.${m[1]}${sig}`;
+    }
+    return p.toExponential(2);
   }
   if (p < 0.0001) return p.toFixed(8);
   if (p < 0.01) return p.toFixed(6);
@@ -194,6 +199,7 @@ const Avatar: React.FC<AvatarProps> = ({ gi, size = 36, imageUrl, symbol }) => {
     <div style={{
       width: size,
       height: size,
+      aspectRatio: "1 / 1",
       borderRadius,
       position: "relative",
       flexShrink: 0,
@@ -785,18 +791,26 @@ const GradientProgress: React.FC<GradientProgressProps> = ({
   const isNearComplete = clampedValue >= 90;
 
   return (
-    <div style={{
-      width: '100%',
-      height,
-      borderRadius: height / 2,
-      background: 'var(--glass2)',
-      overflow: 'hidden',
-      position: 'relative'
-    }}>
+    <div
+      role="progressbar"
+      aria-valuenow={parseFloat(clampedValue.toFixed(2))}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label="Graduation progress"
+      style={{
+        width: '100%',
+        height,
+        borderRadius: height / 2,
+        background: 'var(--glass2)',
+        overflow: 'hidden',
+        position: 'relative'
+      }}
+    >
       <div
         className={animated ? 'progress-animate' : ''}
         style={{
           width: `${clampedValue}%`,
+          minWidth: clampedValue > 0 ? 4 : 0,
           height: '100%',
           borderRadius: height / 2,
           background: isNearComplete
@@ -1935,12 +1949,12 @@ const Badge: React.FC<BadgeProps> = ({ status, isDark }) => {
 // ---------------------------------------------------------------------------
 
 interface ChgProps {
-  v: number;
+  v: number | null | undefined;
 }
 
 const Chg: React.FC<ChgProps> = ({ v }) => {
-  // Show "—" when no real price change data is available
-  if (v === 0) {
+  // Show "—" only when data is genuinely unavailable (null/undefined)
+  if (v == null) {
     return (
       <span style={{
         color: "var(--t3)",
@@ -2110,17 +2124,9 @@ const App: React.FC = () => {
     return null;
   });
   const [route, setRoute] = useState<Route>(() => {
-    try {
-      const saved = localStorage.getItem('launchr_route');
-      if (saved) {
-        const persisted: PersistedRoute = JSON.parse(saved);
-        // For detail pages, we wait for launches to load (handled by useEffect)
-        if (persisted.type === 'detail') {
-          return { type: 'home' };
-        }
-        return persisted as Route;
-      }
-    } catch {}
+    // Always start at 'home' on fresh load. Detail pages are restored via
+    // pendingDetailId once launches finish loading. Other pages (settings,
+    // profile, etc.) should not persist — visiting "/" must show the homepage.
     return { type: 'home' };
   });
   const [searchQuery, setSearchQuery] = useState('');
@@ -2314,6 +2320,44 @@ const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
+  // Dynamic page title + OG meta tags
+  useEffect(() => {
+    const base = 'Launchr';
+    let title = base;
+    let description = 'Launch into Orbit — bonding curve token launches on Solana';
+
+    if (route.type === 'detail') {
+      const l = route.launch;
+      title = `${l.symbol} — ${base}`;
+      description = `Trade ${l.name} ($${l.symbol}) on Launchr bonding curve`;
+    } else if (route.type === 'launches') {
+      title = `Launches — ${base}`;
+    } else if (route.type === 'profile') {
+      title = `Portfolio — ${base}`;
+    } else if (route.type === 'settings') {
+      title = `Settings — ${base}`;
+    } else if (route.type === 'create') {
+      title = `Create Token — ${base}`;
+    }
+
+    document.title = title;
+
+    // Update OG meta tags
+    const setMeta = (property: string, content: string) => {
+      let el = document.querySelector(`meta[property="${property}"]`);
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('property', property);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+    setMeta('og:title', title);
+    setMeta('og:description', description);
+    setMeta('og:site_name', 'Launchr');
+    setMeta('og:type', 'website');
+  }, [route]);
+
   // ---- Hooks (mock or real) ----
   const wallet = USE_MOCKS ? useMockWallet() : useRealWallet();
   const launchesData = USE_MOCKS ? useMockLaunches() : useRealLaunches();
@@ -2347,20 +2391,22 @@ const App: React.FC = () => {
   const availableWallets = useAvailableWallets();
   const [showWalletSelector, setShowWalletSelector] = useState(false);
   const [showNavMenu, setShowNavMenu] = useState(false);
+  const [showWalletDropdown, setShowWalletDropdown] = useState(false);
+  const [walletCopied, setWalletCopied] = useState(false);
 
   // Network connectivity status
   const isOnline = useOnlineStatus();
 
   const currentLaunchPk = route.type === 'detail' ? route.launch.publicKey : undefined;
   const launchDetail = USE_MOCKS ? useMockLaunch(currentLaunchPk) : useRealLaunch(currentLaunchPk);
-  const { trades: rawTrades = [] } = launchDetail;
+  const { trades: rawTrades = [], loading: detailLoading } = launchDetail;
 
   // User balances for trading (real token balance from on-chain)
   const userAddress = wallet.connected ? wallet.address : undefined;
-  const { balances: userBalances } = useUserBalances(userAddress ?? undefined, currentLaunchPk);
+  const { balances: userBalances, refetch: refetchBalances } = useUserBalances(userAddress ?? undefined, currentLaunchPk);
 
   // Launch holders data
-  const { holders: launchHolders = [], totalHolders = 0 } = useLaunchHolders(currentLaunchPk);
+  const { holders: launchHolders = [], totalHolders = 0, loading: holdersLoading } = useLaunchHolders(currentLaunchPk);
 
   // User positions for portfolio view (from API - used when not mocking)
   const { positions: apiUserPositions = [], totalValue: apiPortfolioValue = 0, totalPnl: apiPortfolioPnl = 0 } = useUserPositions(userAddress ?? undefined);
@@ -2372,7 +2418,7 @@ const App: React.FC = () => {
   const { stats: userProfileStats } = useUserStats(userAddress ?? undefined);
 
   // Chart data for detail page (lifted from Detail component)
-  const { candles = [], loading: chartLoading } = useLaunchChart(currentLaunchPk, chartTimeframe);
+  const { candles = [], loading: chartLoading, refetch: refetchChart } = useLaunchChart(currentLaunchPk, chartTimeframe);
 
   // Transform launches to our format
   const launches: LaunchItem[] = useMemo(() => {
@@ -2481,9 +2527,12 @@ const App: React.FC = () => {
   const launchesRef = useRef(launches);
   launchesRef.current = launches;
 
-  // Listen for graduation events via WebSocket
+  // Listen for graduation events via WebSocket (guard against StrictMode double-invoke)
+  const wsConnectedRef = useRef(false);
   useEffect(() => {
     if (!settings.notifications.graduationAlerts) return;
+    if (wsConnectedRef.current) return;
+    wsConnectedRef.current = true;
 
     try {
       wsClient.connect();
@@ -2524,6 +2573,7 @@ const App: React.FC = () => {
     });
 
     return () => {
+      wsConnectedRef.current = false;
       wsClient.unsubscribeChannel('launches');
       unsubscribe();
     };
@@ -2566,7 +2616,16 @@ const App: React.FC = () => {
 
     // Tab filters
     if (tab === "trending") {
-      l = l.filter(x => x.status !== "Graduated").sort((a, b) => b.volume24h - a.volume24h);
+      l = l.filter(x => x.status !== "Graduated").sort((a, b) => {
+        // Primary: 24h volume (descending)
+        const volDiff = b.volume24h - a.volume24h;
+        if (volDiff !== 0) return volDiff;
+        // Secondary: trade count (descending)
+        const tradeDiff = (b.trades || 0) - (a.trades || 0);
+        if (tradeDiff !== 0) return tradeDiff;
+        // Tertiary: most recent first
+        return b.createdAt - a.createdAt;
+      });
     } else if (tab === "graduated") {
       l = l.filter(x => x.status === "Graduated");
     } else if (tab === "watchlist") {
@@ -2635,13 +2694,14 @@ const App: React.FC = () => {
       creatorMap.set(l.creator, existing);
     });
     return Array.from(creatorMap.entries())
+      .filter(([, data]) => data.totalVol > 0 || data.trades > 0) // Exclude zero-activity entries
       .sort((a, b) => b[1].totalVol - a[1].totalVol)
       .slice(0, 10)
       .map(([address, data], i) => ({
         rank: i + 1,
         address,
-        totalPnl: data.totalVol,
-        winRate: Math.min(95, 50 + data.launches * 5),
+        totalPnl: data.totalVol / 1e9, // Convert lamports to SOL
+        winRate: data.trades > 0 ? Math.round((data.launches / Math.max(data.trades, 1)) * 100) : 0,
         trades: data.trades,
         avatar: i % 10,
       }));
@@ -2858,10 +2918,12 @@ const App: React.FC = () => {
     });
   }, [portfolioStats.totalValue]);
 
-  // Time ago helper
+  // Time ago helper — handles both seconds (Solana) and milliseconds (JS)
   function getTimeAgo(timestamp: number): string {
-    const diff = Date.now() - timestamp;
+    const ts = timestamp < 1e12 ? timestamp * 1000 : timestamp;
+    const diff = Date.now() - ts;
     if (diff < 0) return 'just now';
+    if (diff < 60000) return `${Math.max(1, Math.floor(diff / 1000))}s ago`;
     const mins = Math.floor(diff / 60000);
     if (mins < 60) return `${mins}m ago`;
     const hours = Math.floor(mins / 60);
@@ -2907,10 +2969,14 @@ const App: React.FC = () => {
     }
 
     // Simulation failed (catches issues before tx is sent)
+    // Extract the classified error detail from the hooks layer instead of showing generic message.
+    // Format from hooks: "Transaction simulation failed: <classifiedMsg> [<rawError>]"
     if (errorLower.includes('simulation failed')) {
+      const classifiedMatch = errorStr.match(/simulation failed:\s*(.+?)(?:\s*\[|$)/);
+      const detail = classifiedMatch?.[1]?.trim() || 'The transaction would fail on-chain. Check your inputs and try again.';
       return {
         message: 'Transaction simulation failed',
-        detail: 'The transaction would fail on-chain. Check your inputs and try again.'
+        detail,
       };
     }
 
@@ -2980,9 +3046,59 @@ const App: React.FC = () => {
     setTradeLoading(true);
     setTradeSuccess(false);
     try {
-      tradeType === 'buy'
-        ? await trade.buy(currentLaunchPk, amount, settings.defaultSlippage)
-        : await trade.sell(currentLaunchPk, amount, settings.defaultSlippage);
+      if (tradeType === 'buy') {
+        await trade.buy(currentLaunchPk, amount, settings.defaultSlippage);
+      } else {
+        // Sell flow: use sellWithContext with loaded launch data to avoid
+        // stale reserves from a redundant API re-fetch.
+        const ld = launchDetail.launch;
+        if (!ld) {
+          showToast('Launch data not loaded. Please wait and try again.', 'error');
+          return;
+        }
+        if (!userBalances || userBalances.tokenBalance <= 0) {
+          showToast('Token balance not loaded yet. Please wait a moment and try again.', 'error');
+          return;
+        }
+
+        // Convert M-display amount to whole token units, clamped to actual balance
+        const sellTokens = Math.min(
+          Math.floor(amount * 1e6),
+          Math.floor(userBalances.tokenBalance)
+        );
+
+        if (sellTokens <= 0) {
+          showToast('Sell amount is too small or balance is zero.', 'error');
+          return;
+        }
+
+        console.log('[LAUNCHR_SELL] amount (M-display):', amount, 'sellTokens (whole):', sellTokens,
+          'tokenBalance (uiAmount):', userBalances.tokenBalance,
+          'virtualSolReserve:', ld.virtualSolReserve, 'virtualTokenReserve:', ld.virtualTokenReserve,
+          'slippage:', settings.defaultSlippage);
+
+        const sellCtx = {
+          mint: ld.mint,
+          creator: ld.creator,
+          virtualSolReserve: ld.virtualSolReserve,
+          virtualTokenReserve: ld.virtualTokenReserve,
+          protocolFeeBps: 100,
+          creatorFeeBps: ld.creatorFeeBps || 0,
+        };
+
+        // Use sellWithContext to pass loaded launch data directly (avoids stale API re-fetch).
+        // Falls back to legacy sell() if sellWithContext is unavailable (mock mode).
+        type SellWithCtx = (pk: string, amt: number, slip: number, ctx: typeof sellCtx) => Promise<string>;
+        const sellFn = 'sellWithContext' in trade
+          ? (trade as unknown as { sellWithContext: SellWithCtx }).sellWithContext
+          : undefined;
+        if (sellFn) {
+          await sellFn(currentLaunchPk, sellTokens, settings.defaultSlippage, sellCtx);
+        } else {
+          await trade.sell(currentLaunchPk, sellTokens, settings.defaultSlippage);
+        }
+      }
+
       setTradeAmount('');
       setTradeConfirm({ open: false, type: 'buy', amount: '', launch: null });
       setTradeSuccess(true);
@@ -2992,6 +3108,13 @@ const App: React.FC = () => {
       );
       // Reset success state after animation
       setTimeout(() => setTradeSuccess(false), 2000);
+      // Refresh launch data, chart, and balances after trade settles
+      // Small delay to let the indexer process the transaction
+      setTimeout(() => {
+        launchDetail.refetch();
+        refetchChart();
+        refetchBalances();
+      }, 2000);
     } catch (err) {
       const { message, detail } = parseTransactionError(err);
       // Show detailed message for better UX - Solana transactions are atomic (all-or-nothing)
@@ -3000,7 +3123,7 @@ const App: React.FC = () => {
     } finally {
       setTradeLoading(false);
     }
-  }, [currentLaunchPk, tradeAmount, tradeType, trade, settings.defaultSlippage, showToast, tradeLoading]);
+  }, [currentLaunchPk, tradeAmount, tradeType, trade, settings.defaultSlippage, showToast, tradeLoading, launchDetail, refetchChart, refetchBalances, userBalances]);
 
   // Wire up executeTradeRef for use in initiateTransaction
   executeTradeRef.current = executeTrade;
@@ -3017,10 +3140,46 @@ const App: React.FC = () => {
       return;
     }
 
+    // Sell liquidity pre-validation: check if pool has enough SOL to pay out
+    if (tradeType === 'sell' && launchDetail.launch) {
+      const ld = launchDetail.launch;
+      const ctx = {
+        mint: ld.mint, creator: ld.creator,
+        virtualSolReserve: ld.virtualSolReserve, virtualTokenReserve: ld.virtualTokenReserve,
+        protocolFeeBps: 100, creatorFeeBps: ld.creatorFeeBps || 0,
+      };
+      const est = trade.estimateSell(amount * 1e6, ctx);
+      if (est && ld.realSolReserve > 0) {
+        const availableSol = ld.realSolReserve / 1e9;
+        if (est.solOut > availableSol) {
+          showToast(`Not enough liquidity. Pool has ${availableSol.toFixed(4)} SOL available.`, 'error');
+          return;
+        }
+      }
+    }
+
     // Enforce trading limits
     if (settings.tradingLimits.enabled) {
       if (tradeType === 'buy' && amount > settings.tradingLimits.maxTradeSize) {
         showToast(`Trade exceeds max size of ${settings.tradingLimits.maxTradeSize} SOL`, 'error');
+        return;
+      }
+    }
+
+    // High price impact warning — require confirmation for >5%
+    if (launchDetail.launch) {
+      const ld = launchDetail.launch;
+      const ctx = {
+        mint: ld.mint, creator: ld.creator,
+        virtualSolReserve: ld.virtualSolReserve, virtualTokenReserve: ld.virtualTokenReserve,
+        protocolFeeBps: 100, creatorFeeBps: ld.creatorFeeBps || 0,
+      };
+      const impact = tradeType === 'buy'
+        ? trade.estimateBuy(amount, ctx)?.priceImpact
+        : trade.estimateSell(amount * 1e6, ctx)?.priceImpact;
+      if (impact && impact > 5 && !settings.notifications.tradeConfirmations) {
+        // Force confirmation for high-impact trades even if confirmations are off
+        setTradeConfirm({ open: true, type: tradeType, amount: tradeAmount, launch: route.launch });
         return;
       }
     }
@@ -3080,6 +3239,8 @@ const App: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const Nav = () => (
+    <>
+    <a href="#main-content" className="sr-only" style={{ position: "absolute", left: -9999, top: "auto", width: 1, height: 1, overflow: "hidden", zIndex: 9999 }} onFocus={(e) => { e.currentTarget.style.position = 'fixed'; e.currentTarget.style.left = '16px'; e.currentTarget.style.top = '16px'; e.currentTarget.style.width = 'auto'; e.currentTarget.style.height = 'auto'; e.currentTarget.style.padding = '12px 24px'; e.currentTarget.style.background = 'var(--pb)'; e.currentTarget.style.color = 'var(--pt)'; e.currentTarget.style.borderRadius = '8px'; e.currentTarget.style.fontSize = '14px'; }} onBlur={(e) => { e.currentTarget.style.position = 'absolute'; e.currentTarget.style.left = '-9999px'; e.currentTarget.style.width = '1px'; e.currentTarget.style.height = '1px'; }}>Skip to content</a>
     <nav className="nav-animated" style={{
       position: "sticky",
       top: 0,
@@ -3182,7 +3343,7 @@ const App: React.FC = () => {
             }}>
               ${solPrice.price > 0 ? solPrice.price.toFixed(2) : '--'}
             </span>
-            {solPrice.price > 0 && (
+            {solPrice.price > 0 && Math.abs(solPrice.change24h) >= 0.05 && (
               <span style={{
                 fontSize: "var(--fs-xs)",
                 fontWeight: "var(--fw-medium)",
@@ -3209,6 +3370,7 @@ const App: React.FC = () => {
               })}
               aria-label="Toggle menu"
               aria-expanded={showNavMenu}
+              aria-controls="nav-dropdown-menu"
             >
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                 {showNavMenu ? (
@@ -3225,10 +3387,12 @@ const App: React.FC = () => {
             {showNavMenu && (
               <>
                 <div
-                  style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                  style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(0,0,0,0.3)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }}
                   onClick={() => setShowNavMenu(false)}
                 />
                 <div
+                  id="nav-dropdown-menu"
+                  role="menu"
                   className="nav-dropdown"
                   style={{
                     position: "absolute",
@@ -3355,36 +3519,107 @@ const App: React.FC = () => {
           </div>
 
           {/* Connect Wallet - Primary CTA */}
-          <button
-            onClick={() => wallet.connected ? go('profile') : setShowWalletSelector(true)}
-            className={wallet.connected ? "glass-pill" : "btn-premium-glow nav-connect-btn"}
-            style={s(bpS, {
-              height: "var(--btn-md)",
-              padding: wallet.connected ? "0 var(--space-4)" : "0 var(--space-5)",
-              fontSize: "var(--fs-base)",
-              fontWeight: "var(--fw-semibold)",
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-2)",
-              borderRadius: "var(--radius-md)"
-            })}
-          >
-            {wallet.connected ? (
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => wallet.connected ? setShowWalletDropdown(!showWalletDropdown) : setShowWalletSelector(true)}
+              className={wallet.connected ? "glass-pill" : "btn-premium-glow nav-connect-btn"}
+              aria-haspopup={wallet.connected ? "true" : undefined}
+              aria-expanded={wallet.connected ? showWalletDropdown : undefined}
+              style={s(bpS, {
+                height: "var(--btn-md)",
+                padding: wallet.connected ? "0 var(--space-4)" : "0 var(--space-5)",
+                fontSize: "var(--fs-base)",
+                fontWeight: "var(--fw-semibold)",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                borderRadius: "var(--radius-md)"
+              })}
+            >
+              {wallet.connected ? (
+                <>
+                  <span style={{ width: 6, height: 6, borderRadius: "var(--radius-full)", background: "var(--grn)" }} />
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "var(--fs-sm)" }}>
+                    {wallet.address?.slice(0, 4)}...{wallet.address?.slice(-4)}
+                  </span>
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} style={{ marginLeft: 2, transform: showWalletDropdown ? "rotate(180deg)" : undefined, transition: "transform 0.15s ease" }}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </>
+              ) : (
+                <>
+                  <SvgWallet /> Connect
+                </>
+              )}
+            </button>
+            {showWalletDropdown && wallet.connected && (
               <>
-                <span style={{ width: 6, height: 6, borderRadius: "var(--radius-full)", background: "var(--grn)" }} />
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "var(--fs-sm)" }}>
-                  {wallet.address?.slice(0, 4)}...{wallet.address?.slice(-4)}
-                </span>
-              </>
-            ) : (
-              <>
-                <SvgWallet /> Connect
+                <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setShowWalletDropdown(false)} />
+                <div
+                  role="menu"
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + var(--space-2))",
+                    right: 0,
+                    minWidth: 220,
+                    padding: "var(--space-2)",
+                    borderRadius: "var(--radius-lg)",
+                    background: isDark ? "rgba(17,24,39,0.98)" : "rgba(255,255,255,0.98)",
+                    border: "1px solid var(--glass-border)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+                    zIndex: 50,
+                    animation: "fadeIn 0.15s ease"
+                  }}
+                >
+                  <button
+                    role="menuitem"
+                    onClick={() => { go('profile'); setShowWalletDropdown(false); }}
+                    className="interactive-hover"
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: "var(--space-2-5)", padding: "var(--space-2-5) var(--space-3)", borderRadius: "var(--radius-md)", background: "none", border: "none", color: "var(--t1)", fontSize: "var(--fs-sm)", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    <SvgWallet /> Portfolio
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      if (wallet.address) {
+                        navigator.clipboard.writeText(wallet.address);
+                        setWalletCopied(true);
+                        setTimeout(() => setWalletCopied(false), 2000);
+                      }
+                    }}
+                    className="interactive-hover"
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: "var(--space-2-5)", padding: "var(--space-2-5) var(--space-3)", borderRadius: "var(--radius-md)", background: "none", border: "none", color: "var(--t1)", fontSize: "var(--fs-sm)", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    {walletCopied ? <><SvgCheck /> Copied!</> : <><SvgCopy /> Copy Address</>}
+                  </button>
+                  <a
+                    role="menuitem"
+                    href={`https://solscan.io/address/${wallet.address}?cluster=devnet`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="interactive-hover"
+                    style={{ display: "flex", alignItems: "center", gap: "var(--space-2-5)", padding: "var(--space-2-5) var(--space-3)", borderRadius: "var(--radius-md)", background: "none", border: "none", color: "var(--t1)", fontSize: "var(--fs-sm)", cursor: "pointer", textDecoration: "none", fontFamily: "inherit" }}
+                  >
+                    <SvgExternal /> View on Solscan
+                  </a>
+                  <div style={{ height: 1, background: "var(--glass-border)", margin: "var(--space-1-5) var(--space-2)" }} />
+                  <button
+                    role="menuitem"
+                    onClick={async () => { await wallet.disconnect(); setShowWalletDropdown(false); }}
+                    className="interactive-hover"
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: "var(--space-2-5)", padding: "var(--space-2-5) var(--space-3)", borderRadius: "var(--radius-md)", background: "none", border: "none", color: "var(--red)", fontSize: "var(--fs-sm)", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    <SvgLogout /> Disconnect
+                  </button>
+                </div>
               </>
             )}
-          </button>
+          </div>
         </div>
       </div>
     </nav>
+    </>
   );
 
   // ---------------------------------------------------------------------------
@@ -3409,33 +3644,25 @@ const App: React.FC = () => {
       }}>
         <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>© 2026 Launchr</span>
         <div style={{ display: "flex", gap: "var(--space-5)", fontSize: "var(--fs-xs)" }}>
-          <a
-            href="https://docs.launchr.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="interactive-hover"
-            style={{ color: "var(--t3)", textDecoration: "none", transition: "color 0.15s ease" }}
-          >
-            Docs
-          </a>
-          <a
-            href="https://launchr.app/terms"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="interactive-hover"
-            style={{ color: "var(--t3)", textDecoration: "none", transition: "color 0.15s ease" }}
-          >
-            Terms
-          </a>
-          <a
-            href="https://launchr.app/privacy"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="interactive-hover"
-            style={{ color: "var(--t3)", textDecoration: "none", transition: "color 0.15s ease" }}
-          >
-            Privacy
-          </a>
+          {[
+            { label: "Docs", href: "https://docs.launchr.app" },
+            { label: "Terms", href: "https://launchr.app/terms" },
+            { label: "Privacy", href: "https://launchr.app/privacy" },
+          ].map((link) => (
+            <a
+              key={link.label}
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="interactive-hover"
+              style={{ color: "var(--t3)", textDecoration: "none", transition: "color 0.15s ease", display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
+              {link.label}
+              <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+              </svg>
+            </a>
+          ))}
         </div>
       </div>
     </footer>
@@ -3534,7 +3761,7 @@ const App: React.FC = () => {
             </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: "var(--fs-4xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
-                <AnimatedNumber value={stats.totalVolume / 1000} prefix="$" suffix="K" decimals={0} />
+                {fm(stats.totalVolume * (solPrice?.price || 0))}
               </div>
               <div style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: "var(--space-1)", fontWeight: "var(--fw-medium)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                 Volume
@@ -3549,6 +3776,7 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
+
     </div>
   );
 
@@ -3560,9 +3788,12 @@ const App: React.FC = () => {
     const tabBtn = (k: string, l: string, badge?: string) => (
       <button
         key={k}
+        role="tab"
+        aria-selected={tab === k}
         onClick={() => setTab(k)}
         style={{
-          padding: "var(--space-1) var(--space-4)",
+          padding: "var(--space-2) var(--space-4)",
+          minHeight: 40,
           borderRadius: "var(--radius-full)",
           fontSize: "var(--fs-xs)",
           fontWeight: "var(--fw-medium)",
@@ -3598,9 +3829,11 @@ const App: React.FC = () => {
     const srtBtn = (k: string, l: string) => (
       <button
         key={k}
+        aria-pressed={sort === k}
         onClick={() => setSort(k)}
         style={{
           padding: "var(--space-1) var(--space-3)",
+          minHeight: 32,
           borderRadius: "var(--radius-full)",
           fontSize: "var(--fs-xs)",
           fontWeight: "var(--fw-medium)",
@@ -3658,9 +3891,12 @@ const App: React.FC = () => {
                   <path d="M21 21l-4.35-4.35" />
                 </svg>
                 <input
+                  type="search"
                   value={searchQuery}
                   onChange={(e) => updateSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Escape') { updateSearch(''); (e.target as HTMLInputElement).blur(); } }}
                   placeholder="Search tokens..."
+                  aria-label="Search tokens"
                   style={{
                     border: "none",
                     background: "transparent",
@@ -3714,7 +3950,7 @@ const App: React.FC = () => {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-5)", flexWrap: "wrap" }}>
-            <div style={{
+            <div role="tablist" aria-label="Market categories" style={{
               display: "flex",
               gap: "var(--space-1)",
               padding: "var(--space-1)",
@@ -3876,16 +4112,16 @@ const App: React.FC = () => {
               {srtBtn("progress", "Progress")}
             </div>
           )}
-          <div style={{ overflowX: "auto" }} className="table-wrapper">
+          <div style={{ overflowX: "auto" }} className="table-wrapper" role="region" aria-label="Token launches" tabIndex={0}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
-                  <th style={s(thS, { textAlign: "center", width: 36 })}></th>
-                  <th style={s(thS, { textAlign: "left" })}>Token</th>
-                  <th style={s(thS, { textAlign: "right" })}>Price (SOL)</th>
-                  <th style={s(thS, { textAlign: "right" })}>24h</th>
-                  <th style={s(thS, { textAlign: "right" })}>MCap (USD)</th>
-                  <th style={s(thS, { textAlign: "right", width: 140 })}>Progress</th>
+                  <th style={s(thS, { textAlign: "center", width: 36 })} scope="col"><span className="sr-only">Watchlist</span></th>
+                  <th style={s(thS, { textAlign: "left" })} scope="col">Token</th>
+                  <th style={s(thS, { textAlign: "right" })} scope="col">Price (SOL)</th>
+                  <th style={s(thS, { textAlign: "right" })} scope="col">24h</th>
+                  <th style={s(thS, { textAlign: "right" })} scope="col">MCap (USD)</th>
+                  <th style={s(thS, { textAlign: "right", width: 140 })} scope="col">Progress</th>
                 </tr>
               </thead>
               <tbody>
@@ -3929,6 +4165,7 @@ const App: React.FC = () => {
                         onClick={(e) => toggleWatchlist(l.id, e)}
                         className="star-btn interactive-hover"
                         aria-label={isWatchlisted(l.id) ? `Remove ${l.symbol} from watchlist` : `Add ${l.symbol} to watchlist`}
+                        aria-pressed={isWatchlisted(l.id)}
                         style={{
                           background: "none",
                           border: "none",
@@ -3957,7 +4194,7 @@ const App: React.FC = () => {
                       {fP(l.price)}
                     </td>
                     <td style={{ textAlign: "right" }}><Chg v={l.priceChange24h} /></td>
-                    <td style={{ textAlign: "right", fontSize: "var(--fs-base)", color: "var(--t2)" }}>{fm(l.marketCap * (solPrice?.price || 0))}</td>
+                    <td style={{ textAlign: "right", fontSize: "var(--fs-base)", color: "var(--t2)" }}>{solPrice?.price ? fm(l.marketCap * solPrice.price) : '\u2014'}</td>
                     <td style={{ textAlign: "right", padding: "12px 0" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "var(--space-2)" }}>
                         <div style={{ width: 80, height: 6, borderRadius: 3, overflow: "hidden", background: "var(--glass2)" }}>
@@ -3985,6 +4222,7 @@ const App: React.FC = () => {
           <Tooltip content="Create new launch" position="left">
             <button
               onClick={() => go('create')}
+              aria-label="Create new token launch"
               className="fab-button btn-premium-glow ripple-container"
               style={{
                 position: 'fixed',
@@ -4102,7 +4340,7 @@ const App: React.FC = () => {
                   </div>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-                      <h1 style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)" }}>{l.name}</h1>
+                      <h1 style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)" }}>{l.symbol}</h1>
                       <Badge status={l.status} isDark={isDark} />
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--fs-sm)", color: "var(--t3)", marginTop: 2 }}>
@@ -4132,7 +4370,7 @@ const App: React.FC = () => {
                       </Tooltip>
                       <Tooltip content="View on Solscan" position="top">
                         <a
-                          href={`https://solscan.io/token/${l.publicKey}?cluster=devnet`}
+                          href={`https://solscan.io/token/${l.mint}?cluster=devnet`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
@@ -4151,6 +4389,7 @@ const App: React.FC = () => {
                     <Tooltip content={isWatchlisted(l.id) ? "Remove from watchlist" : "Add to watchlist"} position="bottom">
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleWatchlist(l.id); }}
+                        aria-pressed={isWatchlisted(l.id)}
                         className="glass-pill interactive-hover btn-press"
                         style={s(bsS, {
                           width: 36,
@@ -4192,15 +4431,15 @@ const App: React.FC = () => {
               </div>
               <div style={s(ani("fu", 0.06), { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "var(--space-2-5)", marginTop: 22 })} className="grid-stagger">
                 {[
-                  { l: "Market Cap", v: solPrice?.price ? fm(l.marketCap * solPrice.price) : fSOL(l.marketCap, true), icon: <SvgChart /> },
-                  { l: "Volume (24h)", v: fm(l.volume24h * (solPrice?.price || 0)), icon: <SvgActivity /> },
-                  { l: "Holders", v: l.holders.toLocaleString(), icon: <SvgUser /> },
-                  { l: "Trades", v: l.trades.toLocaleString(), icon: <SvgZap /> }
+                  { l: "Market Cap", v: solPrice?.price ? fm(l.marketCap * solPrice.price) : fSOL(l.marketCap, true), icon: <SvgChart />, tip: "Total value of all tokens at current price" },
+                  { l: "Volume (24h)", v: fm(l.volume24h * (solPrice?.price || 0)), icon: <SvgActivity />, tip: "Trading volume in the last 24 hours" },
+                  { l: "Holders", v: l.holders.toLocaleString(), icon: <SvgUser />, tip: "Number of unique token holders" },
+                  { l: "Trades", v: l.trades.toLocaleString(), icon: <SvgZap />, tip: "Total number of trades executed" }
                 ].map((x) => (
                   <HoverCard key={x.l} className="glass-card-inner" style={{ padding: 12 }} glowColor="rgba(34, 197, 94, 0.1)">
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                       <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)", fontWeight: "var(--fw-medium)" }}>{x.l}</span>
-                      <span style={{ color: "var(--t3)", opacity: 0.6 }}>{x.icon}</span>
+                      <Tooltip content={x.tip} position="top"><span style={{ color: "var(--t3)", opacity: 0.6 }}>{x.icon}</span></Tooltip>
                     </div>
                     <div style={{ fontSize: "var(--fs-lg)", fontWeight: "var(--fw-semibold)", color: "var(--t1)" }}>{x.v}</div>
                   </HoverCard>
@@ -4236,12 +4475,16 @@ const App: React.FC = () => {
               <div style={s(ani("fu", 0.1), { marginTop: 22 })}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-                    <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", fontWeight: "var(--fw-medium)" }}>Graduation Progress</span>
+                    <Tooltip content="When enough SOL is raised, the token graduates to Orbit Finance DLMM concentrated liquidity" position="top">
+                      <span style={{ fontSize: "var(--fs-sm)", color: "var(--t2)", fontWeight: "var(--fw-medium)", cursor: "help" }}>Graduation Progress</span>
+                    </Tooltip>
                     {l.progress >= 90 && <PulseDot color="var(--amb)" size={6} />}
                   </div>
-                  <span style={{ fontSize: "var(--fs-sm)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>{l.progress}% / 85 SOL</span>
+                  <span style={{ fontSize: "var(--fs-sm)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t1)" }}>
+                    {ld ? `${(ld.realSolReserve / 1e9).toFixed(2)} / ${(ld.graduationThreshold / 1e9).toFixed(0)} SOL` : `${l.progress}%`}
+                  </span>
                 </div>
-                <GradientProgress value={l.progress} height={8} showGlow={true} />
+                <GradientProgress value={ld ? Math.min((ld.realSolReserve / Math.max(ld.graduationThreshold, 1)) * 100, 100) : l.progress} height={8} showGlow={true} />
                 {l.progress >= 90 && (
                   <div style={{
                     display: "flex",
@@ -4280,15 +4523,20 @@ const App: React.FC = () => {
                         <button
                           key={ct.key}
                           className="btn-press"
+                          aria-label={`${ct.key} chart`}
+                          aria-pressed={settings.chartType === ct.key}
                           style={{
                             padding: "5px 8px",
+                            minHeight: 32,
+                            minWidth: 32,
                             borderRadius: "var(--radius-xs)",
                             border: "none",
                             background: settings.chartType === ct.key ? "var(--pb)" : "transparent",
                             color: settings.chartType === ct.key ? "var(--pt)" : "var(--t3)",
                             cursor: "pointer",
                             display: "flex",
-                            alignItems: "center"
+                            alignItems: "center",
+                            justifyContent: "center"
                           }}
                           onClick={() => setSettings(prev => ({ ...prev, chartType: ct.key as 'candle' | 'line' | 'area' }))}
                         >
@@ -4300,11 +4548,13 @@ const App: React.FC = () => {
                     {(["1H", "4H", "1D", "7D", "30D"] as const).map((tf) => (
                       <button
                         key={tf}
+                        aria-pressed={chartTimeframe === tf}
+                        aria-label={`${tf} timeframe`}
                         onClick={() => setChartTimeframe(tf)}
                         className="glass-pill interactive-hover btn-press"
                         style={s(bsS, {
-                          height: 26,
-                          padding: "0 10px",
+                          height: 32,
+                          padding: "0 12px",
                           fontSize: "var(--fs-2xs)",
                           fontWeight: "var(--fw-medium)",
                           background: chartTimeframe === tf ? 'var(--pb)' : 'var(--sb)',
@@ -4321,17 +4571,18 @@ const App: React.FC = () => {
                 <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}>
                   {(() => {
                     const lastCandle = candles.length > 0 ? candles[candles.length - 1] : null;
-                    const firstCandle = candles.length > 0 ? candles[0] : null;
-                    const ohlcChange = lastCandle && firstCandle && firstCandle.open > 0
-                      ? ((lastCandle.close - firstCandle.open) / firstCandle.open) * 100
+                    // Change = (Close - Open) / Open for the last candle's OHLC bar
+                    const rawOhlcChange = lastCandle && lastCandle.open > 0
+                      ? ((lastCandle.close - lastCandle.open) / lastCandle.open) * 100
                       : 0;
+                    const ohlcChange = Math.abs(rawOhlcChange) < 0.05 ? 0 : rawOhlcChange;
                     return [
                       { label: "Open", value: fP(lastCandle?.open ?? l.price), color: "var(--t1)" },
                       { label: "High", value: fP(lastCandle?.high ?? l.price), color: "var(--grn)" },
                       { label: "Low", value: fP(lastCandle?.low ?? l.price), color: "var(--red)" },
                       { label: "Close", value: fP(lastCandle?.close ?? l.price), color: "var(--t1)" },
                       { label: "Change", value: lastCandle ? fPct(ohlcChange) : '—', color: ohlcChange >= 0 ? "var(--grn)" : "var(--red)" },
-                      { label: "Vol", value: fSOL(lastCandle?.volume ?? 0, false), color: "var(--t1)" }
+                      { label: "Vol", value: (() => { const v = lastCandle?.volume ?? 0; if (v >= 1e6) return (v / 1e6).toFixed(2) + "M"; if (v >= 1e3) return (v / 1e3).toFixed(1) + "K"; return fSOL(v, false); })(), color: "var(--t1)" }
                     ];
                   })().map((stat) => (
                     <div key={stat.label} style={{ display: "flex", alignItems: "center", gap: "var(--space-1-5)" }}>
@@ -4346,12 +4597,20 @@ const App: React.FC = () => {
 
               {/* Chart Area */}
               <div style={{ padding: "var(--space-5) var(--space-6)" }}>
-                <PriceChart
-                  data={candles}
-                  chartType={settings.chartType}
-                  height={280}
-                  loading={chartLoading}
-                />
+                <ErrorBoundary fallback={
+                  <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t3)', fontSize: 'var(--fs-sm)' }}>
+                    Chart failed to load. Try refreshing the page.
+                  </div>
+                }>
+                  <PriceChart
+                    data={candles}
+                    chartType={settings.chartType}
+                    height={280}
+                    loading={chartLoading}
+                    isDark={isDark}
+                    showIndicators={settings.showIndicators}
+                  />
+                </ErrorBoundary>
               </div>
 
               {/* Chart Footer / Legend */}
@@ -4390,7 +4649,7 @@ const App: React.FC = () => {
               </div>
             </div>
             <div className="glass-card" style={s(ani("fu", 0.12), { padding: 24 })}>
-              <div style={{
+              <div role="tablist" aria-label="Token details" style={{
                 display: "flex",
                 gap: "var(--space-0-5)",
                 padding: "var(--space-0-5)",
@@ -4402,10 +4661,13 @@ const App: React.FC = () => {
                 {["trades", "holders"].map((x) => (
                   <button
                     key={x}
+                    role="tab"
+                    aria-selected={detailTab === x}
                     onClick={() => setDetailTab(x)}
                     className="interactive-hover btn-press"
                     style={{
-                      padding: "var(--space-1-5) var(--space-4)",
+                      padding: "var(--space-2) var(--space-4)",
+                      minHeight: 40,
                       borderRadius: "var(--radius-full)",
                       fontSize: "var(--fs-sm)",
                       fontWeight: "var(--fw-medium)",
@@ -4424,22 +4686,40 @@ const App: React.FC = () => {
               </div>
               <TabContent tabKey={detailTab}>
                 {detailTab === "trades" ? (
-                  <><table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  detailLoading && trades.length === 0 ? (
+                    <div style={{ padding: "var(--space-4) 0" }}>
+                      {[...Array(5)].map((_, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", padding: "10px 0", borderBottom: "1px solid var(--glass-border)" }}>
+                          <Skeleton width={50} height={22} borderRadius={4} />
+                          <Skeleton width={90} height={14} />
+                          <div style={{ flex: 1 }} />
+                          <Skeleton width={60} height={14} />
+                          <Skeleton width={50} height={14} />
+                          <Skeleton width={60} height={14} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : trades.length === 0 ? (
+                    <div style={{ padding: "var(--space-10) 0", textAlign: "center" }}>
+                      <div style={{ marginBottom: "var(--space-3)", color: "var(--t3)" }}><EmptyStateIcon type="activity" size={48} /></div>
+                      <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>No trades yet. Be the first to trade!</p>
+                    </div>
+                  ) : <><table style={{ width: "100%", borderCollapse: "collapse" }} aria-label="Recent trades">
                     <thead>
                       <tr>
-                        <th style={s(thS2, { textAlign: "left" })}>Type</th>
-                        <th style={s(thS2, { textAlign: "left" })}>Trader</th>
-                        <th style={s(thS2, { textAlign: "right" })}>Price</th>
-                        <th style={s(thS2, { textAlign: "right" })}>SOL</th>
-                        <th style={s(thS2, { textAlign: "right" })}>Tokens</th>
-                        <th style={s(thS2, { textAlign: "right" })}>Time</th>
+                        <th style={s(thS2, { textAlign: "left" })} scope="col">Type</th>
+                        <th style={s(thS2, { textAlign: "left" })} scope="col">Trader</th>
+                        <th style={s(thS2, { textAlign: "right" })} scope="col">Price</th>
+                        <th style={s(thS2, { textAlign: "right" })} scope="col">SOL</th>
+                        <th style={s(thS2, { textAlign: "right" })} scope="col">Tokens</th>
+                        <th style={s(thS2, { textAlign: "right" })} scope="col">Time</th>
                       </tr>
                     </thead>
                     <tbody>
                       {paginatedTrades.map((r, i) => (
-                        <tr key={r.id} className="table-row-hover" style={s(ani("fu", i * 0.03), { borderBottom: "1px solid var(--glass-border)", cursor: r.txSignature ? "pointer" : undefined })}
+                        <tr key={r.id} className="table-row-hover" style={s(ani("fu", i * 0.03), { borderBottom: "1px solid var(--glass-border)", cursor: r.txSignature ? "pointer" : "default" })}
                           onClick={r.txSignature ? () => window.open(`https://solscan.io/tx/${r.txSignature}?cluster=devnet`, '_blank') : undefined}
-                          title={r.txSignature ? "View on Solscan" : undefined}
+                          title={r.txSignature ? "Click to view on Solscan" : "Transaction signature pending"}
                         >
                           <td style={{ padding: "10px 0" }}>
                             <span style={{
@@ -4494,13 +4774,13 @@ const App: React.FC = () => {
                         {totalHolders.toLocaleString()} total holders
                       </span>
                     </div>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }} aria-label="Token holders">
                       <thead>
                         <tr>
-                          <th style={s(thS2, { textAlign: "left", width: 40 })}>#</th>
-                          <th style={s(thS2, { textAlign: "left" })}>Address</th>
-                          <th style={s(thS2, { textAlign: "right" })}>Balance</th>
-                          <th style={s(thS2, { textAlign: "right" })}>\%</th>
+                          <th style={s(thS2, { textAlign: "left", width: 40 })} scope="col">#</th>
+                          <th style={s(thS2, { textAlign: "left" })} scope="col">Address</th>
+                          <th style={s(thS2, { textAlign: "right" })} scope="col">Balance</th>
+                          <th style={s(thS2, { textAlign: "right" })} scope="col">%</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4513,8 +4793,18 @@ const App: React.FC = () => {
                             <td style={{ padding: "10px 0", fontSize: "var(--fs-sm)", color: "var(--t3)" }}>
                               {holder.rank || i + 1}
                             </td>
-                            <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-sm)", color: "var(--t2)" }}>
-                              {holder.address.slice(0, 4)}...{holder.address.slice(-4)}
+                            <td style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-sm)" }}>
+                              <a
+                                href={`https://solscan.io/account/${holder.address}?cluster=devnet`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`View ${holder.address.slice(0, 4)}...${holder.address.slice(-4)} on Solscan`}
+                                title="View on Solscan"
+                                style={{ color: "var(--t2)", textDecoration: "none" }}
+                                className="interactive-hover"
+                              >
+                                {holder.address.slice(0, 4)}...{holder.address.slice(-4)}
+                              </a>
                             </td>
                             <td style={{ textAlign: "right", fontFamily: "'JetBrains Mono',monospace", fontSize: "var(--fs-base)", color: "var(--t1)" }}>
                               {fTok(holder.balance)}
@@ -4530,7 +4820,14 @@ const App: React.FC = () => {
                 ) : (
                   <div style={{ padding: "var(--space-10) 0", textAlign: "center" }}>
                     <div style={{ marginBottom: "var(--space-3)", color: "var(--t3)" }}><EmptyStateIcon type="users" size={48} /></div>
-                    <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>Loading holder data...</p>
+                    {holdersLoading ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--space-2)" }}>
+                        <div className="loading-spinner loading-spinner-small" />
+                        <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>Loading holder data...</p>
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>No holders yet</p>
+                    )}
                   </div>
                 )}
               </TabContent>
@@ -4558,8 +4855,11 @@ const App: React.FC = () => {
                 <div className="amount-input-wrapper input-focus-glow" style={s(inpS, { display: "flex", alignItems: "center", gap: "var(--space-2)", height: 56, padding: "0 var(--space-4)", borderRadius: "var(--radius-lg)" })}>
                   <input
                     type="number"
+                    inputMode="decimal"
                     min="0"
+                    max={tradeType === "sell" && userBalances?.tokenBalance ? (userBalances.tokenBalance / 1e6).toString() : undefined}
                     step="any"
+                    aria-label={tradeType === "buy" ? "SOL amount to spend" : "Token amount to sell"}
                     value={tradeAmount}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -4582,7 +4882,7 @@ const App: React.FC = () => {
                     }}
                   />
                   <span style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t2)" }}>
-                    {tradeType === "buy" ? "SOL" : l.symbol}
+                    {tradeType === "buy" ? "SOL" : `M ${l.symbol}`}
                   </span>
                 </div>
               </div>
@@ -4595,11 +4895,19 @@ const App: React.FC = () => {
                   return (
                     <button
                       key={pct}
-                      onClick={() => setTradeAmount(((maxBalance * pct) / 100).toFixed(2))}
+                      aria-label={`${pct}% of balance`}
+                      aria-pressed={!!isActive}
+                      onClick={() => {
+                        const raw = (maxBalance * pct) / 100;
+                        // Floor-truncate for sells to prevent exceeding actual balance
+                        const val = tradeType === 'sell' ? Math.floor(raw * 100) / 100 : raw;
+                        setTradeAmount(val.toFixed(2));
+                      }}
                       className="glass-pill"
                       style={{
                         flex: 1,
                         padding: "var(--space-2) 0",
+                        minHeight: 40,
                         fontSize: "var(--fs-xs)",
                         fontWeight: "var(--fw-medium)",
                         border: "none",
@@ -4616,14 +4924,17 @@ const App: React.FC = () => {
               </div>
 
               {/* Buy/Sell toggle - Secondary */}
-              <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)", background: "var(--glass2)" }}>
+              <div role="tablist" aria-label="Trade type" style={{ display: "flex", gap: 2, padding: 2, borderRadius: "var(--radius-md)", marginBottom: "var(--space-4)", background: "var(--glass2)" }}>
                 {(["buy", "sell"] as const).map((x) => (
                   <button
                     key={x}
+                    role="tab"
+                    aria-selected={tradeType === x}
                     onClick={() => setTradeType(x)}
                     style={{
                       flex: 1,
                       padding: "var(--space-3) 0",
+                      minHeight: 44,
                       borderRadius: "var(--radius-sm)",
                       fontSize: "var(--fs-base)",
                       fontWeight: "var(--fw-semibold)",
@@ -4653,7 +4964,8 @@ const App: React.FC = () => {
                   creatorFeeBps: ld.creatorFeeBps || 0,
                 } : undefined;
                 const buyEst = ctx && amt > 0 && tradeType === "buy" ? trade.estimateBuy(amt, ctx) : null;
-                const sellEst = ctx && amt > 0 && tradeType === "sell" ? trade.estimateSell(amt, ctx) : null;
+                // Sell amounts are in M-display units; convert to whole tokens for estimate
+                const sellEst = ctx && amt > 0 && tradeType === "sell" ? trade.estimateSell(amt * 1e6, ctx) : null;
                 const priceImpact = buyEst?.priceImpact ?? sellEst?.priceImpact ?? 0;
 
                 return (
@@ -4704,7 +5016,7 @@ const App: React.FC = () => {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-1)" }}>
                     <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>Protocol fee (1%)</span>
                     <span style={{ fontSize: "var(--fs-xs)", fontFamily: "'JetBrains Mono',monospace", color: "var(--t2)" }}>
-                      {tradeAmount && parseFloat(tradeAmount) > 0 ? (parseFloat(tradeAmount) * 0.01).toFixed(4) : '0.0000'} SOL
+                      {amt > 0 ? (tradeType === "buy" ? (amt * 0.01).toFixed(4) : (sellEst ? (sellEst.solOut * 0.01).toFixed(4) : '—')) : '0.0000'} SOL
                     </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -4717,6 +5029,38 @@ const App: React.FC = () => {
               </div>
                 );
               })()}
+
+              {/* Slippage tolerance - inline control */}
+              <div style={{ marginBottom: "var(--space-4)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-2)" }}>
+                  <span style={{ fontSize: "var(--fs-xs)", color: "var(--t3)" }}>Slippage tolerance</span>
+                  <span style={{ fontSize: "var(--fs-xs)", fontFamily: "'JetBrains Mono',monospace", color: "var(--grn)", fontWeight: "var(--fw-semibold)" }}>{settings.defaultSlippage}%</span>
+                </div>
+                <div style={{ display: "flex", gap: "var(--space-1)" }}>
+                  {[0.5, 1, 3, 5].map((slip) => (
+                    <button
+                      key={slip}
+                      onClick={() => setSettings(prev => { const next = { ...prev, defaultSlippage: Math.min(slip, 50) }; localStorage.setItem('launchr_settings', JSON.stringify(next)); return next; })}
+                      className="glass-pill btn-press"
+                      style={{
+                        flex: 1,
+                        height: 32,
+                        fontSize: "var(--fs-xs)",
+                        fontWeight: "var(--fw-medium)",
+                        cursor: "pointer",
+                        border: settings.defaultSlippage === slip ? "1px solid var(--grn)" : "1px solid transparent",
+                        background: settings.defaultSlippage === slip ? "var(--glass3)" : "var(--glass2)",
+                        color: settings.defaultSlippage === slip ? "var(--t1)" : "var(--t3)",
+                        borderRadius: "var(--radius-sm)",
+                        fontFamily: "inherit"
+                      }}
+                    >
+                      {slip}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {(() => {
                 // Deduct token account creation cost (~0.002 SOL) for first-time buy
                 const needsAta = tradeType === "buy" && (!userBalances?.tokenBalance || userBalances.tokenBalance === 0);
@@ -5509,7 +5853,7 @@ const App: React.FC = () => {
               Connect your wallet to view your portfolio, positions, and trading history.
             </p>
             <button
-              onClick={() => wallet.connect()}
+              onClick={() => setShowWalletSelector(true)}
               className="btn-press interactive-hover"
               style={s(bpS, { height: "var(--btn-lg)", padding: "0 var(--space-8)", fontSize: "var(--fs-sm)", fontWeight: "var(--fw-semibold)" })}
             >
@@ -5523,10 +5867,13 @@ const App: React.FC = () => {
     const tabBtn = (k: 'positions' | 'activity' | 'created', l: string, count?: number) => (
       <button
         key={k}
+        role="tab"
+        aria-selected={profileTab === k}
         onClick={() => setProfileTab(k)}
         className="btn-press"
         style={{
           padding: "var(--space-2) var(--space-5)",
+          minHeight: 40,
           borderRadius: "var(--radius-full)",
           fontSize: "var(--fs-xs)",
           fontWeight: "var(--fw-semibold)",
@@ -6023,7 +6370,7 @@ const App: React.FC = () => {
           {/* Quick Stats Row */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(70px, 1fr))",
             gap: "var(--space-2-5)",
             margin: "0 28px 28px"
           }}>
@@ -6047,7 +6394,7 @@ const App: React.FC = () => {
         </div>
 
         {/* Tabs */}
-        <div style={{
+        <div role="tablist" aria-label="Portfolio sections" style={{
           display: "flex",
           gap: "var(--space-1)",
           padding: 4,
@@ -6369,10 +6716,13 @@ const App: React.FC = () => {
     const tabBtn = (k: 'positions' | 'activity' | 'created', l: string, count?: number) => (
       <button
         key={k}
+        role="tab"
+        aria-selected={userProfileTab === k}
         onClick={() => setUserProfileTab(k)}
         className="btn-press"
         style={{
           padding: "8px 18px",
+          minHeight: 40,
           borderRadius: "var(--radius-full)",
           fontSize: "var(--fs-sm)",
           fontWeight: "var(--fw-semibold)",
@@ -6555,7 +6905,7 @@ const App: React.FC = () => {
         </div>
 
         {/* Tabs */}
-        <div style={{
+        <div role="tablist" aria-label="User profile sections" style={{
           display: "flex",
           gap: "var(--space-1)",
           padding: 4,
@@ -6721,7 +7071,12 @@ const App: React.FC = () => {
     // settingsTab / setSettingsTab lifted to App level
 
     const updateSettings = (updates: Partial<UserSettings>) => {
-      setSettings(prev => ({ ...prev, ...updates }));
+      setSettings(prev => {
+        const next = { ...prev, ...updates };
+        localStorage.setItem('launchr_settings', JSON.stringify(next));
+        return next;
+      });
+      showToast('Settings saved', 'success');
     };
 
     const updateNotification = (key: keyof UserSettings['notifications'], value: boolean) => {
@@ -6935,7 +7290,7 @@ const App: React.FC = () => {
           </div>
 
           {/* Tab Navigation - Enhanced */}
-          <div style={{
+          <div role="tablist" aria-label="Settings sections" style={{
             display: "flex",
             gap: 0,
             borderTop: "1px solid var(--glass-border)",
@@ -6954,6 +7309,8 @@ const App: React.FC = () => {
               return (
                 <button
                   key={k}
+                  role="tab"
+                  aria-selected={isActive}
                   onClick={() => setSettingsTab(k)}
                   className="btn-press interactive-hover"
                   style={{
@@ -7183,7 +7540,7 @@ const App: React.FC = () => {
                 <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)", marginBottom: "var(--space-3-5)", lineHeight: 1.5 }}>
                   Preset amounts for faster trading. Click to set default.
                 </p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-2)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(70px, 1fr))", gap: "var(--space-2)" }}>
                   {[0.1, 0.25, 0.5, 1, 2, 5, 10, 25].map((amt, i) => (
                     <div
                       key={amt}
@@ -7478,7 +7835,7 @@ const App: React.FC = () => {
                   <div style={{ textAlign: "center", padding: "24px 0" }}>
                     <p style={{ fontSize: "var(--fs-base)", color: "var(--t2)", marginBottom: 16 }}>No wallet connected</p>
                     <button
-                      onClick={() => wallet.connect()}
+                      onClick={() => setShowWalletSelector(true)}
                       className="btn-press interactive-hover"
                       style={s(bpS, { height: 40, padding: "0 24px", fontSize: "var(--fs-base)" })}
                     >
@@ -7528,9 +7885,9 @@ const App: React.FC = () => {
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                   {[
-                    { key: 'helius' as const, name: 'Helius', endpoint: 'https://mainnet.helius-rpc.com', status: 'Fast' },
-                    { key: 'quicknode' as const, name: 'Quicknode', endpoint: 'https://solana-mainnet.quiknode.pro', status: 'Fast' },
-                    { key: 'default' as const, name: 'Default', endpoint: 'https://api.mainnet-beta.solana.com', status: 'Standard' },
+                    { key: 'helius' as const, name: 'Helius', endpoint: 'https://devnet.helius-rpc.com', status: 'Fast' },
+                    { key: 'quicknode' as const, name: 'Quicknode', endpoint: 'https://solana-devnet.quiknode.pro', status: 'Fast' },
+                    { key: 'default' as const, name: 'Default', endpoint: 'https://api.devnet.solana.com', status: 'Standard' },
                   ].map((rpc) => (
                     <div
                       key={rpc.key}
@@ -8168,7 +8525,7 @@ const App: React.FC = () => {
               </div>
 
               {/* Time Period Filter - Enhanced */}
-              <div style={{
+              <div role="tablist" aria-label="Leaderboard time period" style={{
                 display: "flex",
                 gap: 0,
                 background: "var(--glass2)",
@@ -8182,6 +8539,8 @@ const App: React.FC = () => {
                   return (
                     <button
                       key={k}
+                      role="tab"
+                      aria-selected={isActive}
                       onClick={() => setTimePeriod(k)}
                       className="btn-press"
                       style={{
@@ -8213,10 +8572,10 @@ const App: React.FC = () => {
             background: "var(--glass-border)"
           }}>
             {[
-              { label: 'Total Volume', value: '2,847 SOL', change: '+12.4%', iconType: 'chart' as const, highlight: true },
-              { label: 'Active Traders', value: '1,234', change: '+8.2%', iconType: 'users' as const },
-              { label: 'Avg Win Rate', value: '58.3%', change: '+2.1%', iconType: 'target' as const },
-              { label: 'Top Profit', value: '+127.5 SOL', change: null, iconType: 'trophy' as const, isProfit: true },
+              { label: 'Total Volume', value: `${stats.totalVolume.toFixed(1)} SOL`, change: null, iconType: 'chart' as const, highlight: true },
+              { label: 'Active Traders', value: `${leaderboardData.length}`, change: null, iconType: 'users' as const },
+              { label: 'Total Trades', value: `${leaderboardData.reduce((s, t) => s + t.trades, 0).toLocaleString()}`, change: null, iconType: 'target' as const },
+              { label: 'Top Volume', value: leaderboardData.length > 0 ? `+${leaderboardData[0].totalPnl.toFixed(1)} SOL` : '0 SOL', change: null, iconType: 'trophy' as const, isProfit: true },
             ].map((stat, i) => (
               <div
                 key={stat.label}
@@ -8316,7 +8675,12 @@ const App: React.FC = () => {
                   <span style={{ textAlign: "right" }}>P&L</span>
                 </div>
 
-                {restTraders.map((trader, i) => (
+                {leaderboardData.length === 0 && (
+                  <div style={{ padding: "var(--space-8) 0", textAlign: "center" }}>
+                    <p style={{ fontSize: "var(--fs-sm)", color: "var(--t3)" }}>No trader activity yet</p>
+                  </div>
+                )}
+                {(restTraders.length > 0 ? restTraders : leaderboardData).map((trader, i) => (
                   <div
                     key={trader.rank}
                     onClick={trader.address.length > 32 ? () => go('userProfile', undefined, trader.address) : undefined}
@@ -8348,8 +8712,26 @@ const App: React.FC = () => {
 
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
                       <Avatar gi={trader.avatar} size={38} />
-                      <div style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace" }}>
-                        {trader.address}
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                        <a
+                          href={`https://solscan.io/account/${trader.address}?cluster=devnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ fontSize: "var(--fs-md)", fontWeight: "var(--fw-semibold)", color: "var(--t1)", fontFamily: "'JetBrains Mono', monospace", textDecoration: "none" }}
+                          className="interactive-hover"
+                          title="View on Solscan"
+                        >
+                          {trader.address.slice(0, 6)}...{trader.address.slice(-4)}
+                        </a>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(trader.address); showToast('Address copied', 'success'); }}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--t3)", padding: 2, display: "flex" }}
+                          aria-label="Copy address"
+                          title="Copy address"
+                        >
+                          <SvgCopy />
+                        </button>
                       </div>
                     </div>
 
@@ -8680,15 +9062,18 @@ const App: React.FC = () => {
 
       {/* Live Price Ticker */}
       {launches.length > 0 && route.type !== 'home' && (
-        <div style={{
-          borderBottom: "1px solid var(--glass-border)",
-          overflow: "hidden",
-          position: "relative",
-          zIndex: 1,
-          background: "var(--glass)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)"
-        }}>
+        <div
+          aria-hidden="true"
+          style={{
+            borderBottom: "1px solid var(--glass-border)",
+            overflow: "hidden",
+            position: "relative",
+            zIndex: 1,
+            background: "var(--glass)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)"
+          }}
+        >
           <div className="ticker-scroll" style={{
             display: "flex",
             gap: 32,
@@ -8716,7 +9101,7 @@ const App: React.FC = () => {
                 <Avatar gi={l.gi} size={20} />
                 <span style={{ fontSize: "var(--fs-sm)", fontWeight: "var(--fw-medium)", color: "var(--t1)" }}>{l.symbol}</span>
                 <span style={{ fontSize: "var(--fs-sm)", fontFamily: "'JetBrains Mono', monospace", color: "var(--t2)" }}>
-                  {fP(l.price)}
+                  {fm(l.marketCap * (solPrice?.price || 0))}
                 </span>
                 <span style={{
                   fontSize: "var(--fs-xs)",
@@ -8733,7 +9118,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <main key={viewKey} className="page-enter-smooth view-container" style={{ minHeight: "calc(100vh - 112px)" }}>
+      <main id="main-content" key={viewKey} className="page-enter-smooth view-container" style={{ minHeight: "calc(100vh - 112px)" }}>
         {/* Show loading state when restoring a detail page */}
         {pendingDetailId ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
@@ -8743,7 +9128,17 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          <>
+          <ErrorBoundary fallback={
+            <div style={{ maxWidth: 520, margin: "80px auto", padding: "var(--space-8)", textAlign: "center" }}>
+              <div className="glass-card" style={{ padding: "var(--space-10)" }}>
+                <div style={{ fontSize: "var(--fs-3xl)", fontWeight: "var(--fw-bold)", color: "var(--t1)", marginBottom: 8 }}>Something went wrong</div>
+                <p style={{ color: "var(--t2)", marginBottom: "var(--space-6)", fontSize: "var(--fs-sm)" }}>An error occurred loading this page. Please try refreshing.</p>
+                <button onClick={() => window.location.reload()} className="btn-press" style={{ padding: "var(--space-3) var(--space-8)", borderRadius: "var(--radius-full)", border: "none", background: "var(--pb)", color: "var(--pt)", cursor: "pointer", fontSize: "var(--fs-sm)", fontWeight: "var(--fw-semibold)", fontFamily: "inherit" }}>
+                  Refresh Page
+                </button>
+              </div>
+            </div>
+          }>
             {route.type === 'home' && Home()}
             {route.type === 'launches' && Launches()}
             {route.type === 'detail' && Detail()}
@@ -8752,7 +9147,7 @@ const App: React.FC = () => {
             {route.type === 'userProfile' && <UserProfile address={route.address} />}
             {route.type === 'settings' && Settings()}
             {route.type === 'leaderboard' && Leaderboard()}
-          </>
+          </ErrorBoundary>
         )}
       </main>
       {Foot()}

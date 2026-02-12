@@ -30,11 +30,14 @@ router.get('/', async (req: Request, res: Response) => {
     const totalFees = tradingFees + graduationFees;
 
     // Map to frontend expected format
+    // totalVolume from indexer is in lamports — convert to SOL for display
+    const totalVolumeSol = (rawStats.totalVolume || 0) / 1e9;
+    const totalFeesSol = totalFees / 1e9;
     const stats = {
       totalLaunches: rawStats.totalLaunches || 0,
       totalGraduated: rawStats.graduatedLaunches || 0,
-      totalVolume: rawStats.totalVolume || 0,
-      totalFees: totalFees,
+      totalVolume: totalVolumeSol,
+      totalFees: totalFeesSol,
     };
 
     res.json({ stats });

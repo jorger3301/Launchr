@@ -11,7 +11,7 @@ module.exports = function override(config) {
     zlib: false,
     url: require.resolve('url/'),
     os: require.resolve('os-browserify/browser'),
-    assert: false,
+    assert: require.resolve('assert/'),
     fs: false,
     path: false,
   };

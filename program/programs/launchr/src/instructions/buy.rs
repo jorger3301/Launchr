@@ -47,7 +47,7 @@ pub struct Buy<'info> {
         mut,
         seeds = [TOKEN_VAULT_SEED, launch.key().as_ref()],
         bump,
-        constraint = token_vault.mint == launch.mint
+        constraint = token_vault.mint == launch.mint @ LaunchrError::InvalidConfig
     )]
     pub token_vault: Account<'info, TokenAccount>,
     
@@ -71,7 +71,7 @@ pub struct Buy<'info> {
     
     /// Token mint
     #[account(
-        constraint = mint.key() == launch.mint
+        constraint = mint.key() == launch.mint @ LaunchrError::InvalidConfig
     )]
     pub mint: Account<'info, anchor_spl::token::Mint>,
     
@@ -98,7 +98,7 @@ pub struct Buy<'info> {
     /// CHECK: Creator from launch account
     #[account(
         mut,
-        constraint = creator.key() == launch.creator
+        constraint = creator.key() == launch.creator @ LaunchrError::InvalidCreator
     )]
     pub creator: UncheckedAccount<'info>,
     

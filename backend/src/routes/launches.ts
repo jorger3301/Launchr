@@ -600,7 +600,7 @@ router.get(
               high: Math.max(...prices),
               low: Math.min(...prices),
               close: prices[prices.length - 1],
-              volume: candleTrades.reduce((sum: number, t: TradeEvent) => sum + t.solAmount, 0),
+              volume: candleTrades.reduce((sum: number, t: TradeEvent) => sum + t.solAmount, 0) / 1e9,
             });
           } else if (candles.length > 0) {
             // Use previous close as the price for empty candles
